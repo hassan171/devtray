@@ -1,9 +1,32 @@
 import 'package:flutter/material.dart';
 
 import '../../core/debug_overlay_theme.dart';
+import '../mocking/mock_interceptor.dart';
 import '../network_log_store.dart';
 import 'network_badges.dart';
 import 'network_formatters.dart';
+
+/// Marks a row whose response never came from the server.
+class _MockedBadge extends StatelessWidget {
+  const _MockedBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = DebugOverlayTheme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(
+        color: t.warning.withValues(alpha: 0.2),
+        border: Border.all(color: t.warning),
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Text(
+        'MOCKED',
+        style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: t.warning),
+      ),
+    );
+  }
+}
 
 /// One row in the request list: method, path/host, status, duration.
 class NetworkLogRow extends StatelessWidget {
@@ -45,11 +68,22 @@ class NetworkLogRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
                   ),
-                  Text(
-                    entry.uri.host,
-                    style: TextStyle(fontSize: 10, color: t.textMuted),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
+                  Row(
+                    children: [
+                      // Never let a faked response pass for a real one.
+                      if (entry.extras.containsKey(kMockedExtraLabel)) ...[
+                        const _MockedBadge(),
+                        const SizedBox(width: 4),
+                      ],
+                      Flexible(
+                        child: Text(
+                          entry.uri.host,
+                          style: TextStyle(fontSize: 10, color: t.textMuted),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

@@ -131,6 +131,112 @@ for HTML responses. Multipart bodies are snapshotted and rendered as `-F` flags 
 
 ---
 
+## Mocking
+
+`MocksDebugPage` turns the network inspector from an observer into a **test harness**. Force
+a response, inject latency, or kill the network — reaching app states that would otherwise
+need a server-side change.
+
+```dart
+pages: const [NetworkDebugPage(), MocksDebugPage()],
+```
+
+Nothing else to wire up: the dio and http adapters already consult the rules.
+
+### The workflow that matters
+
+Don't author JSON from scratch on a phone. Instead: **fire the real request, open it on the
+Network page, and hit "Mock this request."** The rule is prefilled with its real URL, method,
+status and response body — so you *edit* rather than write. Take a 200 and make it a 500;
+take a list and make it empty.
+
+(The seeded pattern is the URL **path**, not the full URL — a rule keyed to the host would
+break the moment you point the app at a different environment.)
+
+### Actions
+
+| Action | What happens |
+|---|---|
+| **Fake response** | Return a canned status + body. The server is never contacted. |
+| **Fail (offline)** | Throw a connection error, as if the network were unreachable. |
+| **Delay only** | Still hits the real server — just late. Surfaces loading states and races. |
+
+Plus two master switches: **Simulate offline** (fail everything; overrides all rules) and
+**Apply rules** (park every rule without deleting them).
+
+### Nothing is silently faked
+
+A mocked response that looks identical to a real one will cost you an afternoon. So:
+
+- Mocked rows are badged **MOCKED** in the request list.
+- A **warning banner** appears on both the Network and Mocks pages whenever anything is
+  intercepting, with a one-tap "Turn off".
+- The request detail gets a *Mocked* tab spelling out that the server was never contacted.
+
+### Matching
+
+Substring on the URL by default (`/orders`). Flip the **Regex** switch on a rule for
+`r'/users/\d+/orders$'`. An invalid regex simply never matches — a half-typed pattern in the
+editor can't take down every request in flight.
+
+**First enabled rule wins**, so order matters: a specific rule must sit above a broad one.
+
+### From code
+
+The UI is a front-end for a plain store, so you can drive it from a test or a script:
+
+```dart
+MockStore.instance.offline.value = true;               // kill the network
+
+MockStore.instance.add(MockRule(
+  id: MockStore.instance.nextId(),
+  urlPattern: '/orders',
+  method: 'POST',
+  statusCode: 500,
+  body: '{"message": "boom"}',
+  delay: const Duration(milliseconds: 800),
+));
+```
+
+### Persistence
+
+Mock rules **survive a hot restart** — otherwise you'd re-add "force /orders to 500" every
+time, which is exactly when you're iterating on an error state. Only the rules are stored (a
+small JSON blob in `shared_preferences`); no logs, no request bodies, so none of the PII
+concerns that make persisting the *data* a bad idea.
+
+Turn it off with `runDebugApp(persistMockRules: false)`, or swap the backend by implementing
+`MockRuleStorage` and setting `MockStore.instance.storage`.
+
+### Don't want mocking at all?
+
+Dropping `MocksDebugPage` is **not enough** — and this matters:
+
+- The Network page's **"Mock this request"** button would still be there, and tapping it
+  would create a rule with no page to see, edit or delete it from.
+- The adapters consult `MockStore` regardless of which pages you register, so a rule added
+  **from code** would still fake traffic with nothing on screen to reveal it.
+
+So opt out on both levels:
+
+```dart
+MockStore.instance.disable();   // stop the adapters intercepting, for real
+
+runDebugApp(
+  const MyApp(),
+  pages: const [
+    NetworkDebugPage(enableMocking: false),   // hide the button + banner
+    LogsDebugPage(),
+  ],
+);
+```
+
+`NetworkDebugPage(enableMocking: false)` is **UI only**. `MockStore.instance.disable()` is
+what actually stops interception — it beats offline mode, every rule, and skips restoring
+persisted rules on the next launch.
+
+---
+
 ## Logs
 
 `LogsDebugPage` shows captured log output, filterable by level and tag, searchable, with the

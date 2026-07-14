@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../network/mocking/mock_store.dart';
+import '../network/mocking/shared_preferences_mock_storage.dart';
 import 'debug_capture.dart';
 import 'debug_overlay.dart';
 import 'debug_overlay_controller.dart';
@@ -49,6 +51,13 @@ void runDebugApp(
   double launcherSize = 48,
   IconData launcherIcon = Icons.bug_report,
   Widget? launcherBuilder,
+
+  /// Keep mock rules across restarts (via `shared_preferences`).
+  ///
+  /// On by default: you otherwise re-add "force /orders to 500" after every hot
+  /// restart, which is exactly when you're iterating on an error state. Only
+  /// the rules are stored — no logs, no request bodies.
+  bool persistMockRules = true,
 }) {
   if (!enabled) {
     // Not even a pass-through DebugOverlay in the tree — release builds get the
@@ -58,21 +67,32 @@ void runDebugApp(
   }
 
   DebugOverlayCapture.runApp(
-    () => runApp(
-      DebugOverlay(
-        pages: pages,
-        controller: controller,
-        presentation: presentation,
-        theme: theme,
-        showLauncher: showLauncher,
-        showErrorBadge: showErrorBadge,
-        launcherCorner: launcherCorner,
-        launcherMargin: launcherMargin,
-        launcherSize: launcherSize,
-        launcherIcon: launcherIcon,
-        launcherBuilder: launcherBuilder,
-        child: app,
-      ),
-    ),
+    () {
+      // Don't restore rules into a store the app has turned off — they'd apply
+      // with no UI to reveal them.
+      if (persistMockRules && !MockStore.instance.isDisabled) {
+        // Fire-and-forget: `rules` is a ValueNotifier, so the Mocks page picks
+        // them up the moment they land. Awaiting here would mean holding up the
+        // first frame for a debug tool's scratch file, which is a bad trade.
+        MockStore.instance.storage = SharedPreferencesMockRuleStorage();
+        MockStore.instance.load();
+      }
+      runApp(
+        DebugOverlay(
+          pages: pages,
+          controller: controller,
+          presentation: presentation,
+          theme: theme,
+          showLauncher: showLauncher,
+          showErrorBadge: showErrorBadge,
+          launcherCorner: launcherCorner,
+          launcherMargin: launcherMargin,
+          launcherSize: launcherSize,
+          launcherIcon: launcherIcon,
+          launcherBuilder: launcherBuilder,
+          child: app,
+        ),
+      );
+    },
   );
 }

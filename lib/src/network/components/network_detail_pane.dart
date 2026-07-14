@@ -5,6 +5,7 @@ import '../../widgets/copyable_section.dart';
 import '../../widgets/debug_tab_bar.dart';
 import '../../widgets/html_preview_dialog.dart';
 import '../curl_builder.dart';
+import '../mocking/components/mock_rule_editor.dart';
 import '../network_log_store.dart';
 import 'network_badges.dart';
 import 'network_formatters.dart';
@@ -22,7 +23,17 @@ class NetworkDetailPane extends StatefulWidget {
   final NetworkLogEntry entry;
   final VoidCallback onBack;
 
-  const NetworkDetailPane({super.key, required this.entry, required this.onBack});
+  /// Shows the "Mock this request" action. Off when the host app didn't register
+  /// a [MocksDebugPage] — otherwise the button would create a rule the user has
+  /// no way to see, edit or delete.
+  final bool enableMocking;
+
+  const NetworkDetailPane({
+    super.key,
+    required this.entry,
+    required this.onBack,
+    this.enableMocking = true,
+  });
 
   @override
   State<NetworkDetailPane> createState() => _NetworkDetailPaneState();
@@ -115,6 +126,16 @@ class _NetworkDetailPaneState extends State<NetworkDetailPane> with TickerProvid
                 tooltip: 'Preview HTML',
                 icon: Icon(Icons.preview, size: 16, color: t.text),
                 onPressed: () => HtmlPreviewDialog.show(context, e.responseBodyString!),
+              ),
+              const SizedBox(width: 8),
+            ],
+            if (widget.enableMocking) ...[
+              IconButton(
+                tooltip: 'Mock this request',
+                icon: Icon(Icons.alt_route, size: 16, color: t.text),
+                // Seeds the rule from this request's real response, so you edit
+                // rather than author JSON from scratch.
+                onPressed: () => MockRuleEditor.showForEntry(context, e),
               ),
               const SizedBox(width: 8),
             ],

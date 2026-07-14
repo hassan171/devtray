@@ -6,8 +6,8 @@ writing code.
 
 Ordered by value-per-effort. Nothing here is committed.
 
-**Shipped so far:** Network, Logs, Errors, Device pages · pluggable `DebugPage` system ·
-`runDebugApp` one-call setup · dio + http adapters · network→errors forwarding.
+**Shipped so far:** Network, **Mocks**, Logs, Errors, Device pages · pluggable `DebugPage`
+system · `runDebugApp` one-call setup · dio + http adapters · network→errors forwarding.
 
 **Explicitly not doing:** persistence across restarts. In-memory only is a defensible
 default, and the crash-forensics case isn't worth the machinery (batched disk writer, size
@@ -16,7 +16,37 @@ killed it last time" question actually bites.
 
 ---
 
-## 1. Network mocking ⭐ the big one
+## 1. ~~Network mocking~~ ✅ SHIPPED
+
+Built as designed. Decisions taken: rules **persist** (`shared_preferences`, rules-only);
+matching is **substring with an opt-in regex toggle**; the body editor is **seeded from the
+captured response** ("Mock this request" on any logged request). Mocked traffic is badged
+`MOCKED` in the list, warned about in a banner on both pages, and marked in the detail.
+
+Three real bugs surfaced while building it, all caught by tests:
+- `onResponse` hardcoded `NetworkLogStatus.success` — a **real** 500 under
+  `validateStatus: (_) => true` was logged as a green row. Pre-existing, unrelated to mocking.
+- dio's `handler.resolve()` skips the interceptor's own `onResponse`, so mocked requests sat
+  **pending** in the log forever. The adapters now complete the entry by hand.
+- The editor's "Add rule" button never enabled — it read `controller.text` at build time with
+  no listener, so typing a URL didn't rebuild it.
+
+Opting out is a **two-level** switch, because hiding the UI doesn't stop the adapters:
+`NetworkDebugPage(enableMocking: false)` drops the button + banner, and
+`MockStore.instance.disable()` stops interception for real (beats offline mode, every rule,
+and skips restoring persisted rules).
+
+Still open, if it ever bites:
+- **Replay / edit-and-resend** a captured request wasn't built. Mocking covers most of what it
+  was wanted for.
+- Mocks still aren't gated by `enabled`/`kDebugMode` automatically — a rule left on in a
+  staging build would be confusing, and only the banner reveals it. `disable()` is the manual
+  answer; an automatic one may be worth it.
+
+<details>
+<summary>Original design notes</summary>
+
+### 1. Network mocking ⭐ the big one
 
 Turn the network tab from an **observer** into a **test harness**. Everything else on this
 list makes debugging easier; this one lets you reach app states you otherwise **cannot reach
@@ -78,6 +108,8 @@ of it — editing a JSON body on a phone is genuinely awkward.
   might genuinely earn its keep (a small rules-only JSON file). Worth reconsidering?
 - **Should mocking be gated separately from the overlay?** A mock rule left on in a staging
   build would be very confusing. Maybe mocks are `kDebugMode`-only regardless of `enabled`.
+
+</details>
 
 ---
 
@@ -260,8 +292,8 @@ Things that apply to several of the above and should be decided once:
 
 ## Suggested order
 
-1. **Network mocking** — the categorical win; the interceptor is already in the right place.
-2. **Visual debug toggles (flags only)** — an hour's work, immediately useful.
+1. ~~**Network mocking**~~ ✅ done.
+2. **Visual debug toggles (flags only)** — an hour's work, immediately useful. ← next
 3. **Share/export** — small, *but only after the redaction hook exists*.
 4. **Performance page** — self-capturing, no integration cost.
 5. Storage / flags / BLoC — all need a decision about how much host-app coupling we want.

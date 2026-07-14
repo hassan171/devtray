@@ -28,6 +28,7 @@ void main() {
     controller: debug,
     pages: [
       const NetworkDebugPage(),
+      const MocksDebugPage(),
       const LogsDebugPage(),
       const ErrorsDebugPage(),
       // Real device/OS/app facts, plus our own section merged in.
@@ -40,7 +41,12 @@ void main() {
         ]),
       ),
       // Any page you like — a plain widget builder is enough.
-      DebugPage.builder(title: 'About', icon: Icons.info_outline, builder: (_) => const _AboutPage()),
+      // DebugPage.builder(
+      //   title: 'About',
+      //   icon: Icons.info_outline,
+      //   builder: (_) =>
+      //       Padding(padding: EdgeInsets.all(16), child: Text('Custom pages are just widgets — register them with DebugPage.builder, or subclass DebugPage.')),
+      // ),
     ],
   );
 }
@@ -99,18 +105,6 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _AboutPage extends StatelessWidget {
-  const _AboutPage();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.all(16),
-      child: Text('Custom pages are just widgets — register them with DebugPage.builder, or subclass DebugPage.'),
     );
   }
 }

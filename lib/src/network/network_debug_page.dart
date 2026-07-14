@@ -5,6 +5,7 @@ import '../core/debug_page.dart';
 import 'components/network_detail_pane.dart';
 import 'components/network_log_row.dart';
 import 'components/network_search_bar.dart';
+import 'mocking/mocks_debug_page.dart';
 import 'network_log_store.dart';
 
 /// The built-in network inspector page. Reads from [NetworkLogStore], which is
@@ -16,7 +17,18 @@ class NetworkDebugPage extends DebugPage {
   /// Width at or above which the list and detail are shown side by side.
   final double wideBreakpoint;
 
-  const NetworkDebugPage({this.wideBreakpoint = 700});
+  /// Whether this page offers the mocking affordances — the "Mock this request"
+  /// button and the interception warning banner.
+  ///
+  /// Leave it on only if you also register a [MocksDebugPage]: without one,
+  /// "Mock this request" would create a rule the user has no way to see, edit or
+  /// delete. Set it to false to drop mocking from the UI entirely.
+  ///
+  /// This is UI only. Rules added from code still apply — see
+  /// [MockStore.disable] to turn interception off for real.
+  final bool enableMocking;
+
+  const NetworkDebugPage({this.wideBreakpoint = 700, this.enableMocking = true});
 
   @override
   String get title => 'Network';
@@ -25,12 +37,17 @@ class NetworkDebugPage extends DebugPage {
   IconData? get icon => Icons.swap_vert;
 
   @override
-  Widget build(BuildContext context) => _NetworkDebugView(wideBreakpoint: wideBreakpoint);
+  Widget build(BuildContext context) => _NetworkDebugView(
+        wideBreakpoint: wideBreakpoint,
+        enableMocking: enableMocking,
+      );
 }
 
 class _NetworkDebugView extends StatefulWidget {
   final double wideBreakpoint;
-  const _NetworkDebugView({required this.wideBreakpoint});
+  final bool enableMocking;
+
+  const _NetworkDebugView({required this.wideBreakpoint, required this.enableMocking});
 
   @override
   State<_NetworkDebugView> createState() => _NetworkDebugViewState();
@@ -44,9 +61,7 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
     if (_search.isEmpty) return entries;
     final q = _search.toLowerCase();
     return entries.where((e) {
-      return e.method.toLowerCase().contains(q) ||
-          e.uri.toString().toLowerCase().contains(q) ||
-          (e.statusCode?.toString().contains(q) ?? false);
+      return e.method.toLowerCase().contains(q) || e.uri.toString().toLowerCase().contains(q) || (e.statusCode?.toString().contains(q) ?? false);
     }).toList();
   }
 
@@ -71,11 +86,17 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
 
             // Narrow: detail replaces the list entirely.
             if (!isWide && selected != null) {
-              return NetworkDetailPane(entry: selected, onBack: () => setState(() => _selectedId = null));
+              return NetworkDetailPane(entry: selected, enableMocking: widget.enableMocking, onBack: () => setState(() => _selectedId = null));
             }
 
             final list = Column(
               children: [
+                // Warns when mocks are intercepting, so a faked response can't
+                // be mistaken for real server behaviour.
+                if (widget.enableMocking) ...[
+                  const MockInterceptionBanner(),
+                  const SizedBox(height: 8),
+                ],
                 NetworkSearchBar(
                   total: filtered.length,
                   onChanged: (v) => setState(() => _search = v),
@@ -88,10 +109,7 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
                 Expanded(
                   child: filtered.isEmpty
                       ? Center(
-                          child: Text(
-                            entries.isEmpty ? 'No requests yet' : 'No matches',
-                            style: TextStyle(color: t.textMuted),
-                          ),
+                          child: Text(entries.isEmpty ? 'No requests yet' : 'No matches', style: TextStyle(color: t.textMuted)),
                         )
                       : ListView.builder(
                           itemCount: filtered.length,
@@ -117,8 +135,10 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
                 Expanded(
                   flex: 60,
                   child: selected == null
-                      ? Center(child: Text('Select a request to see details', style: TextStyle(color: t.textMuted)))
-                      : NetworkDetailPane(entry: selected, onBack: () => setState(() => _selectedId = null)),
+                      ? Center(
+                          child: Text('Select a request to see details', style: TextStyle(color: t.textMuted)),
+                        )
+                      : NetworkDetailPane(entry: selected, enableMocking: widget.enableMocking, onBack: () => setState(() => _selectedId = null)),
                 ),
               ],
             );

@@ -4,10 +4,13 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../curl_builder.dart';
+import '../mocking/mock_interceptor.dart';
+import '../mocking/mock_store.dart';
 import '../network_log_store.dart';
 
 /// A `package:http` client wrapper that captures every request into
-/// [NetworkLogStore].
+/// [NetworkLogStore], and applies any mock rules from [MockStore] (delay / fake
+/// response / simulated failure).
 ///
 /// ```dart
 /// final client = DebugHttpClient(http.Client());
@@ -24,10 +27,12 @@ import '../network_log_store.dart';
 class DebugHttpClient extends http.BaseClient {
   final http.Client _inner;
   final NetworkLogStore _store;
+  final MockStore _mocks;
 
-  DebugHttpClient([http.Client? inner, NetworkLogStore? store])
+  DebugHttpClient([http.Client? inner, NetworkLogStore? store, MockStore? mockStore])
       : _inner = inner ?? http.Client(),
-        _store = store ?? NetworkLogStore.instance;
+        _store = store ?? NetworkLogStore.instance,
+        _mocks = mockStore ?? MockStore.instance;
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
@@ -38,6 +43,46 @@ class DebugHttpClient extends http.BaseClient {
       queryParameters: Map<String, dynamic>.from(request.url.queryParameters),
       requestBody: _snapshotBody(request),
     );
+
+    // Note: mocking applies even when the URL is excluded from the log (entry
+    // == null). Excluding a URL means "don't show it to me", not "don't mock it".
+    final decision = decideMock(url: request.url.toString(), method: request.method, store: _mocks);
+
+    switch (decision) {
+      case PassThrough(:final delay):
+        if (delay != null) await Future<void>.delayed(delay);
+
+      case RespondWith(:final statusCode, :final body, :final headers, :final delay):
+        if (delay != null) await Future<void>.delayed(delay);
+        _markMocked(entry?.id, decision);
+
+        final bytes = utf8.encode(body is String ? body : (body == null ? '' : jsonEncode(body)));
+        if (entry != null) {
+          _store.complete(
+            entry.id,
+            statusCode: statusCode,
+            responseHeaders: {for (final e in headers.entries) e.key: [e.value]},
+            responseBody: body,
+            status: statusCode >= 400 ? NetworkLogStatus.failed : NetworkLogStatus.success,
+          );
+        }
+        return http.StreamedResponse(
+          Stream.value(bytes),
+          statusCode,
+          contentLength: bytes.length,
+          request: request,
+          headers: headers,
+        );
+
+      case FailWith(:final message, :final delay):
+        if (delay != null) await Future<void>.delayed(delay);
+        _markMocked(entry?.id, decision);
+
+        if (entry != null) {
+          _store.complete(entry.id, errorMessage: message, status: NetworkLogStatus.failed);
+        }
+        throw http.ClientException(message, request.url);
+    }
 
     if (entry == null) return _inner.send(request);
 
@@ -75,6 +120,16 @@ class DebugHttpClient extends http.BaseClient {
   void close() {
     _inner.close();
     super.close();
+  }
+
+  /// Badge the entry so a faked response can't be mistaken for a real one.
+  void _markMocked(int? id, MockDecision decision) {
+    if (id == null) return;
+    _store.attachExtra(id, kMockedExtraLabel, switch (decision) {
+      RespondWith(:final statusCode) => 'Response faked by debug_overlay (HTTP $statusCode). The server was never contacted.',
+      FailWith(:final message) => 'Failure simulated by debug_overlay: $message. The server was never contacted.',
+      PassThrough() => 'Delayed by debug_overlay.',
+    });
   }
 
   dynamic _snapshotBody(http.BaseRequest request) {
