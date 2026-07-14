@@ -237,6 +237,48 @@ persisted rules on the next launch.
 
 ---
 
+## Visual
+
+`VisualDebugPage` exposes Flutter's rendering debug flags as switches — the on-device
+substitute for a tethered DevTools session.
+
+```dart
+pages: [VisualDebugPage()],
+```
+
+| Toggle | What it shows |
+|---|---|
+| **Paint layout bounds** | Outlines every box. The fastest way to see why something is the wrong size. |
+| **Repaint rainbow** | Recolours a layer each time it repaints. A patch that keeps flashing is repainting every frame — usually a missing `const` or `RepaintBoundary`. |
+| **Paint baselines** | Text baselines, for when text sits a pixel off from what it should align with. |
+| **Highlight taps** | Flashes the area that got the pointer event — shows what *actually* received the tap. |
+| **Slow animations** | Runs every animation at 1/5 speed so you can see what a transition does. |
+
+> **Not included: layer borders.** `debugPaintLayerBordersEnabled` only draws when a layer
+> records a *new* picture, not on every repaint — so layers with a cached picture never show
+> it, and the toggle silently does nothing from inside the app. DevTools can do it because it
+> drives the engine directly. Use DevTools for that one.
+
+These are **process-wide globals** and stay on after you close the overlay — a repaint
+rainbow left running looks exactly like a rendering bug. So the page shows a warning banner
+whenever any flag is on, with a one-tap **Reset all**.
+
+Add your own toggles, or trim the list:
+
+```dart
+VisualDebugPage(flags: [
+  ...kDefaultVisualDebugFlags,
+  VisualDebugFlag(
+    label: 'Show grid overlay',
+    description: 'My app-specific debug grid',
+    get: () => myGridEnabled,
+    set: (v) => myGridEnabled = v,
+  ),
+])
+```
+
+---
+
 ## Logs
 
 `LogsDebugPage` shows captured log output, filterable by level and tag, searchable, with the

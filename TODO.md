@@ -6,8 +6,9 @@ writing code.
 
 Ordered by value-per-effort. Nothing here is committed.
 
-**Shipped so far:** Network, **Mocks**, Logs, Errors, Device pages · pluggable `DebugPage`
-system · `runDebugApp` one-call setup · dio + http adapters · network→errors forwarding.
+**Shipped so far:** Network, **Mocks**, **Visual**, Logs, Errors, Device pages · pluggable
+`DebugPage` system · `runDebugApp` one-call setup · dio + http adapters · network→errors
+forwarding.
 
 **Explicitly not doing:** persistence across restarts. In-memory only is a defensible
 default, and the crash-forensics case isn't worth the machinery (batched disk writer, size
@@ -113,7 +114,33 @@ of it — editing a JSON body on a phone is genuinely awkward.
 
 ---
 
-## 2. Visual debug toggles — best value-per-hour
+## 2. ~~Visual debug toggles~~ ✅ SHIPPED (flags only)
+
+Built the **flags** half: paint layout bounds, repaint rainbow, baselines, tap highlighting,
+layer borders, slow animations. Plus a warning banner + "Reset all", because these are
+process-wide globals that outlive the overlay — a rainbow left on looks like a rendering bug.
+The flag list is replaceable (`VisualDebugPage(flags: [...])`).
+
+The **overrides** half (text scale, locale, forced brightness) was deliberately *not* built —
+it needs `DebugOverlay` to inject a `MediaQuery`/`Localizations` above the host app's tree,
+which is a structural change to a widget that currently touches nothing about the app it
+wraps. Still open; see the original notes below.
+
+Notes from building it:
+- `reassembleApplication()` is the wrong way to apply a flag — it rebuilds the whole tree
+  (the hot-reload path) and re-enters `runApp`, which trips a scheduler assertion under
+  `flutter_test`. Walking the render tree with `markNeedsPaint()` is what these flags need.
+- **Widget-testing this page is largely not possible.** `flutter_test` runs
+  `debugAssertAllRenderVarsUnset` after every test, and the page's whole job is to leave a
+  rendering global set. A test that taps a switch poisons every test after it in the file, no
+  matter what order you reset/unmount in. Worked around by asserting the flag wiring in a
+  plain (non-widget) `test`, and the banner/reset behaviour via a *custom* flag backed by a
+  local bool. The real-global paths are verified by hand in the example app.
+
+<details>
+<summary>Original design notes</summary>
+
+### 2. Visual debug toggles — best value-per-hour
 
 A page of switches wrapping the flags you'd otherwise need a tethered DevTools session for.
 Each is a one-liner; together they cover most on-device visual debugging.
@@ -147,6 +174,8 @@ Low for the flags. **Medium for the overrides**, and they carry a design risk: i
 - `showPerformanceOverlay` is a `MaterialApp` property, not a global — we can't set it from
   outside. Either skip it, or have `runDebugApp` optionally wrap/patch the app. Skipping is
   fine; the Performance page below is better anyway.
+
+</details>
 
 ---
 
@@ -293,7 +322,7 @@ Things that apply to several of the above and should be decided once:
 ## Suggested order
 
 1. ~~**Network mocking**~~ ✅ done.
-2. **Visual debug toggles (flags only)** — an hour's work, immediately useful. ← next
-3. **Share/export** — small, *but only after the redaction hook exists*.
+2. ~~**Visual debug toggles (flags only)**~~ ✅ done.
+3. **Share/export** — small, *but only after the redaction hook exists*. ← next
 4. **Performance page** — self-capturing, no integration cost.
 5. Storage / flags / BLoC — all need a decision about how much host-app coupling we want.

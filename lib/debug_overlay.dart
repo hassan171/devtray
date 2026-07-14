@@ -58,6 +58,9 @@ export 'src/device/device_debug_page.dart';
 export 'src/device/device_info_provider.dart';
 export 'src/device/plugin_device_info_provider.dart';
 
+// Visual debug flags page
+export 'src/visual/visual_debug_page.dart';
+
 // Reusable widgets — for building your own pages in the same visual language.
 export 'src/widgets/copyable_section.dart';
 export 'src/widgets/debug_search_bar.dart';

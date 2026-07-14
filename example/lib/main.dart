@@ -29,6 +29,7 @@ void main() {
     pages: [
       const NetworkDebugPage(),
       const MocksDebugPage(),
+      VisualDebugPage(),
       const LogsDebugPage(),
       const ErrorsDebugPage(),
       // Real device/OS/app facts, plus our own section merged in.
