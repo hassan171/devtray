@@ -1,0 +1,25 @@
+name: debug_overlay_example
+description: "Example app for the debug_overlay package."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  debug_overlay:
+    path: ../
+  dio: ^5.7.0
+  http: ^1.2.0
+  hz_toast: ^0.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

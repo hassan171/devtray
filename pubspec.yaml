@@ -1,0 +1,23 @@
+name: debug_overlay
+description: "A draggable in-app debugging overlay with a pluggable page system and a built-in network inspector (dio + http adapters)."
+version: 0.1.0
+homepage:
+
+environment:
+  sdk: ^3.12.2
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  dio: ^5.7.0
+  http: ^1.2.0
+  flutter_html: ^3.0.0
+  hz_toast: ^0.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
