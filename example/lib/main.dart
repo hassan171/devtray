@@ -1,3 +1,4 @@
+import 'package:bloc/bloc.dart';
 import 'package:debug_overlay/debug_overlay.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -6,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'counter_cubit.dart';
 import 'users_box.dart';
 import 'users_debug_page.dart';
 
@@ -14,6 +16,10 @@ import 'users_debug_page.dart';
 final debug = DebugOverlayController();
 
 final dio = Dio()..interceptors.add(DebugDioInterceptor());
+
+/// Live cubits, so the Blocs page has something to watch.
+final counter = CounterCubit();
+final todos = TodoBloc();
 final httpClient = DebugHttpClient(http.Client());
 
 /// Seeds one pref of each type, so the Storage page has something to edit.
@@ -43,6 +49,21 @@ void main() {
   // Keep background noise out of the inspector.
   NetworkLogStore.instance.excludedUrlPatterns.add('/health');
 
+  // Feeds the Blocs page. Already have an observer? Chain it:
+  //   Bloc.observer = DebugBlocObserver(next: MyObserver());
+  Bloc.observer = DebugBlocObserver();
+
+  // Show fields a cubit holds OUTSIDE its state. The observer only ever sees
+  // `bloc.state`, and Flutter has no reflection to go find the rest — so you
+  // point at them. Registered from out here, CounterCubit needs no debug import.
+  //
+  // (TodoBloc does the same thing the other way, by implementing
+  // DebugInspectable — see counter_cubit.dart.)
+  BlocStore.instance.inspect<CounterCubit>((c) => {
+        'history': c.history,
+        'lastTouched': c.lastTouched,
+      });
+
   // One call: installs the log/error capture Zone, wraps the app in the
   // overlay, and runs it. `enabled` gates both — with it false this is a plain
   // runApp() and the package leaves no trace in the tree.
@@ -65,6 +86,8 @@ void main() {
       // A custom page — the Storage page can browse the Hive box generically,
       // but when you know what the data is, a purpose-built view beats a dump.
       const UsersDebugPage(),
+      // Live cubit state + the transition history behind it.
+      const BlocDebugPage(),
       const MocksDebugPage(),
       VisualDebugPage(),
       // Real device/OS/app facts, plus our own section merged in.
@@ -165,6 +188,30 @@ class HomeScreen extends StatelessWidget {
               onPressed: () =>
                   dio.get<dynamic>('https://jsonplaceholder.typicode.com/nope-404').catchError((_) => Response<dynamic>(requestOptions: RequestOptions())),
               child: const Text('Trigger a 404'),
+            ),
+            const Divider(height: 24),
+            // Drive the cubits — watch them on the Blocs page. The Cubit's
+            // transitions have no event; the Bloc's carry the one that caused
+            // them.
+            Wrap(
+              spacing: 8,
+              children: [
+                OutlinedButton(onPressed: counter.increment, child: const Text('counter++')),
+                OutlinedButton(onPressed: counter.decrement, child: const Text('counter--')),
+                OutlinedButton(onPressed: counter.boom, child: const Text('cubit error')),
+                // Changes a field WITHOUT emitting. The page only rebuilds on
+                // emits, so this only appears after "Re-read fields" in the
+                // detail pane — which is exactly why that button exists.
+                OutlinedButton(onPressed: counter.touch, child: const Text('touch (no emit)')),
+                OutlinedButton(
+                  onPressed: () => todos.add(TodoAdded('todo ${DateTime.now().second}')),
+                  child: const Text('add todo (Bloc)'),
+                ),
+                OutlinedButton(
+                  onPressed: () => todos.add(const TodoCleared()),
+                  child: const Text('clear todos'),
+                ),
+              ],
             ),
             const Divider(height: 24),
             FilledButton(
