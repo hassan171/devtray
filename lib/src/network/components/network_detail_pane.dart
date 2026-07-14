@@ -136,21 +136,14 @@ class _NetworkDetailPaneState extends State<NetworkDetailPane> with TickerProvid
           ],
         ),
         Divider(color: t.border),
-        DebugTabBar(
-          controller: controller,
-          padding: EdgeInsets.zero,
-          tabs: [for (final tab in tabs) DebugTab(tab.name)],
-        ),
+        DebugTabBar(controller: controller, padding: EdgeInsets.zero, tabs: [for (final tab in tabs) DebugTab(tab.name)]),
         Expanded(
           child: TabBarView(
             controller: controller,
             children: [
               for (final tab in tabs)
                 SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [...tab.sections, const SizedBox(height: 8)],
-                  ),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [...tab.sections, const SizedBox(height: 8)]),
                 ),
             ],
           ),

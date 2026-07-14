@@ -54,43 +54,26 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('debug_overlay example'),
-        actions: [
-          // The floating launcher is only one way in — open() works from anywhere.
-          IconButton(onPressed: debug.open, icon: const Icon(Icons.bug_report)),
-        ],
-      ),
+      appBar: AppBar(title: const Text('debug_overlay example')),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           spacing: 12,
           children: [
             const Text('Fire some requests, then open the overlay.'),
+            FilledButton(onPressed: () => dio.get<dynamic>('https://jsonplaceholder.typicode.com/todos/1'), child: const Text('GET via dio')),
             FilledButton(
-              onPressed: () => dio.get<dynamic>('https://jsonplaceholder.typicode.com/todos/1'),
-              child: const Text('GET via dio'),
-            ),
-            FilledButton(
-              onPressed: () => dio.post<dynamic>(
-                'https://jsonplaceholder.typicode.com/posts',
-                data: {'title': 'hello', 'body': 'from dio', 'userId': 1},
-              ),
+              onPressed: () => dio.post<dynamic>('https://jsonplaceholder.typicode.com/posts', data: {'title': 'hello', 'body': 'from dio', 'userId': 1}),
               child: const Text('POST via dio'),
             ),
-            FilledButton(
-              onPressed: () => httpClient.get(Uri.parse('https://jsonplaceholder.typicode.com/users/2')),
-              child: const Text('GET via package:http'),
-            ),
+            FilledButton(onPressed: () => httpClient.get(Uri.parse('https://jsonplaceholder.typicode.com/users/2')), child: const Text('GET via package:http')),
             FilledButton(
               // Fails — check the red row and its Error tab.
-              onPressed: () => dio.get<dynamic>('https://jsonplaceholder.typicode.com/nope-404').catchError((_) => Response<dynamic>(requestOptions: RequestOptions())),
+              onPressed: () =>
+                  dio.get<dynamic>('https://jsonplaceholder.typicode.com/nope-404').catchError((_) => Response<dynamic>(requestOptions: RequestOptions())),
               child: const Text('Trigger a 404'),
             ),
-            OutlinedButton(
-              onPressed: () => debug.showLauncher.value = !debug.showLauncher.value,
-              child: const Text('Toggle the floating button'),
-            ),
+            OutlinedButton(onPressed: () => debug.showLauncher.value = !debug.showLauncher.value, child: const Text('Toggle the floating button')),
           ],
         ),
       ),

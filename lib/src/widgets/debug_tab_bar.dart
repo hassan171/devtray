@@ -16,12 +16,7 @@ class DebugTabBar extends StatelessWidget {
   final TabController controller;
   final EdgeInsets padding;
 
-  const DebugTabBar({
-    super.key,
-    required this.tabs,
-    required this.controller,
-    this.padding = const EdgeInsets.symmetric(vertical: 4),
-  });
+  const DebugTabBar({super.key, required this.tabs, required this.controller, this.padding = const EdgeInsets.symmetric(vertical: 4)});
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +36,7 @@ class DebugTabBar extends StatelessWidget {
         overlayColor: const WidgetStatePropertyAll(Colors.transparent),
         labelColor: t.accent,
         unselectedLabelColor: t.textMuted,
-        labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+        labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
         unselectedLabelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
         tabs: [
           for (final tab in tabs)
