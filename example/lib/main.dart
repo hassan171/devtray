@@ -3,7 +3,11 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'users_box.dart';
+import 'users_debug_page.dart';
 
 /// Drives the overlay from our own triggers (the AppBar button below), on top
 /// of the draggable launcher.
@@ -24,6 +28,17 @@ Future<void> _seedPrefs() async {
   await prefs.setStringList('recent_tags', ['flutter', 'dart']);
 }
 
+/// Opens the Hive box. Awaited by [_Bootstrap] rather than in `main`, because
+/// Hive needs the binding — and `runDebugApp` deliberately creates that *inside*
+/// its capture Zone (a binding created outside it would leak errors past the
+/// Zone's handler). So we let the app start, then open the box on the first
+/// frame.
+Future<void> _openHive() async {
+  await Hive.initFlutter();
+  Hive.registerAdapter(UserAdapter());
+  await Hive.openBox<User>(usersBoxName);
+}
+
 void main() {
   // Keep background noise out of the inspector.
   NetworkLogStore.instance.excludedUrlPatterns.add('/health');
@@ -35,7 +50,7 @@ void main() {
     MaterialApp(
       title: 'debug_overlay example',
       theme: ThemeData(colorSchemeSeed: Colors.blue),
-      home: const HomeScreen(),
+      home: const _Bootstrap(),
     ),
     enabled: kDebugMode,
     controller: debug,
@@ -43,11 +58,13 @@ void main() {
       const NetworkDebugPage(),
       const LogsDebugPage(),
       const ErrorsDebugPage(),
-      // Bundles everything into one bug report — pass `onShare:` to hand it to
-      // share_plus if you want the OS share sheet.
-      const ExportDebugPage(deviceInfoProvider: PluginDeviceInfoProvider()),
-      // Browse and edit SharedPreferences live. Flip the lock to enable writes.
-      const StorageDebugPage(adapters: [SharedPreferencesStorageAdapter()]),
+      // Two stores side by side: SharedPreferences (built in) and a TYPED,
+      // hand-written Hive adapter — which is exactly why DebugStorageAdapter is
+      // an interface rather than a bundled Hive implementation.
+      StorageDebugPage(adapters: [const SharedPreferencesStorageAdapter(), UsersBoxAdapter()]),
+      // A custom page — the Storage page can browse the Hive box generically,
+      // but when you know what the data is, a purpose-built view beats a dump.
+      const UsersDebugPage(),
       const MocksDebugPage(),
       VisualDebugPage(),
       // Real device/OS/app facts, plus our own section merged in.
@@ -59,6 +76,9 @@ void main() {
           ]),
         ]),
       ),
+      // Bundles everything into one bug report — pass `onShare:` to hand it to
+      // share_plus if you want the OS share sheet.
+      const ExportDebugPage(deviceInfoProvider: PluginDeviceInfoProvider()),
       // Any page you like — a plain widget builder is enough.
       // DebugPage.builder(
       //   title: 'About',
@@ -72,6 +92,34 @@ void main() {
   // After runDebugApp — it calls ensureInitialized() inside the Zone, so the
   // binding (and therefore the SharedPreferences channel) exists by now.
   _seedPrefs();
+}
+
+/// Holds the app back until Hive is open, so nothing touches a closed box.
+class _Bootstrap extends StatefulWidget {
+  const _Bootstrap();
+
+  @override
+  State<_Bootstrap> createState() => _BootstrapState();
+}
+
+class _BootstrapState extends State<_Bootstrap> {
+  late final Future<void> _ready = _openHive();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _ready,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Scaffold(body: Center(child: Text('Hive failed to open:\n${snapshot.error}')));
+        }
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        return const HomeScreen();
+      },
+    );
+  }
 }
 
 class HomeScreen extends StatelessWidget {
@@ -90,6 +138,22 @@ class HomeScreen extends StatelessWidget {
           spacing: 12,
           children: [
             const Text('Fire some requests, then open the overlay.'),
+            // Goes through the same dio the overlay watches, so it lands on the
+            // Network page AND fills the Hive box behind the Users tab.
+            //
+            // /users only has 10 real records, so they're fanned out to make a
+            // list long enough to actually scroll.
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final n in [10, 100, 1000])
+                  FilledButton.tonalIcon(
+                    onPressed: () => fetchAndStoreUsers(dio, count: n),
+                    icon: const Icon(Icons.download, size: 16),
+                    label: Text('$n users → Hive'),
+                  ),
+              ],
+            ),
             FilledButton(onPressed: () => dio.get<dynamic>('https://jsonplaceholder.typicode.com/todos/1'), child: const Text('GET via dio')),
             FilledButton(
               onPressed: () => dio.post<dynamic>('https://jsonplaceholder.typicode.com/posts', data: {'title': 'hello', 'body': 'from dio', 'userId': 1}),

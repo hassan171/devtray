@@ -301,6 +301,187 @@ void main() {
     });
   });
 
+  group('a structured value (an object from a typed store)', () {
+    // A typed store — a Hive box of models, say — surfaces its values as maps.
+    // Writing one back as a String would silently corrupt the box and only fail
+    // later, when something read it.
+
+    testWidgets('renders as pretty-printed JSON, labelled "object"', (tester) async {
+      await tester.pumpWidget(_host([
+        _FakeAdapter({
+          'user:1': {'name': 'Ada', 'city': 'London'},
+        }),
+      ]));
+      await tester.pumpAndSettle();
+
+      expect(find.text('object'), findsOneWidget);
+      expect(find.textContaining('"name": "Ada"'), findsOneWidget);
+    });
+
+    testWidgets('edits round-trip back as a Map, not a String', (tester) async {
+      final adapter = _FakeAdapter({
+        'user:1': {'name': 'Ada', 'city': 'London'},
+      });
+
+      await tester.pumpWidget(_host([adapter]));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Edit'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '{"name": "Grace", "city": "New York"}');
+      await tester.tap(find.byTooltip('Save'));
+      await tester.pumpAndSettle();
+
+      expect(adapter.writes.single.value, isA<Map>());
+      expect(adapter.writes.single.value, {'name': 'Grace', 'city': 'New York'});
+    });
+
+    testWidgets('invalid JSON is refused, and NOT written', (tester) async {
+      final adapter = _FakeAdapter({
+        'user:1': {'name': 'Ada'},
+      });
+
+      await tester.pumpWidget(_host([adapter]));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Edit'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '{broken');
+      await tester.tap(find.byTooltip('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Invalid JSON'), findsOneWidget);
+      expect(adapter.writes, isEmpty);
+    });
+
+    testWidgets('valid JSON that is not an object is refused', (tester) async {
+      final adapter = _FakeAdapter({
+        'user:1': {'name': 'Ada'},
+      });
+
+      await tester.pumpWidget(_host([adapter]));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Edit'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '["not", "an", "object"]');
+      await tester.tap(find.byTooltip('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Not a JSON object'), findsOneWidget);
+      expect(adapter.writes, isEmpty);
+    });
+  });
+
+  group('a large store', () {
+    testWidgets('only builds the rows on screen — 1000 keys must not freeze the tab', (tester) async {
+      // Regression: the page nested a Column of every row inside a plain
+      // ListView(children: [...]), so opening it constructed 1000 stateful
+      // editors — each with its own TextEditingController — before the first
+      // frame painted. It visibly froze.
+      final adapter = _FakeAdapter({
+        for (var i = 0; i < 1000; i++) 'key_${i.toString().padLeft(4, '0')}': 'value $i',
+      });
+
+      await tester.pumpWidget(_host([adapter]));
+      await tester.pumpAndSettle();
+
+      expect(find.text('key_0000'), findsOneWidget);
+
+      // The page must use ListView.builder, not ListView(children: [...]).
+      //
+      // Both mount only the visible children — so counting *mounted* editors
+      // can't tell them apart. The cost is in CONSTRUCTING the widget objects:
+      // `children:` builds all 1000 StorageValueEditor instances (each with a
+      // TextEditingController) on every build, before a frame can paint. That's
+      // what froze the tab. `.builder` constructs only what it needs.
+      final listView = tester.widget<ListView>(find.byType(ListView));
+      expect(
+        listView.childrenDelegate,
+        isA<SliverChildBuilderDelegate>(),
+        reason: 'the row list must be built lazily, or 1000 keys freezes the tab',
+      );
+
+      // And nothing far down the list has been mounted.
+      expect(find.text('key_0999'), findsNothing);
+    });
+
+    testWidgets('scrolling reaches rows that were never built', (tester) async {
+      final adapter = _FakeAdapter({
+        for (var i = 0; i < 1000; i++) 'key_${i.toString().padLeft(4, '0')}': 'value $i',
+      });
+
+      await tester.pumpWidget(_host([adapter]));
+      await tester.pumpAndSettle();
+
+      expect(find.text('key_0040'), findsNothing, reason: 'not built yet');
+
+      // Drag the page's own ListView until it comes into view.
+      for (var i = 0; i < 10 && find.text('key_0040').evaluate().isEmpty; i++) {
+        await tester.drag(find.byType(ListView), const Offset(0, -400));
+        await tester.pumpAndSettle();
+      }
+
+      expect(find.text('key_0040'), findsOneWidget);
+    });
+  });
+
+  group('scroll position', () {
+    testWidgets('saving an edit does NOT bounce you back to the top', (tester) async {
+      // Regression: a FutureBuilder re-fed after each save dropped to its
+      // spinner and rebuilt the ListView from scratch, throwing the offset away.
+      // Editing a key near the bottom of a long store snapped you to the top.
+      final adapter = _FakeAdapter({
+        for (var i = 0; i < 40; i++) 'key_${i.toString().padLeft(2, '0')}': 'value $i',
+      });
+
+      await tester.pumpWidget(_host([adapter]));
+      await tester.pumpAndSettle();
+
+      // The page's own ListView — not the tab bar's scrollable.
+      double offset() => tester.widget<ListView>(find.byType(ListView)).controller!.offset;
+
+      await tester.drag(find.byType(ListView), const Offset(0, -600));
+      await tester.pumpAndSettle();
+
+      final before = offset();
+      expect(before, greaterThan(0), reason: 'we should actually be scrolled');
+
+      // Edit whichever row is actually ON SCREEN now — .first would grab one
+      // scrolled off the top.
+      await tester.tap(find.byTooltip('Edit').hitTestable().first);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, 'edited');
+      await tester.tap(find.byTooltip('Save'));
+      await tester.pumpAndSettle();
+
+      expect(adapter.writes.single.value, 'edited');
+      expect(offset(), before, reason: 'the list must keep its place after a save');
+    });
+
+    testWidgets('deleting keeps the scroll position too', (tester) async {
+      final adapter = _FakeAdapter({
+        for (var i = 0; i < 40; i++) 'key_${i.toString().padLeft(2, '0')}': 'value $i',
+      });
+
+      await tester.pumpWidget(_host([adapter]));
+      await tester.pumpAndSettle();
+
+      double offset() => tester.widget<ListView>(find.byType(ListView)).controller!.offset;
+
+      await tester.drag(find.byType(ListView), const Offset(0, -600));
+      await tester.pumpAndSettle();
+
+      final before = offset();
+
+      await tester.tap(find.byTooltip('Delete').hitTestable().first);
+      await tester.pumpAndSettle();
+
+      expect(adapter.deletes, hasLength(1));
+      expect(offset(), before);
+    });
+  });
+
   group('rejecting bad input', () {
     testWidgets('a non-numeric value is refused for an int, and NOT written', (tester) async {
       final adapter = _FakeAdapter({'retry_count': 3});

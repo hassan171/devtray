@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../core/debug_overlay_theme.dart';
@@ -12,10 +14,12 @@ import 'storage_list_editor.dart';
 ///
 /// - `bool` → a switch
 /// - `List` → chips ([StorageListEditor]), each one editable/removable
+/// - `Map` → pretty-printed JSON, parsed back to a `Map` (an object from a typed
+///   store — the adapter rebuilds its model from it)
 /// - `int` / `double` → a number field, rejected if it won't parse
 /// - `String` → a text field
 ///
-/// Bools and lists write straight through; the scalars use an Edit/Save step.
+/// Bools and lists write straight through; everything else uses an Edit/Save step.
 class StorageValueEditor extends StatefulWidget {
   final String storageKey;
   final Object? value;
@@ -65,6 +69,9 @@ class _StorageValueEditorState extends State<StorageValueEditor> {
   static String _asText(Object? v) => switch (v) {
         null => '',
         final String s => s,
+        // A structured value (an object from a typed store) is shown as
+        // pretty-printed JSON — its real shape, every field named.
+        final Map<dynamic, dynamic> m => const JsonEncoder.withIndent('  ').convert(m),
         _ => v.toString(),
       };
 
@@ -75,6 +82,7 @@ class _StorageValueEditorState extends State<StorageValueEditor> {
         double() => 'double',
         String() => 'String',
         List() => 'List<String>',
+        Map() => 'object',
         _ => v.runtimeType.toString(),
       };
 
@@ -90,6 +98,18 @@ class _StorageValueEditorState extends State<StorageValueEditor> {
       case double():
         final v = double.tryParse(text.trim());
         return v == null ? (value: null, error: 'Not a number') : (value: v, error: null);
+
+      // A structured value must go back as a Map, not the String the editor was
+      // holding — otherwise a typed store would silently take a String where it
+      // expects an object, and only fail later when something reads it.
+      case Map():
+        try {
+          final decoded = jsonDecode(text);
+          if (decoded is! Map) return (value: null, error: 'Not a JSON object');
+          return (value: decoded, error: null);
+        } catch (_) {
+          return (value: null, error: 'Invalid JSON');
+        }
 
       // Strings (and anything unrecognised) go back as-is. Lists never get here —
       // StorageListEditor owns them, so a malformed list is unrepresentable.
@@ -185,6 +205,8 @@ class _StorageValueEditorState extends State<StorageValueEditor> {
             TextField(
               controller: _controller,
               autofocus: true,
+              // A structured value is pretty-printed JSON — give it room.
+              maxLines: widget.value is Map ? 10 : 1,
               style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: t.text),
               decoration: InputDecoration(
                 isDense: true,
