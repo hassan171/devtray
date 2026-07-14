@@ -66,6 +66,13 @@ export 'src/visual/visual_debug_page.dart';
 export 'src/export/debug_report.dart';
 export 'src/export/export_debug_page.dart';
 
+// Storage page — browse and edit key/value storage at runtime.
+export 'src/storage/components/storage_list_editor.dart';
+export 'src/storage/components/storage_value_editor.dart';
+export 'src/storage/debug_storage_adapter.dart';
+export 'src/storage/shared_preferences_storage_adapter.dart';
+export 'src/storage/storage_debug_page.dart';
+
 // Reusable widgets — for building your own pages in the same visual language.
 export 'src/widgets/copyable_section.dart';
 export 'src/widgets/debug_search_bar.dart';

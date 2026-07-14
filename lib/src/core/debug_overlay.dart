@@ -314,6 +314,34 @@ class _DebugToolsHost extends StatelessWidget {
       ),
     );
 
+    // Text fields need more than a Navigator.
+    //
+    // Typing a character goes through the platform text-input channel and works
+    // anywhere. But backspace, the arrow keys, select-all and friends are
+    // *key bindings* — they're resolved by the Shortcuts/Actions pair that
+    // WidgetsApp installs. This panel is rendered ABOVE MaterialApp, so it sits
+    // outside that scope: without this you can type into a field but not delete
+    // or navigate within it.
+    //
+    // This mirrors WidgetsApp's own stack (see WidgetsApp.build): Shortcuts →
+    // DefaultTextEditingShortcuts → Actions → FocusTraversalGroup →
+    // TapRegionSurface. DefaultTextEditingShortcuts is nested *inside* Shortcuts
+    // so it can fall through to the defaults, and TapRegionSurface is what makes
+    // tapping outside a field dismiss its focus.
+    content = Shortcuts(
+      debugLabel: '<debug_overlay tools shortcuts>',
+      shortcuts: WidgetsApp.defaultShortcuts,
+      child: DefaultTextEditingShortcuts(
+        child: Actions(
+          actions: WidgetsApp.defaultActions,
+          child: FocusTraversalGroup(
+            policy: ReadingOrderTraversalPolicy(),
+            child: TapRegionSurface(child: content),
+          ),
+        ),
+      ),
+    );
+
     // Only inject what's actually missing, so a nested overlay keeps the host
     // app's own locale and media metrics.
     if (Localizations.of<MaterialLocalizations>(context, MaterialLocalizations) == null) {

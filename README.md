@@ -309,6 +309,74 @@ final report = DebugReport.build();   // → String
 
 ---
 
+## Storage
+
+`StorageDebugPage` browses — and **edits** — key/value storage while the app is running. Flip
+a feature flag, expire a token, clear an onboarding-seen bool, without rebuilding.
+
+```dart
+pages: const [
+  StorageDebugPage(adapters: [SharedPreferencesStorageAdapter()]),
+],
+```
+
+### Types are preserved
+
+This is the safety story. `SharedPreferences` has a setter *per type* and throws on the next
+**read** if you wrote the wrong one — so an editor that turned every value into a String would
+be a landmine. Instead the control matches the value's existing type, and writes that type
+back:
+
+| Stored type | Editor | Bad input |
+|---|---|---|
+| `bool` | a switch | impossible |
+| `List<String>` | **chips** — tap to rename, ✕ to remove, `+` to add | impossible |
+| `int` / `double` | number field | rejected — *"Not an int"*, nothing written |
+| `String` | text field | anything goes |
+
+A rejected edit leaves the store **untouched**.
+
+Bools and lists write straight through — the switch and the chips *are* the editor. Scalars use
+an Edit → Save step.
+
+Lists are chips rather than a JSON text area on purpose: hand-editing `["flutter","dart"]` on a
+phone is miserable, and it made *"Invalid JSON"* a failure you could hit by mistyping a bracket.
+Manipulating each element directly makes a malformed list **unrepresentable**. Renaming a chip to
+empty removes it.
+
+### Other backends: Hive, secure storage, your own
+
+Implement `DebugStorageAdapter` — about 15 lines. No dependency is added to the package, and
+it works with **typed and encrypted** boxes, which a generic Hive adapter couldn't:
+
+```dart
+class SettingsBoxAdapter extends DebugStorageAdapter {
+  @override
+  String get name => 'Settings (Hive)';
+
+  @override
+  Future<Map<String, Object?>> readAll() async {
+    final box = Hive.box<String>('settings');   // already open, keys already decrypted
+    return {for (final k in box.keys) k.toString(): box.get(k)};
+  }
+
+  @override
+  Future<void> write(String key, Object? value) async =>
+      Hive.box<String>('settings').put(key, value! as String);
+
+  @override
+  Future<void> delete(String key) async => Hive.box<String>('settings').delete(key);
+}
+```
+
+Then: `StorageDebugPage(adapters: [const SharedPreferencesStorageAdapter(), SettingsBoxAdapter()])`
+
+Override `writable => false` for a store you only want to look at — the page hides its edit and
+delete controls for that section entirely. An adapter that throws on
+`readAll` shows its error inline; the other sections still render.
+
+---
+
 ## Logs
 
 `LogsDebugPage` shows captured log output, filterable by level and tag, searchable, with the

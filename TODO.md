@@ -6,7 +6,7 @@ writing code.
 
 Ordered by value-per-effort. Nothing here is committed.
 
-**Shipped so far:** Network, **Mocks**, **Visual**, Logs, Errors, Device, **Export** pages · pluggable
+**Shipped so far:** Network, **Mocks**, **Visual**, Logs, Errors, Device, **Export**, **Storage** pages · **kill switch** · pluggable
 `DebugPage` system · `runDebugApp` one-call setup · dio + http adapters · network→errors
 forwarding.
 
@@ -266,7 +266,46 @@ Low-medium. The capture is a few lines. The sparkline is a small `CustomPainter`
 
 ---
 
-## 5. Storage inspector
+## 5. ~~Storage inspector~~ ✅ SHIPPED
+
+Browse **and edit** key/value storage at runtime. `SharedPreferencesStorageAdapter` is built in
+(free — already a dependency for mock-rule persistence); anything else is a
+`DebugStorageAdapter`, ~15 lines.
+
+Decisions taken:
+- **Editing is per-field** (tap Edit → change → Save). A global edit-lock was built first, then
+  removed: the per-field two-step is already deliberate enough, and the lock was just friction
+  on top of it. `writable => false` on an adapter still hides the controls for a read-only store.
+- **Types are preserved.** The control matches the value's existing type and writes that type
+  back: bool → switch, **List → chips**, int/double → number field, String → text field.
+  SharedPreferences has a setter *per type* and throws on the next read if you wrote the wrong
+  one, so an editor that stringified everything would be a landmine. Bad input is rejected; the
+  store is left untouched.
+- **Lists are chips, not a JSON text area.** Tap to rename, ✕ to remove, `+` to add. Hand-editing
+  `["flutter","dart"]` on a phone is the authoring-from-scratch problem we avoided in the mock
+  editor, and it made *"Invalid JSON"* a failure reachable by mistyping a bracket. Manipulating
+  each element directly makes a malformed list **unrepresentable**.
+- **No bundled Hive adapter** (asked for, then talked out of it). It would add `hive` as a
+  dependency for every user, and a *generic* adapter can't meaningfully edit typed model objects
+  or open encrypted boxes anyway — which is exactly what Hapster has. The interface plus a
+  README recipe gives real editing with neither problem.
+
+Two bugs:
+- `setState(() => _future = _load())` trips Flutter's "setState callback returned a Future"
+  assertion — and so does `setState(() => _future = next)`, because the arrow body *returns* the
+  future regardless of where it was built. It needs a block body.
+- **Text fields in the panel couldn't be edited** — you could type, but backspace and the arrow
+  keys did nothing. Typing goes through the platform text-input channel and works anywhere;
+  backspace/arrows/select-all are *key bindings* resolved by the `Shortcuts`/`Actions` pair
+  `WidgetsApp` installs, and the panel renders **above** `MaterialApp`, outside that scope.
+  `_DebugToolsHost` now mirrors WidgetsApp's stack (`Shortcuts` → `DefaultTextEditingShortcuts`
+  → `Actions` → `FocusTraversalGroup` → `TapRegionSurface`). This affected every text field in
+  the tool — mock rule editor, search bars, storage editor — not just Storage.
+
+<details>
+<summary>Original design notes</summary>
+
+### 5. Storage inspector
 
 Browse **and edit** key-value storage. The editing is the killer feature: flip a value live
 instead of rebuilding.
@@ -296,6 +335,10 @@ String → text, JSON → text with validation) is where the work is.
   the dep there.)
 - Editing arbitrary values is a foot-gun: writing a malformed value could crash the app on
   next read. Confirm-before-write? Read-only by default with an "unlock" toggle?
+
+---
+
+</details>
 
 ---
 
@@ -368,4 +411,5 @@ Things that apply to several of the above and should be decided once:
 2. ~~**Visual debug toggles (flags only)**~~ ✅ done.
 3. ~~**Share/export**~~ ✅ done (redaction built then removed — not wanted).
 4. **Performance page** — self-capturing, no integration cost. ← next
-5. Storage / flags / BLoC — all need a decision about how much host-app coupling we want.
+5. ~~**Storage inspector**~~ ✅ done.
+6. Feature flags / BLoC inspector — both still need a decision on host-app coupling.

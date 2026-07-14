@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Drives the overlay from our own triggers (the AppBar button below), on top
 /// of the draggable launcher.
@@ -10,6 +11,18 @@ final debug = DebugOverlayController();
 
 final dio = Dio()..interceptors.add(DebugDioInterceptor());
 final httpClient = DebugHttpClient(http.Client());
+
+/// Seeds one pref of each type, so the Storage page has something to edit.
+Future<void> _seedPrefs() async {
+  final prefs = await SharedPreferences.getInstance();
+  if (prefs.containsKey('seen_onboarding')) return;
+
+  await prefs.setBool('seen_onboarding', true);
+  await prefs.setInt('retry_count', 3);
+  await prefs.setDouble('scroll_offset', 12.5);
+  await prefs.setString('api_url', 'https://jsonplaceholder.typicode.com');
+  await prefs.setStringList('recent_tags', ['flutter', 'dart']);
+}
 
 void main() {
   // Keep background noise out of the inspector.
@@ -30,9 +43,11 @@ void main() {
       const NetworkDebugPage(),
       const LogsDebugPage(),
       const ErrorsDebugPage(),
-      // Bundles everything into one bug report. Secrets are stripped first —
-      // pass `onShare:` to hand it to share_plus if you want the OS share sheet.
+      // Bundles everything into one bug report — pass `onShare:` to hand it to
+      // share_plus if you want the OS share sheet.
       const ExportDebugPage(deviceInfoProvider: PluginDeviceInfoProvider()),
+      // Browse and edit SharedPreferences live. Flip the lock to enable writes.
+      const StorageDebugPage(adapters: [SharedPreferencesStorageAdapter()]),
       const MocksDebugPage(),
       VisualDebugPage(),
       // Real device/OS/app facts, plus our own section merged in.
@@ -53,6 +68,10 @@ void main() {
       // ),
     ],
   );
+
+  // After runDebugApp — it calls ensureInitialized() inside the Zone, so the
+  // binding (and therefore the SharedPreferences channel) exists by now.
+  _seedPrefs();
 }
 
 class HomeScreen extends StatelessWidget {
