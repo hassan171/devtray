@@ -5,6 +5,10 @@ import 'dart:convert';
 const String kFormDataMarker = '__formData';
 
 /// Renders a copy-pasteable `curl` command from a captured entry's parts.
+///
+/// Headers and body are emitted **verbatim**, auth included — the whole point of
+/// copying a request as cURL is to be able to replay it, which you can't do with
+/// the Authorization header scrubbed.
 String buildCurl({
   required String method,
   required Uri uri,

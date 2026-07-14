@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../core/debug_overlay_kill_switch.dart';
 import '../errors/error_store.dart';
 
 enum NetworkLogStatus { pending, success, failed }
@@ -118,7 +119,10 @@ class NetworkError implements Exception {
 /// NetworkLogStore.instance.complete(entry.id, statusCode: 200, status: NetworkLogStatus.success);
 /// ```
 class NetworkLogStore {
-  NetworkLogStore._();
+  NetworkLogStore._() {
+    // Flipping the kill switch off must also drop what's already buffered.
+    DebugOverlayKillSwitch.addDisableListener(clear);
+  }
   static final NetworkLogStore instance = NetworkLogStore._();
 
   /// Oldest entries are dropped past this cap. Tune before wiring up a client.
@@ -160,6 +164,10 @@ class NetworkLogStore {
     Map<String, dynamic> queryParameters = const {},
     dynamic requestBody,
   }) {
+    // The adapters are installed by the host app, not by the overlay — so in a
+    // release build with the interceptor still in place, this would otherwise
+    // keep buffering 500 requests (headers, tokens, bodies) that nothing reads.
+    if (!DebugOverlayKillSwitch.enabled) return null;
     if (isExcluded(uri)) return null;
 
     final entry = NetworkLogEntry(

@@ -25,6 +25,7 @@ export 'src/core/debug_capture.dart';
 export 'src/core/debug_launcher_button.dart';
 export 'src/core/debug_overlay.dart';
 export 'src/core/debug_overlay_controller.dart';
+export 'src/core/debug_overlay_kill_switch.dart';
 export 'src/core/debug_overlay_theme.dart';
 export 'src/core/debug_page.dart';
 export 'src/core/debug_tools_screen.dart';
@@ -60,6 +61,10 @@ export 'src/device/plugin_device_info_provider.dart';
 
 // Visual debug flags page
 export 'src/visual/visual_debug_page.dart';
+
+// Export — bundle everything captured into one shareable bug report.
+export 'src/export/debug_report.dart';
+export 'src/export/export_debug_page.dart';
 
 // Reusable widgets — for building your own pages in the same visual language.
 export 'src/widgets/copyable_section.dart';

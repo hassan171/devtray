@@ -151,6 +151,8 @@ void main() {
       );
 
       expect(curl, contains('curl -X POST'));
+      // Auth included, verbatim — the point of copying a request as cURL is to
+      // be able to replay it, which you can't do with the token stripped.
       expect(curl, contains("-H 'Authorization: Bearer t'"));
       expect(curl, contains(r'-d ' "'" r'{"a":1}' "'"));
       expect(curl, contains("'https://x.test/a'"));

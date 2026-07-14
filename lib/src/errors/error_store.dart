@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../core/debug_overlay_kill_switch.dart';
+
 /// Where a caught error came from.
 enum ErrorSource {
   /// A framework error — a build/layout/paint exception. Carries the widget
@@ -52,7 +54,9 @@ class ErrorEntry {
 ///
 /// Install the hooks with [captureErrors] (or `DebugOverlayCapture.installAll`).
 class ErrorStore {
-  ErrorStore._();
+  ErrorStore._() {
+    DebugOverlayKillSwitch.addDisableListener(clear);
+  }
   static final ErrorStore instance = ErrorStore._();
 
   int maxEntries = 200;
@@ -70,29 +74,35 @@ class ErrorStore {
   /// Newest first.
   List<ErrorEntry> get entries => List.unmodifiable(_entries);
 
-  ErrorEntry report(
+  void report(
     Object error, {
     StackTrace? stackTrace,
     ErrorSource source = ErrorSource.manual,
     String? context,
     String? library,
   }) {
-    final entry = ErrorEntry(
-      id: _nextId++,
-      time: DateTime.now(),
-      source: source,
-      error: error,
-      stackTrace: stackTrace,
-      context: context,
-      library: library,
+    // FlutterError.onError and the Zone handler stay installed for the process
+    // lifetime — without this a release build would keep buffering errors, and
+    // badging a launcher that isn't there.
+    if (!DebugOverlayKillSwitch.enabled) return;
+
+    _entries.insert(
+      0,
+      ErrorEntry(
+        id: _nextId++,
+        time: DateTime.now(),
+        source: source,
+        error: error,
+        stackTrace: stackTrace,
+        context: context,
+        library: library,
+      ),
     );
-    _entries.insert(0, entry);
     while (_entries.length > maxEntries) {
       _entries.removeLast();
     }
     unseenCount.value++;
     tick.value++;
-    return entry;
   }
 
   /// Called by the Errors page when it's shown.

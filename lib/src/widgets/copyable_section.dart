@@ -49,6 +49,10 @@ class CopyableSection extends StatelessWidget {
 /// Copies [text] to the clipboard, flashing a checkmark instead of announcing
 /// itself. No toast, no snackbar — nothing to dismiss, and nothing covering the
 /// data you were reading.
+///
+/// Copies **verbatim** — headers, tokens and bodies exactly as captured. A
+/// copied cURL command is meant to be replayable, which it wouldn't be with the
+/// auth header scrubbed.
 class CopyButton extends StatefulWidget {
   final String text;
   final String tooltip;

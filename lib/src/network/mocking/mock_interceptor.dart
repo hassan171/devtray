@@ -1,3 +1,4 @@
+import '../../core/debug_overlay_kill_switch.dart';
 import 'mock_rule.dart';
 import 'mock_store.dart';
 
@@ -48,6 +49,9 @@ MockDecision decideMock({
 
   // disable() must beat everything, including offline mode — it's the "I don't
   // want this feature" switch.
+  // A mock rule intercepting real traffic in a release build would be the worst
+  // failure this package could produce, so the global switch beats everything.
+  if (!DebugOverlayKillSwitch.enabled) return const PassThrough();
   if (s.isDisabled) return const PassThrough();
 
   if (s.offline.value) {

@@ -6,11 +6,11 @@ import 'mock_rule.dart';
 
 /// Where mock rules are saved between runs.
 ///
-/// Rules are the one thing in this package worth persisting: you re-add
-/// "force /orders to 500" after every hot restart otherwise, which is exactly
-/// when you're iterating on an error state. It's a small JSON blob of rules —
-/// no logs, no request bodies, so none of the PII/redaction concerns that made
-/// persistence a bad idea elsewhere.
+/// Rules are the one thing in this package worth persisting: you'd otherwise
+/// re-add "force /orders to 500" after every hot restart, which is exactly when
+/// you're iterating on an error state. It's a small JSON blob of rules — no
+/// logs, no captured traffic — which is why this is the only thing written to
+/// disk when nothing else is.
 abstract class MockRuleStorage {
   Future<String?> read();
   Future<void> write(String json);

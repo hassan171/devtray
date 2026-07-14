@@ -28,10 +28,13 @@ void main() {
     controller: debug,
     pages: [
       const NetworkDebugPage(),
-      const MocksDebugPage(),
-      VisualDebugPage(),
       const LogsDebugPage(),
       const ErrorsDebugPage(),
+      // Bundles everything into one bug report. Secrets are stripped first —
+      // pass `onShare:` to hand it to share_plus if you want the OS share sheet.
+      const ExportDebugPage(deviceInfoProvider: PluginDeviceInfoProvider()),
+      const MocksDebugPage(),
+      VisualDebugPage(),
       // Real device/OS/app facts, plus our own section merged in.
       const DeviceDebugPage(
         provider: CompositeDeviceInfoProvider([

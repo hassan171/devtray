@@ -6,14 +6,17 @@ writing code.
 
 Ordered by value-per-effort. Nothing here is committed.
 
-**Shipped so far:** Network, **Mocks**, **Visual**, Logs, Errors, Device pages · pluggable
+**Shipped so far:** Network, **Mocks**, **Visual**, Logs, Errors, Device, **Export** pages · pluggable
 `DebugPage` system · `runDebugApp` one-call setup · dio + http adapters · network→errors
 forwarding.
 
-**Explicitly not doing:** persistence across restarts. In-memory only is a defensible
-default, and the crash-forensics case isn't worth the machinery (batched disk writer, size
-caps, redaction of tokens/PII that currently just evaporate). Revisit only if the "what
-killed it last time" question actually bites.
+**Explicitly not doing:**
+- **Persistence across restarts** (except mock rules). In-memory only is a defensible default,
+  and the crash-forensics case isn't worth the machinery. Revisit only if "what killed it last
+  time" actually bites.
+- **Redaction.** Built, then removed — see §3. This is a personal tool; the data is yours and
+  goes to your own terminal. A scrubbed cURL can't be replayed, which is the point of copying
+  one.
 
 ---
 
@@ -117,9 +120,16 @@ of it — editing a JSON body on a phone is genuinely awkward.
 ## 2. ~~Visual debug toggles~~ ✅ SHIPPED (flags only)
 
 Built the **flags** half: paint layout bounds, repaint rainbow, baselines, tap highlighting,
-layer borders, slow animations. Plus a warning banner + "Reset all", because these are
-process-wide globals that outlive the overlay — a rainbow left on looks like a rendering bug.
-The flag list is replaceable (`VisualDebugPage(flags: [...])`).
+slow animations. Plus a warning banner + "Reset all", because these are process-wide globals
+that outlive the overlay — a rainbow left on looks like a rendering bug. The flag list is
+replaceable (`VisualDebugPage(flags: [...])`).
+
+**Layer borders was cut.** `debugPaintLayerBordersEnabled` is drawn in
+`PaintingContext.stopRecordingIfNeeded` — only when a layer records a *new* picture, not on
+every repaint like the others. Layers with a cached picture never re-record, so the borders
+never appear; neither a full `markNeedsPaint()` walk nor `reassembleApplication()` reliably
+forces it from inside the app (DevTools drives the engine directly). A switch that silently
+does nothing is worse than no switch. Use DevTools for that one.
 
 The **overrides** half (text scale, locale, forced brightness) was deliberately *not* built —
 it needs `DebugOverlay` to inject a `MediaQuery`/`Localizations` above the host app's tree,
@@ -179,7 +189,31 @@ Low for the flags. **Medium for the overrides**, and they carry a design risk: i
 
 ---
 
-## 3. Share / export bundle
+## 3. ~~Share / export bundle~~ ✅ SHIPPED (no redaction)
+
+**`ExportDebugPage` / `DebugReport`** — bundles device + errors + network + logs into one
+plain-text report, with section toggles and a full preview. No `share_plus` dependency; an
+`onShare` hook lets the host wire it up.
+
+**Redaction was built, then removed.** I'd made it a hard prerequisite on the assumption that
+reports get shared with other people. They don't — this is a personal tool, the output goes to
+your own terminal, and a cURL command with the auth header scrubbed can't be replayed, which
+is the entire reason you'd copy one. Everything is now captured and exported **verbatim**.
+
+If the audience ever changes (shipped to non-employees, reports pasted into tickets), the
+redactor is in git history and was straightforward: header denylist + exact-match body keys +
+a text pass, applied at the escape points (`CopyButton`, `buildCurl`, `DebugReport`) rather
+than at capture. Two things it taught, worth remembering if it comes back:
+- Match body keys **exactly**, not by substring — `token` otherwise swallows `tokens`,
+  `token_count`, `refresh_tokens_remaining`. Over-redaction silently destroys the data the
+  tool exists to show.
+- `key=value` needs handling too, not just `key: value` and `"key": "value"` — query strings
+  and log lines use it.
+
+<details>
+<summary>Original design notes</summary>
+
+### 3. Share / export bundle
 
 One button: dump logs + network + errors + device info into a single text blob and hand it to
 the OS share sheet. Turns "it broke on my phone" into a complete bug report.
@@ -198,6 +232,10 @@ Small. It's the natural payoff of the copy-all buttons already there.
   configurable `redactHeaders: {'authorization', 'cookie'}` and a `redactBody` callback.
   I'd treat this as a requirement, not a nice-to-have.
 - Take the `share_plus` dependency, or stay dependency-free and just do clipboard + file path?
+
+---
+
+</details>
 
 ---
 
@@ -309,11 +347,16 @@ Medium.
 
 Things that apply to several of the above and should be decided once:
 
-- **Redaction.** Needed by *Share/export* (hard requirement) and arguably by Network already.
-  A single `DebugRedactor` (header allowlist/denylist + body callback) used everywhere would
-  be cleaner than solving it per-feature.
-- **Release safety.** `enabled: false` disables the UI, but adapters keep recording and mocks
-  would keep mocking. Consider a single global kill switch that makes every store a no-op.
+- ~~**Redaction.**~~ Resolved: **not doing it.** See §3.
+- ~~**Release safety.**~~ ✅ **Done — `DebugOverlayKillSwitch`.** Defaults to `kDebugMode`, so a
+  release build captures nothing out of the box. When off: every store is a no-op, mocks never
+  intercept (beats an active rule *and* offline mode), and whatever was already captured is
+  cleared. `runDebugApp(enabled:)` drives it, so the UI and the capture can't drift apart.
+  Critically, the interceptor stays a **passthrough** — disabling the tools cannot break the
+  app's networking, and there's a test for exactly that.
+
+  Side effect: `LogStore.log()` and `ErrorStore.report()` now return `void` instead of the
+  entry. Nothing used the return value, and a nullable one would have been noise.
 - **Per-feature opt-in cost.** Performance capture is the first feature with a real
   steady-state cost. Worth a consistent story: which hooks are on by default, which are opt-in.
 
@@ -323,6 +366,6 @@ Things that apply to several of the above and should be decided once:
 
 1. ~~**Network mocking**~~ ✅ done.
 2. ~~**Visual debug toggles (flags only)**~~ ✅ done.
-3. **Share/export** — small, *but only after the redaction hook exists*. ← next
-4. **Performance page** — self-capturing, no integration cost.
+3. ~~**Share/export**~~ ✅ done (redaction built then removed — not wanted).
+4. **Performance page** — self-capturing, no integration cost. ← next
 5. Storage / flags / BLoC — all need a decision about how much host-app coupling we want.

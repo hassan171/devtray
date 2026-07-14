@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../network/mocking/mock_store.dart';
 import '../network/mocking/shared_preferences_mock_storage.dart';
 import 'debug_capture.dart';
+import 'debug_overlay_kill_switch.dart';
 import 'debug_overlay.dart';
 import 'debug_overlay_controller.dart';
 import 'debug_overlay_theme.dart';
@@ -59,6 +60,11 @@ void runDebugApp(
   /// the rules are stored — no logs, no request bodies.
   bool persistMockRules = true,
 }) {
+  // Drive the global switch from the same flag, so the UI and the capture can't
+  // disagree. Without this, `enabled: false` would remove the overlay while the
+  // adapters you installed kept buffering every request, token and body.
+  DebugOverlayKillSwitch.enabled = enabled;
+
   if (!enabled) {
     // Not even a pass-through DebugOverlay in the tree — release builds get the
     // app exactly as they would without this package.

@@ -279,6 +279,36 @@ VisualDebugPage(flags: [
 
 ---
 
+## Export
+
+`ExportDebugPage` bundles device + errors + network + logs into one plain-text bug report.
+Turns "it broke on my phone" into an actual report.
+
+```dart
+pages: [
+  const ExportDebugPage(
+    deviceInfoProvider: PluginDeviceInfoProvider(),   // optional device section
+    // optional — the package takes no share dependency of its own:
+    // onShare: (report) => Share.share(report),      // package:share_plus
+  ),
+],
+```
+
+Pick which sections to include, **preview the whole thing**, then copy it — or hand it to the
+OS share sheet via `onShare`.
+
+> **The report is verbatim.** Headers, auth tokens, request and response bodies all go in
+> exactly as captured — that's what makes it worth reading, and what lets you replay a request
+> from it. Nothing is scrubbed, so look at the preview before you send it anywhere.
+
+Need it without the UI?
+
+```dart
+final report = DebugReport.build();   // → String
+```
+
+---
+
 ## Logs
 
 `LogsDebugPage` shows captured log output, filterable by level and tag, searchable, with the
@@ -552,8 +582,8 @@ ValueListenableBuilder<bool>(
 
 ### Enabling
 
-`enabled: false` renders nothing and captures no gestures — the overlay is fully inert.
-Wire it to whatever gate you want:
+`runDebugApp(enabled: false)` renders nothing, captures nothing, and intercepts nothing. Wire
+it to whatever gate you want:
 
 ```dart
 enabled: kDebugMode,                                   // debug builds only
@@ -561,8 +591,37 @@ enabled: kDebugMode || const bool.fromEnvironment('DEV_TOOLS'),
 enabled: user.isInternal,                              // a runtime flag
 ```
 
-Note that `enabled` only controls the **UI**. The adapters keep recording into
-`NetworkLogStore` regardless — don't install them in a release build if you don't want that.
+**It also drives the kill switch**, so the UI and the capture can't drift apart — see below.
+
+### The kill switch — release safety
+
+The adapters are installed by **you**, not by the overlay:
+
+```dart
+final dio = Dio()..interceptors.add(DebugDioInterceptor());   // ← always on
+```
+
+So hiding the UI isn't enough. Without a global switch, a release build with that interceptor
+still in place would keep buffering **500 requests — headers, auth tokens, response bodies —
+in memory**, with nothing to read it and no reason to exist.
+
+`DebugOverlayKillSwitch` closes that. It defaults to `kDebugMode`, so **a release build
+captures nothing out of the box** and you don't have to remember anything. When it's off:
+
+- `NetworkLogStore`, `LogStore` and `ErrorStore` all become no-ops.
+- Mock rules never intercept (it beats an active rule *and* offline mode).
+- Turning it off **clears** whatever was already captured.
+- The interceptor stays a passthrough, so **disabling the tools can't break your networking**.
+
+`runDebugApp(enabled:)` sets it for you. Set it directly if you don't use `runDebugApp`, or
+want it on in a staging release:
+
+```dart
+DebugOverlayKillSwitch.enabled = kDebugMode || const bool.fromEnvironment('DEV_TOOLS');
+
+// …or flip it at runtime — tools behind a login in a support build:
+DebugOverlayKillSwitch.enabled = user.isInternal;
+```
 
 ### Launcher appearance
 

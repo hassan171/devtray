@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../core/debug_overlay_kill_switch.dart';
+
 enum LogLevel { debug, info, warning, error }
 
 class LogEntry {
@@ -38,7 +40,9 @@ class LogEntry {
 /// LogStore.instance.log('User signed in', level: LogLevel.info, tag: 'auth');
 /// ```
 class LogStore {
-  LogStore._();
+  LogStore._() {
+    DebugOverlayKillSwitch.addDisableListener(clear);
+  }
   static final LogStore instance = LogStore._();
 
   /// Oldest entries are dropped past this cap.
@@ -58,28 +62,34 @@ class LogStore {
           if (e.tag != null) e.tag!,
       };
 
-  LogEntry log(
+  void log(
     String message, {
     LogLevel level = LogLevel.debug,
     String? tag,
     Object? error,
     StackTrace? stackTrace,
   }) {
-    final entry = LogEntry(
-      id: _nextId++,
-      time: DateTime.now(),
-      level: level,
-      message: message,
-      tag: tag,
-      error: error,
-      stackTrace: stackTrace,
+    // The debugPrint/Zone hooks stay installed for the process lifetime, so
+    // without this a release build would keep buffering 1000 log lines nothing
+    // will ever read.
+    if (!DebugOverlayKillSwitch.enabled) return;
+
+    _entries.insert(
+      0,
+      LogEntry(
+        id: _nextId++,
+        time: DateTime.now(),
+        level: level,
+        message: message,
+        tag: tag,
+        error: error,
+        stackTrace: stackTrace,
+      ),
     );
-    _entries.insert(0, entry);
     while (_entries.length > maxEntries) {
       _entries.removeLast();
     }
     tick.value++;
-    return entry;
   }
 
   void clear() {
