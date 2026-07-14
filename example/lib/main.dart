@@ -3,7 +3,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:hz_toast/hz_toast.dart';
 
 /// Drives the overlay from our own triggers (the AppBar button below), on top
 /// of the draggable launcher.
@@ -16,36 +15,34 @@ void main() {
   // Keep background noise out of the inspector.
   NetworkLogStore.instance.excludedUrlPatterns.add('/health');
 
-  runApp(const ExampleApp());
-}
-
-class ExampleApp extends StatelessWidget {
-  const ExampleApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return DebugOverlay(
-      // Only exists in debug builds. Swap for your own flag to ship it to a
-      // staging release too.
-      enabled: kDebugMode,
-      controller: debug,
-      presentation: DebugOverlayPresentation.dialog,
-      theme: const DebugOverlayTheme(),
-      pages: [
-        const NetworkDebugPage(),
-        // Any page you like — a plain widget builder is enough.
-        DebugPage.builder(title: 'About', icon: Icons.info_outline, builder: (_) => const _AboutPage()),
-      ],
-      child: MaterialApp(
-        title: 'debug_overlay example',
-        theme: ThemeData(colorSchemeSeed: Colors.blue),
-        // The copy buttons toast via hz_toast, which needs its initializer above
-        // the app so it can render into the root overlay.
-        builder: (context, child) => HzToastInitializer(child: child ?? const SizedBox()),
-        home: const HomeScreen(),
+  // One call: installs the log/error capture Zone, wraps the app in the
+  // overlay, and runs it. `enabled` gates both — with it false this is a plain
+  // runApp() and the package leaves no trace in the tree.
+  runDebugApp(
+    MaterialApp(
+      title: 'debug_overlay example',
+      theme: ThemeData(colorSchemeSeed: Colors.blue),
+      home: const HomeScreen(),
+    ),
+    enabled: kDebugMode,
+    controller: debug,
+    pages: [
+      const NetworkDebugPage(),
+      const LogsDebugPage(),
+      const ErrorsDebugPage(),
+      // Real device/OS/app facts, plus our own section merged in.
+      const DeviceDebugPage(
+        provider: CompositeDeviceInfoProvider([
+          PluginDeviceInfoProvider(),
+          StaticDeviceInfoProvider([
+            DeviceInfoSection('Environment', {'API': 'jsonplaceholder.typicode.com', 'Flavor': 'example'}),
+          ]),
+        ]),
       ),
-    );
-  }
+      // Any page you like — a plain widget builder is enough.
+      DebugPage.builder(title: 'About', icon: Icons.info_outline, builder: (_) => const _AboutPage()),
+    ],
+  );
 }
 
 class HomeScreen extends StatelessWidget {
@@ -72,6 +69,28 @@ class HomeScreen extends StatelessWidget {
               onPressed: () =>
                   dio.get<dynamic>('https://jsonplaceholder.typicode.com/nope-404').catchError((_) => Response<dynamic>(requestOptions: RequestOptions())),
               child: const Text('Trigger a 404'),
+            ),
+            const Divider(height: 24),
+            FilledButton(
+              onPressed: () {
+                // All three land in the Logs page.
+                debugPrint('debugPrint — captured by the debugPrint hook');
+                print('print — captured by the Zone'); // ignore: avoid_print
+                LogStore.instance.log('Tagged, levelled log', level: LogLevel.warning, tag: 'example');
+              },
+              child: const Text('Write some logs'),
+            ),
+            FilledButton(
+              // Uncaught async — caught by the Zone, badges the launcher.
+              onPressed: () => Future<void>.error(StateError('Something went wrong in a Future')),
+              child: const Text('Throw an uncaught error'),
+            ),
+            FilledButton(
+              // A 5xx also lands on the Errors page and badges the launcher.
+              // The 404 button above does not — see the bell menu on the
+              // Network page to change that.
+              onPressed: () => dio.get<dynamic>('https://httpbin.org/status/500').catchError((_) => Response<dynamic>(requestOptions: RequestOptions())),
+              child: const Text('Trigger a 500 (badges the launcher)'),
             ),
             OutlinedButton(onPressed: () => debug.showLauncher.value = !debug.showLauncher.value, child: const Text('Toggle the floating button')),
           ],

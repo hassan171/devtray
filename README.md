@@ -1,7 +1,9 @@
 # debug_overlay
 
 An in-app debugging overlay for Flutter: a draggable floating button that opens a tabbed
-tools panel over your running app. Ships with a **network inspector**; every other tab is
+tools panel over your running app.
+
+Four built-in pages — **Network**, **Logs**, **Errors**, **Device** — and every other tab is
 one you add.
 
 You decide **whether** it exists, **when** it opens, and **how** it's presented.
@@ -18,23 +20,36 @@ dependencies:
 
 ## Quick start
 
-Wrap your app, register the network page, and point your HTTP client at it:
+Wrap your app and register the pages you want:
 
 ```dart
 import 'package:debug_overlay/debug_overlay.dart';
 
 final dio = Dio()..interceptors.add(DebugDioInterceptor());
 
-void main() => runApp(
-  DebugOverlay(
-    enabled: kDebugMode,
-    pages: const [NetworkDebugPage()],
-    child: MaterialApp(home: HomeScreen()),
+void main() => DebugOverlayCapture.runApp(
+  () => runApp(
+    DebugOverlay(
+      enabled: kDebugMode,
+      pages: const [
+        NetworkDebugPage(),
+        LogsDebugPage(),
+        ErrorsDebugPage(),
+        DeviceDebugPage(provider: PluginDeviceInfoProvider()),
+      ],
+      child: MaterialApp(home: HomeScreen()),
+    ),
   ),
+  enabled: kDebugMode,
 );
 ```
 
-Every request through that `dio` now shows up in the overlay.
+Every request through that `dio` now shows up in the overlay, along with your logs, any
+uncaught errors, and the device's specs.
+
+`DebugOverlayCapture.runApp` is what installs the log/error hooks — see
+[Logs](#logs) and [Errors](#errors) below. When `enabled: false` it's a plain passthrough,
+so it's safe to leave in a release build.
 
 > **Toasts:** the copy buttons use [`hz_toast`](https://pub.dev/packages/hz_toast). Put an
 > `HzToastInitializer` above your app (typically in `MaterialApp.builder`) or the copy
@@ -42,7 +57,7 @@ Every request through that `dio` now shows up in the overlay.
 
 ---
 
-## Capturing network traffic
+## Network
 
 The overlay reads from a single transport-agnostic sink, `NetworkLogStore`. Three ways in:
 
@@ -97,6 +112,165 @@ NetworkLogStore.instance.attachExtra(entry.id, 'Proxy JS', generatedJs);
 **Per request you get:** method, URL, status, duration, request/response headers and bodies
 (pretty-printed JSON), query params, error message, **copy-as-cURL**, and an **HTML preview**
 for HTML responses. Multipart bodies are snapshotted and rendered as `-F` flags in the cURL.
+
+---
+
+## Logs
+
+`LogsDebugPage` shows captured log output, filterable by level and tag, searchable, with the
+whole filtered view copyable as plain text for a bug report.
+
+**What gets captured depends on how you start the app:**
+
+| | `debugPrint` | framework errors | bare `print()` | uncaught async errors |
+|---|---|---|---|---|
+| `DebugOverlayCapture.runApp(...)` | ✅ | ✅ | ✅ | ✅ |
+| `DebugOverlayCapture.installHooks()` | ✅ | ✅ | ❌ | ❌ |
+
+Bare `print()` and uncaught async errors can only be intercepted from inside a custom `Zone`,
+which means owning the `runApp` call. If you'd rather not, call `installHooks()` anywhere
+during startup and accept the two gaps. Nothing is ever swallowed — logs still print and
+errors still reach the console and the red error screen.
+
+### Hooking in your own logger
+
+If you already use `logger`, `talker`, `logging`, or something homegrown, keep it. The page
+reads from `LogStore` and nothing else, so bridging is one call:
+
+```dart
+LogStore.instance.log(
+  'User signed in',
+  level: LogLevel.info,
+  tag: 'auth',
+  error: someError,       // optional
+  stackTrace: someStack,  // optional
+);
+```
+
+Use `debugLevelFromName('SEVERE')` / `debugLevelFromSeverity(1000)` to map a foreign level
+onto `LogLevel` — they understand the aliases the common packages use (`severe`, `wtf`,
+`warn`, `finest`, …).
+
+**package:logger** — add an output alongside your console one, and your existing setup is
+untouched:
+
+```dart
+class DebugOverlayLogOutput extends LogOutput {
+  @override
+  void output(OutputEvent event) => LogStore.instance.log(
+    event.lines.join('\n'),
+    level: debugLevelFromName(event.level.name),
+  );
+}
+
+final logger = Logger(output: MultiOutput([ConsoleOutput(), DebugOverlayLogOutput()]));
+```
+
+**package:logging**
+
+```dart
+Logger.root.onRecord.listen((r) => LogStore.instance.log(
+  r.message,
+  tag: r.loggerName,
+  level: debugLevelFromName(r.level.name),
+  error: r.error,
+  stackTrace: r.stackTrace,
+));
+```
+
+**talker**
+
+```dart
+talker.stream.listen((d) => LogStore.instance.log(
+  d.message ?? '',
+  level: debugLevelFromName(d.logLevel?.name),
+  tag: d.title,
+  error: d.exception ?? d.error,
+  stackTrace: d.stackTrace,
+));
+```
+
+See `lib/src/logs/log_bridge.dart` for these snippets in-source.
+
+---
+
+## Errors
+
+`ErrorsDebugPage` collects uncaught exceptions and framework errors, with the full stack
+trace, the widget-ownership context, and a one-tap "copy report".
+
+The point is the errors **nobody was watching the console for** — so the launcher grows a red
+count badge when errors arrive, and opening the page clears it:
+
+```dart
+DebugOverlay(showErrorBadge: false, ...)   // if you'd rather it didn't
+```
+
+Report your own caught errors into it:
+
+```dart
+try {
+  await risky();
+} catch (e, s) {
+  ErrorStore.instance.report(e, stackTrace: s);
+  rethrow;
+}
+```
+
+### Failed requests land here too
+
+A failed request is an error, so the Network page forwards failures to the Errors page —
+which means a dead backend badges the launcher instead of waiting for you to think to open
+the Network tab. The Errors detail shows the request, response headers and response body
+(a transport failure has no meaningful Dart stack, so the request itself is the diagnostic).
+
+**Not every failure, though.** A 404 on a "does this exist?" probe and a 401 that kicks off a
+token refresh are routine — badging on those trains you to ignore the badge. So the default
+forwards **5xx and transport failures** (timeout, refused connection, bad certificate) and
+leaves 4xx to the Network page.
+
+Change it at any time — it's live, and there's a **bell menu on the Network page** to flip it
+mid-session without touching code:
+
+```dart
+NetworkLogStore.instance.errorReporting.value = NetworkErrorReporting.all;   // include 4xx
+NetworkLogStore.instance.errorReporting.value = NetworkErrorReporting.none;  // stop forwarding
+```
+
+| Mode | Forwards |
+|---|---|
+| `none` | nothing — failures stay on the Network page |
+| `serverAndTransport` *(default)* | 5xx + transport failures |
+| `all` | every failed request, 4xx included |
+
+URLs in `excludedUrlPatterns` never reach either page.
+
+---
+
+## Device
+
+`DeviceDebugPage` shows device model, OS, app version, and live screen metrics (size, DPR,
+orientation, text scale, safe area, locale) — the things you always end up asking for in a
+bug report. The whole page copies out as one block.
+
+The default provider needs no plugins but only knows the build mode and platform. For real
+device facts, use `PluginDeviceInfoProvider` (backed by `device_info_plus` and
+`package_info_plus`), and merge in your own sections:
+
+```dart
+DeviceDebugPage(
+  provider: CompositeDeviceInfoProvider([
+    const PluginDeviceInfoProvider(),
+    StaticDeviceInfoProvider([
+      DeviceInfoSection('Environment', {'API': apiUrl, 'Flavor': flavor}),
+      DeviceInfoSection('Session', {'User': user.id, 'Role': user.role}),
+    ]),
+  ]),
+)
+```
+
+Implement `DeviceInfoProvider` for anything dynamic. The screen section is always appended by
+the page itself, read live from the `MediaQuery`, so it stays correct across rotation.
 
 ---
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:hz_toast/hz_toast.dart';
 
 import 'debug_launcher_button.dart';
 import 'debug_overlay_controller.dart';
@@ -80,6 +81,11 @@ class DebugOverlay extends StatefulWidget {
   final double launcherSize;
   final IconData launcherIcon;
 
+  /// Show a red count badge on the launcher when errors have been captured but
+  /// not yet reviewed. Requires [captureErrors] (or [DebugOverlayCapture]) to
+  /// be installed, and is ignored when [launcherBuilder] replaces the button.
+  final bool showErrorBadge;
+
   /// Replaces the default bug button entirely. It's still positioned and
   /// draggable — you only supply the visuals.
   final Widget? launcherBuilder;
@@ -97,6 +103,7 @@ class DebugOverlay extends StatefulWidget {
     this.launcherMargin = const EdgeInsets.all(16),
     this.launcherSize = 48,
     this.launcherIcon = Icons.bug_report,
+    this.showErrorBadge = true,
     this.launcherBuilder,
   });
 
@@ -157,8 +164,8 @@ class _DebugOverlayState extends State<DebugOverlay> {
     // relied on: no Directionality, no Navigator, no Localizations, no Overlay.
     // That rules out showDialog/Navigator.push for presenting the tools — they
     // assert on exactly those. Instead the tools are rendered as a layer in our
-    // own Stack, and we supply the inherited widgets the Material pieces inside
-    // them need (tooltips, text selection, the tab bar).
+    // own Stack, and _DebugToolsHost supplies the scopes their Material content
+    // needs (including a Navigator of their own).
     //
     // Ambient values are read first, so nesting the overlay *inside* an app
     // still inherits that app's direction/locale rather than overriding it.
@@ -266,7 +273,12 @@ class _DebugOverlayState extends State<DebugOverlay> {
                       _pos = Offset(next.dx.clamp(0.0, maxX), next.dy.clamp(0.0, maxY));
                     }),
                     child: widget.launcherBuilder ??
-                        DebugLauncherButton(theme: widget.theme, size: widget.launcherSize, icon: widget.launcherIcon),
+                        DebugLauncherButton(
+                          theme: widget.theme,
+                          size: widget.launcherSize,
+                          icon: widget.launcherIcon,
+                          showErrorBadge: widget.showErrorBadge,
+                        ),
                   ),
                 ),
               ],
@@ -280,18 +292,32 @@ class _DebugOverlayState extends State<DebugOverlay> {
 
 /// Supplies the inherited widgets the tools' Material content expects but which
 /// may not exist above [DebugOverlay] — it wraps MaterialApp, so it sits outside
-/// the app's Localizations/Overlay/Media scopes.
+/// the app's Navigator/Localizations/Overlay scopes.
 ///
-/// [Overlay] is what makes tooltips, text-selection handles and the like work
-/// inside the panel without a host Navigator.
+/// The [Navigator] is the important part. Material widgets inside the panel
+/// reach for one constantly — `PopupMenuButton` and `showDialog` both call
+/// `Navigator.of(context)`, and tooltips and text-selection handles need its
+/// Overlay. Giving the panel its own means all of that works, *and* those routes
+/// stay contained: a menu or dialog opened in the tools can never land on the
+/// host app's route stack.
+///
+/// The `HzToastInitializer` is here for the same reason: the copy buttons toast,
+/// and that's our business, not the host app's. Wiring it here means the host
+/// needs no setup — and if the app already has its own HzToast initializer, this
+/// one is nested below it and simply wins for toasts raised inside the panel.
 class _DebugToolsHost extends StatelessWidget {
   final Widget child;
   const _DebugToolsHost({required this.child});
 
   @override
   Widget build(BuildContext context) {
-    Widget content = Overlay(
-      initialEntries: [OverlayEntry(builder: (_) => child)],
+    Widget content = Navigator(
+      onGenerateRoute: (settings) => PageRouteBuilder<void>(
+        settings: settings,
+        // No transition — this is the panel itself appearing, and the overlay
+        // has already animated it in.
+        pageBuilder: (_, _, _) => HzToastInitializer(edgeSpacing: 32, showSingleToast: true, child: child),
+      ),
     );
 
     // Only inject what's actually missing, so a nested overlay keeps the host

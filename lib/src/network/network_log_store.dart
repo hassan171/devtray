@@ -1,6 +1,27 @@
 import 'package:flutter/foundation.dart';
 
+import '../errors/error_store.dart';
+
 enum NetworkLogStatus { pending, success, failed }
+
+/// Which failed requests are forwarded to the Errors page (and therefore badge
+/// the launcher).
+///
+/// The default is [serverAndTransport], deliberately: a 404 on a "does this
+/// exist?" probe or a 401 that triggers a token refresh are routine, and
+/// badging on those trains you to ignore the badge. A 5xx or a dead connection
+/// is not routine.
+enum NetworkErrorReporting {
+  /// Nothing is forwarded. Failures still show on the Network page.
+  none,
+
+  /// 5xx responses and transport failures (timeout, no connection, bad
+  /// certificate — anything with no status code at all).
+  serverAndTransport,
+
+  /// Every failed request, including 4xx.
+  all,
+}
 
 /// A single captured request/response pair. Transport-agnostic — dio, http and
 /// hand-rolled clients all funnel into this shape via [NetworkLogStore].
@@ -67,6 +88,24 @@ class NetworkLogEntry {
   }
 }
 
+/// A failed request, as reported to the Errors page.
+///
+/// Holds the whole [NetworkLogEntry], so the Errors detail can show the URL,
+/// status, headers and response body — a transport failure has no meaningful
+/// Dart stack trace, so the request itself *is* the diagnostic.
+class NetworkError implements Exception {
+  final NetworkLogEntry entry;
+  const NetworkError(this.entry);
+
+  /// The one-line summary the Errors list shows.
+  @override
+  String toString() {
+    final code = entry.statusCode;
+    final what = code == null ? (entry.errorMessage ?? 'Request failed') : 'HTTP $code';
+    return '$what · ${entry.method} ${entry.uri}';
+  }
+}
+
 /// In-memory ring buffer of captured requests, backed by a [ValueNotifier] so
 /// the network page rebuilds on every change.
 ///
@@ -89,6 +128,15 @@ class NetworkLogStore {
   /// Use it to keep high-frequency background traffic (health polls, crash
   /// reporting) out of the list.
   final List<String> excludedUrlPatterns = [];
+
+  /// Which failed requests also land on the Errors page (and badge the
+  /// launcher). Live — the Network page exposes a toggle for it, and you can
+  /// set it yourself at any time:
+  ///
+  /// ```dart
+  /// NetworkLogStore.instance.errorReporting.value = NetworkErrorReporting.all;
+  /// ```
+  final ValueNotifier<NetworkErrorReporting> errorReporting = ValueNotifier(NetworkErrorReporting.serverAndTransport);
 
   final List<NetworkLogEntry> _entries = [];
   final ValueNotifier<int> tick = ValueNotifier<int>(0);
@@ -148,6 +196,29 @@ class NetworkLogStore {
     entry.completedAt = DateTime.now();
     entry.status = status;
     tick.value++;
+
+    // Every adapter funnels through complete(), so hooking here forwards
+    // failures from dio, http and any hand-rolled client alike.
+    if (status == NetworkLogStatus.failed && _shouldReport(entry)) {
+      ErrorStore.instance.report(
+        NetworkError(entry),
+        // Transport failures have no useful Dart stack (the throw site is deep
+        // in the HTTP client), so the entry itself is the diagnostic.
+        source: ErrorSource.network,
+        context: '${entry.method} ${entry.uri.path}',
+      );
+    }
+  }
+
+  bool _shouldReport(NetworkLogEntry entry) {
+    final code = entry.statusCode;
+    return switch (errorReporting.value) {
+      NetworkErrorReporting.none => false,
+      NetworkErrorReporting.all => true,
+      // No status code at all = the request never completed: timeout, DNS
+      // failure, refused connection, bad cert.
+      NetworkErrorReporting.serverAndTransport => code == null || code >= 500,
+    };
   }
 
   /// Attaches a named extra section to an entry; it becomes its own detail tab.
