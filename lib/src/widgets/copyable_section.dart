@@ -1,6 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:hz_toast/hz_toast.dart';
 
 import '../core/debug_overlay_theme.dart';
 
@@ -28,16 +29,7 @@ class CopyableSection extends StatelessWidget {
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: titleColor ?? t.text),
               ),
             ),
-            IconButton(
-              tooltip: 'Copy',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-              icon: Icon(Icons.copy, size: 14, color: t.textMuted),
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: body));
-                showDebugToast('$title copied');
-              },
-            ),
+            CopyButton(text: body, tooltip: 'Copy'),
           ],
         ),
         Container(
@@ -54,11 +46,64 @@ class CopyableSection extends StatelessWidget {
   }
 }
 
-/// Feedback toast. Context-free — HzToast renders through its own overlay, so
-/// this is safe to call from any callback (including after an await).
-///
-/// Requires the host app to have HzToast installed (its builder/overlay wired
-/// into MaterialApp), which is HzToast's normal setup.
-void showDebugToast(String message, {bool isError = false}) {
-  HzToast.show(HzToastData(message, type: isError ? HzToastType.error : HzToastType.success));
+/// Copies [text] to the clipboard, flashing a checkmark instead of announcing
+/// itself. No toast, no snackbar — nothing to dismiss, and nothing covering the
+/// data you were reading.
+class CopyButton extends StatefulWidget {
+  final String text;
+  final String tooltip;
+  final IconData icon;
+  final double size;
+
+  const CopyButton({
+    super.key,
+    required this.text,
+    this.tooltip = 'Copy',
+    this.icon = Icons.copy,
+    this.size = 14,
+  });
+
+  @override
+  State<CopyButton> createState() => _CopyButtonState();
+}
+
+class _CopyButtonState extends State<CopyButton> {
+  static const _flashDuration = Duration(milliseconds: 1200);
+
+  bool _copied = false;
+  Timer? _resetTimer;
+
+  @override
+  void dispose() {
+    _resetTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.text));
+    if (!mounted) return;
+
+    setState(() => _copied = true);
+    _resetTimer?.cancel();
+    _resetTimer = Timer(_flashDuration, () {
+      if (mounted) setState(() => _copied = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = DebugOverlayTheme.of(context);
+
+    return IconButton(
+      tooltip: _copied ? 'Copied' : widget.tooltip,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+      onPressed: widget.text.isEmpty ? null : _copy,
+      icon: Icon(
+        _copied ? Icons.check : widget.icon,
+        size: widget.size,
+        color: _copied ? t.success : t.textMuted,
+      ),
+    );
+  }
 }

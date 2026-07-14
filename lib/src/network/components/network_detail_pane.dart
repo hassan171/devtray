@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../core/debug_overlay_theme.dart';
 import '../../widgets/copyable_section.dart';
@@ -109,29 +108,21 @@ class _NetworkDetailPaneState extends State<NetworkDetailPane> with TickerProvid
                 ],
               ),
             ),
+            // isHtmlResponse sniffs the body, so it can only be true when there
+            // is one — no empty-body case to guard against here.
             if (e.isHtmlResponse) ...[
               IconButton(
                 tooltip: 'Preview HTML',
                 icon: Icon(Icons.preview, size: 16, color: t.text),
-                onPressed: () {
-                  final html = e.responseBodyString;
-                  if (html == null || html.isEmpty) {
-                    showDebugToast('No HTML body to preview', isError: true);
-                    return;
-                  }
-                  HtmlPreviewDialog.show(context, html);
-                },
+                onPressed: () => HtmlPreviewDialog.show(context, e.responseBodyString!),
               ),
               const SizedBox(width: 8),
             ],
-            IconButton(
+            CopyButton(
               tooltip: 'Copy as cURL',
-              icon: Icon(Icons.code, size: 16, color: t.text),
-              onPressed: () async {
-                final curl = buildCurl(method: e.method, uri: e.uri, headers: e.requestHeaders, data: e.requestBody);
-                await Clipboard.setData(ClipboardData(text: curl));
-                showDebugToast('cURL copied');
-              },
+              icon: Icons.code,
+              size: 16,
+              text: buildCurl(method: e.method, uri: e.uri, headers: e.requestHeaders, data: e.requestBody),
             ),
           ],
         ),

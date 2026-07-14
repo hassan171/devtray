@@ -20,40 +20,56 @@ dependencies:
 
 ## Quick start
 
-Wrap your app and register the pages you want:
+Swap `runApp` for `runDebugApp` and list the pages you want. That's the whole setup:
 
 ```dart
 import 'package:debug_overlay/debug_overlay.dart';
 
 final dio = Dio()..interceptors.add(DebugDioInterceptor());
 
-void main() => DebugOverlayCapture.runApp(
-  () => runApp(
-    DebugOverlay(
-      enabled: kDebugMode,
-      pages: const [
-        NetworkDebugPage(),
-        LogsDebugPage(),
-        ErrorsDebugPage(),
-        DeviceDebugPage(provider: PluginDeviceInfoProvider()),
-      ],
-      child: MaterialApp(home: HomeScreen()),
-    ),
-  ),
+void main() => runDebugApp(
+  const MyApp(),
   enabled: kDebugMode,
+  pages: const [
+    NetworkDebugPage(),
+    LogsDebugPage(),
+    ErrorsDebugPage(),
+    DeviceDebugPage(provider: PluginDeviceInfoProvider()),
+  ],
 );
 ```
 
 Every request through that `dio` now shows up in the overlay, along with your logs, any
-uncaught errors, and the device's specs.
+uncaught errors, and the device's specs. Nothing else to wire up — no wrapper widget, no
+second `enabled` flag to keep in sync.
 
-`DebugOverlayCapture.runApp` is what installs the log/error hooks — see
-[Logs](#logs) and [Errors](#errors) below. When `enabled: false` it's a plain passthrough,
+`runDebugApp` installs the log/error capture *and* wraps your app in the overlay. With
+`enabled: false` it is exactly `runApp(app)`: no Zone, no hooks, no overlay in the tree —
 so it's safe to leave in a release build.
 
-> **Toasts:** the copy buttons use [`hz_toast`](https://pub.dev/packages/hz_toast). Put an
-> `HzToastInitializer` above your app (typically in `MaterialApp.builder`) or the copy
-> confirmations won't render — everything else still works.
+It takes every option `DebugOverlay` does — `presentation`, `theme`, `controller`,
+`showLauncher`, the launcher's corner/size/icon. See
+[Controlling when and how it opens](#controlling-when-and-how-it-opens).
+
+### If you can't hand over `runApp`
+
+Add-to-app, a custom bootstrap, or a test may not let you. Then do it by hand — this is what
+`runDebugApp` expands to:
+
+```dart
+void main() => DebugOverlayCapture.runApp(          // the capture Zone
+  () => runApp(
+    DebugOverlay(pages: const [...], child: const MyApp()),   // the UI
+  ),
+);
+```
+
+They're separate because the Zone has to be installed *around* `runApp`, and `DebugOverlay`
+is a widget that only exists inside it — a widget can't wrap its own `runApp` call.
+
+If you can't own `runApp` at all, call `DebugOverlayCapture.installHooks()` anywhere during
+startup instead. You'll still capture `debugPrint` and framework errors; you'll miss bare
+`print()` and uncaught async errors, which genuinely require the Zone.
 
 ---
 
@@ -124,7 +140,7 @@ whole filtered view copyable as plain text for a bug report.
 
 | | `debugPrint` | framework errors | bare `print()` | uncaught async errors |
 |---|---|---|---|---|
-| `DebugOverlayCapture.runApp(...)` | ✅ | ✅ | ✅ | ✅ |
+| `runDebugApp(...)` / `DebugOverlayCapture.runApp(...)` | ✅ | ✅ | ✅ | ✅ |
 | `DebugOverlayCapture.installHooks()` | ✅ | ✅ | ❌ | ❌ |
 
 Bare `print()` and uncaught async errors can only be intercepted from inside a custom `Zone`,
@@ -310,7 +326,7 @@ class LogsPage extends DebugPage {
 ```
 
 To make your page look native to the overlay, reuse its widgets — all exported:
-`CopyableSection`, `DebugTabBar`, `HtmlPreviewDialog`, `showDebugToast`, and
+`CopyableSection`, `CopyButton`, `DebugTabBar`, `HtmlPreviewDialog`, and
 `DebugOverlayTheme.of(context)` for colors.
 
 ---
@@ -330,14 +346,35 @@ debug.close();
 debug.toggle();
 ```
 
-### No floating button at all
+### Hide the floating button and use your own
+
+The draggable button is on by default, but it's just *a* way in — not the only one. Hide it
+and trigger the overlay from anywhere you like:
 
 ```dart
-debug.showLauncher.value = false;   // or DebugOverlay(showLauncher: false)
+final debug = DebugOverlayController(showLauncher: false);   // hidden from the start
+
+void main() => runDebugApp(const MyApp(), controller: debug, pages: [...]);
+
+// …then anywhere in your app:
+IconButton(onPressed: debug.open, icon: const Icon(Icons.bug_report))
 ```
 
-The button disappears; `debug.open()` still works. That's how you ship a build with **no
-visible debug affordance** but a secret way in.
+Your trigger can be anything — an AppBar action, a row in a hidden settings screen, a 5-tap
+on the logo, a shake detector, a keyboard shortcut. Just call `debug.open()`.
+
+Toggle it at runtime too:
+
+```dart
+debug.showLauncher.value = false;   // hide
+debug.showLauncher.value = true;    // show
+```
+
+That's how you ship a build with **no visible debug affordance** but a secret way in.
+
+> Note: `runDebugApp(showLauncher:)` / `DebugOverlay(showLauncher:)` is ignored once you pass
+> a `controller` — the controller owns that flag, so it can be flipped while running. Set the
+> initial value on the controller instead, as above.
 
 ### Presentation
 

@@ -1,7 +1,7 @@
 import 'package:debug_overlay/debug_overlay.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hz_toast/hz_toast.dart';
 
 /// Runs [body], then restores the `debugPrint` global that `runDebugApp` hooks.
 ///
@@ -94,34 +94,57 @@ void main() {
       });
     });
 
-    testWidgets('toasts render with no HzToast setup in the host app', (tester) async {
+    testWidgets('copying writes to the clipboard silently, flashing a checkmark', (tester) async {
       await withDebugPrintRestored(() async {
-        // The app below wires up NOTHING — no HzToastInitializer. The overlay
-        // installs one inside its own panel, so the host app stays clean. This
-        // is what the copy buttons rely on.
+        // flutter_test has no clipboard, so stand one in and record the write.
+        String? clipboard;
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          (call) async {
+            if (call.method == 'Clipboard.setData') clipboard = call.arguments['text'] as String;
+            return null;
+          },
+        );
+        addTearDown(
+          () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null),
+        );
+
+        LogStore.instance.log('a line worth copying');
         runDebugApp(_app, pages: const [LogsDebugPage()]);
         await tester.pumpAndSettle();
 
         await tester.tap(find.byIcon(Icons.bug_report));
         await tester.pumpAndSettle();
 
-        expect(find.byType(HzToastInitializer), findsOneWidget);
-
-        // Raised the same way the copy buttons raise it. (Tapping a real copy
-        // button can't be used here: it awaits Clipboard.setData first, and the
-        // clipboard platform channel has no handler under flutter_test.)
-        showDebugToast('Logs copied');
-
-        // Fixed pumps, not pumpAndSettle — the toast animates on a loop and
-        // never settles, so pumpAndSettle would time out.
+        await tester.tap(find.byTooltip('Copy all'));
         await tester.pump();
-        await tester.pump(const Duration(milliseconds: 500));
 
-        expect(find.textContaining('copied'), findsOneWidget);
+        expect(clipboard, contains('a line worth copying'));
 
-        // Clear it, so a live toast timer can't leak into the next test.
-        HzToast.clearAll();
-        await tester.pump(const Duration(seconds: 5));
+        // Feedback is the icon itself — nothing overlays the data you're reading,
+        // and there's nothing to dismiss.
+        expect(find.byIcon(Icons.check), findsOneWidget);
+
+        // …and it reverts on its own.
+        await tester.pump(const Duration(milliseconds: 1300));
+        expect(find.byIcon(Icons.check), findsNothing);
+        expect(find.byIcon(Icons.copy_all), findsOneWidget);
+      });
+    });
+
+    testWidgets('a copy button with nothing to copy is disabled', (tester) async {
+      await withDebugPrintRestored(() async {
+        // No logs — so "Copy all" has nothing to write.
+        runDebugApp(_app, pages: const [LogsDebugPage()]);
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.bug_report));
+        await tester.pumpAndSettle();
+
+        final button = tester.widget<IconButton>(
+          find.ancestor(of: find.byIcon(Icons.copy_all), matching: find.byType(IconButton)),
+        );
+        expect(button.onPressed, isNull);
       });
     });
 

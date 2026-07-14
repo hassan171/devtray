@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:hz_toast/hz_toast.dart';
 
 import 'debug_launcher_button.dart';
 import 'debug_overlay_controller.dart';
@@ -300,11 +299,6 @@ class _DebugOverlayState extends State<DebugOverlay> {
 /// Overlay. Giving the panel its own means all of that works, *and* those routes
 /// stay contained: a menu or dialog opened in the tools can never land on the
 /// host app's route stack.
-///
-/// The `HzToastInitializer` is here for the same reason: the copy buttons toast,
-/// and that's our business, not the host app's. Wiring it here means the host
-/// needs no setup — and if the app already has its own HzToast initializer, this
-/// one is nested below it and simply wins for toasts raised inside the panel.
 class _DebugToolsHost extends StatelessWidget {
   final Widget child;
   const _DebugToolsHost({required this.child});
@@ -316,7 +310,7 @@ class _DebugToolsHost extends StatelessWidget {
         settings: settings,
         // No transition — this is the panel itself appearing, and the overlay
         // has already animated it in.
-        pageBuilder: (_, _, _) => HzToastInitializer(edgeSpacing: 32, showSingleToast: true, child: child),
+        pageBuilder: (_, _, _) => child,
       ),
     );
 

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../core/debug_overlay_theme.dart';
 import '../core/debug_page.dart';
@@ -76,16 +75,8 @@ class _LogsViewState extends State<_LogsView> {
               total: filtered.length,
               onChanged: (v) => setState(() => _search = v),
               actions: [
-                IconButton(
-                  tooltip: 'Copy all',
-                  icon: Icon(Icons.copy_all, size: 18, color: t.text),
-                  onPressed: filtered.isEmpty
-                      ? null
-                      : () async {
-                          await Clipboard.setData(ClipboardData(text: _asPlainText(filtered)));
-                          showDebugToast('${filtered.length} log lines copied');
-                        },
-                ),
+                // Disables itself when there's nothing to copy.
+                CopyButton(tooltip: 'Copy all', icon: Icons.copy_all, size: 18, text: _asPlainText(filtered)),
                 IconButton(
                   tooltip: 'Clear',
                   icon: Icon(Icons.delete_outline, color: t.error),

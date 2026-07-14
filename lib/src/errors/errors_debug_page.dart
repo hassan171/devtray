@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../core/debug_overlay_theme.dart';
 import '../core/debug_page.dart';
@@ -248,14 +247,7 @@ class _ErrorDetail extends StatelessWidget {
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: t.error),
               ),
             ),
-            IconButton(
-              tooltip: 'Copy report',
-              icon: Icon(Icons.copy, size: 16, color: t.text),
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: asPlainText(entry)));
-                showDebugToast('Error report copied');
-              },
-            ),
+            CopyButton(tooltip: 'Copy report', size: 16, text: asPlainText(entry)),
           ],
         ),
         Divider(color: t.border),

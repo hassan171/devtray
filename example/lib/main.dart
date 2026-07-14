@@ -51,7 +51,10 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('debug_overlay example')),
+      appBar: AppBar(
+        title: const Text('debug_overlay example'),
+        actions: [IconButton(onPressed: debug.toggle, icon: const Icon(Icons.bug_report_outlined))],
+      ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

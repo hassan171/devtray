@@ -1,9 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/debug_overlay_theme.dart';
 import '../core/debug_page.dart';
-import '../widgets/copyable_section.dart';
 import 'device_info_provider.dart';
 
 /// Device, OS, app and screen facts — the first thing anyone asks for in a bug
@@ -87,14 +88,7 @@ class _DeviceViewState extends State<_DeviceView> {
                 Expanded(
                   child: Text('Device info', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: t.text)),
                 ),
-                TextButton.icon(
-                  icon: Icon(Icons.copy, size: 14, color: t.accent),
-                  label: Text('Copy all', style: TextStyle(fontSize: 12, color: t.accent)),
-                  onPressed: () async {
-                    await Clipboard.setData(ClipboardData(text: _asPlainText(sections)));
-                    showDebugToast('Device info copied');
-                  },
-                ),
+                _CopyAllButton(text: _asPlainText(sections)),
               ],
             ),
             Expanded(
@@ -108,6 +102,50 @@ class _DeviceViewState extends State<_DeviceView> {
           ],
         );
       },
+    );
+  }
+}
+
+/// Labelled copy button — swaps its own label to "Copied" for a moment rather
+/// than raising a toast over the data you're trying to read.
+class _CopyAllButton extends StatefulWidget {
+  final String text;
+  const _CopyAllButton({required this.text});
+
+  @override
+  State<_CopyAllButton> createState() => _CopyAllButtonState();
+}
+
+class _CopyAllButtonState extends State<_CopyAllButton> {
+  bool _copied = false;
+  Timer? _resetTimer;
+
+  @override
+  void dispose() {
+    _resetTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.text));
+    if (!mounted) return;
+
+    setState(() => _copied = true);
+    _resetTimer?.cancel();
+    _resetTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _copied = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = DebugOverlayTheme.of(context);
+    final color = _copied ? t.success : t.accent;
+
+    return TextButton.icon(
+      onPressed: _copy,
+      icon: Icon(_copied ? Icons.check : Icons.copy, size: 14, color: color),
+      label: Text(_copied ? 'Copied' : 'Copy all', style: TextStyle(fontSize: 12, color: color)),
     );
   }
 }
