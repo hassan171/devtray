@@ -11,38 +11,35 @@ class SharedPreferencesStorageAdapter extends DebugStorageAdapter {
   /// Hide the overlay's own keys, which are noise you never want to edit.
   final bool hideInternalKeys;
 
-  const SharedPreferencesStorageAdapter({
-    this.name = 'SharedPreferences',
-    this.hideInternalKeys = true,
-  });
+  const SharedPreferencesStorageAdapter({this.name = 'SharedPreferences', this.hideInternalKeys = true});
 
   @override
   Future<Map<String, Object?>> readAll() async {
-    final prefs = await SharedPreferences.getInstance();
-    final keys = prefs.getKeys().where((k) => !hideInternalKeys || !k.startsWith('debug_overlay.'));
-    return {for (final k in keys) k: prefs.get(k)};
+    final pref = await SharedPreferences.getInstance();
+    final keys = pref.getKeys().where((k) => !hideInternalKeys || !k.startsWith('debug_overlay.'));
+    return {for (final k in keys) k: pref.get(k)};
   }
 
   @override
   Future<void> write(String key, Object? value) async {
-    final prefs = await SharedPreferences.getInstance();
+    final pref = await SharedPreferences.getInstance();
 
     // SharedPreferences has no generic setter — it's one method per type, and
     // the value must match the type already stored or the next read throws.
     // The editor preserves the original type, so this switch always has a match.
     switch (value) {
       case final bool v:
-        await prefs.setBool(key, v);
+        await pref.setBool(key, v);
       case final int v:
-        await prefs.setInt(key, v);
+        await pref.setInt(key, v);
       case final double v:
-        await prefs.setDouble(key, v);
+        await pref.setDouble(key, v);
       case final String v:
-        await prefs.setString(key, v);
+        await pref.setString(key, v);
       case final List<String> v:
-        await prefs.setStringList(key, v);
+        await pref.setStringList(key, v);
       case null:
-        await prefs.remove(key);
+        await pref.remove(key);
       default:
         throw ArgumentError('SharedPreferences cannot store ${value.runtimeType}');
     }

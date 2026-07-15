@@ -70,7 +70,7 @@ class _StateDetailPaneState extends State<StateDetailPane> {
         Expanded(
           child: ListView(
             children: [
-              CopyableSection(title: 'Current state', body: StateInspector.instance.display(source.state)),
+              CopyableSection(title: 'Current state', body: StateInspector.instance.display(source.state, sourceType: source.type)),
 
               // Fields the source holds OUTSIDE its state — a sync queue, a
               // lookup map, a retry counter. Read live from the instance on every
@@ -164,7 +164,7 @@ class _StateDetailPaneState extends State<StateDetailPane> {
                     style: TextStyle(fontSize: 11, color: t.textMuted),
                   )
                 else
-                  for (final change in source.changes) _ChangeTile(change: change, theme: t, formatTime: _formatTime),
+                  for (final change in source.changes) _ChangeTile(change: change, theme: t, formatTime: _formatTime, sourceType: source.type),
               ],
 
               const SizedBox(height: 8),
@@ -180,8 +180,9 @@ class _ChangeTile extends StatelessWidget {
   final StateChangeEntry change;
   final DebugOverlayTheme theme;
   final String Function(DateTime) formatTime;
+  final String sourceType;
 
-  const _ChangeTile({required this.change, required this.theme, required this.formatTime});
+  const _ChangeTile({required this.change, required this.theme, required this.formatTime, required this.sourceType});
 
   @override
   Widget build(BuildContext context) {
@@ -216,8 +217,8 @@ class _ChangeTile extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          _StateLine(label: '−', value: change.from, color: theme.textMuted, theme: theme),
-          _StateLine(label: '+', value: change.to, color: theme.text, theme: theme),
+          _StateLine(label: '−', value: change.from, color: theme.textMuted, theme: theme, sourceType: sourceType),
+          _StateLine(label: '+', value: change.to, color: theme.text, theme: theme, sourceType: sourceType),
         ],
       ),
     );
@@ -229,8 +230,9 @@ class _StateLine extends StatelessWidget {
   final Object? value;
   final Color color;
   final DebugOverlayTheme theme;
+  final String sourceType;
 
-  const _StateLine({required this.label, required this.value, required this.color, required this.theme});
+  const _StateLine({required this.label, required this.value, required this.color, required this.theme, required this.sourceType});
 
   @override
   Widget build(BuildContext context) {
@@ -247,8 +249,9 @@ class _StateLine extends StatelessWidget {
         Expanded(
           child: SelectableText(
             // Same formatting as the current-state line, so from/to read
-            // consistently — a registered formatter or the pretty List/Map dump.
-            StateInspector.instance.display(value),
+            // consistently — a source-scoped/state-type formatter or the pretty
+            // List/Map dump.
+            StateInspector.instance.display(value, sourceType: sourceType),
             style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: color),
           ),
         ),

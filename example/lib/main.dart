@@ -66,10 +66,13 @@ void main() {
 
   // Control how a state is DISPLAYED (not the data). TodoBloc's state is a
   // List<String>, which by default prints cramped: [todo 48, todo 48, todo 49].
-  // Render one todo per line instead. Keyed by the state type, so it covers the
-  // current-state line and the from/to history alike. (List/Map already get a
-  // pretty JSON dump for free — this is the per-type override.)
-  StateInspector.instance.format<List<String>>((todos) => todos.isEmpty ? '(no todos)' : todos.map((t) => '• $t').join('\n'));
+  // Render one todo per line — but ONLY for TodoBloc, not every List<String>
+  // state in the app. formatSource is keyed by the SOURCE type, so it's scoped
+  // to this one cubit; format<T> would hit every source whose state is a T.
+  StateInspector.instance.formatSource<TodoBloc>((state) {
+    final todos = state as List<String>;
+    return todos.isEmpty ? '(no todos)' : todos.map((t) => '• $t').join('\n');
+  });
 
   // One call: installs the log/error capture Zone, wraps the app in the
   // overlay, and runs it. `enabled` gates both — with it false this is a plain

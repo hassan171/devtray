@@ -60,8 +60,9 @@ class StateRow extends StatelessWidget {
                     Text(
                       // The live state — the thing you opened this page for.
                       // Through display() so a registered formatter / pretty
-                      // default applies; the row keeps it to one line.
-                      StateInspector.instance.display(source.state),
+                      // default applies; the row keeps it to one line. Pass the
+                      // source type so a source-scoped formatter can match.
+                      StateInspector.instance.display(source.state, sourceType: source.type),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: t.textMuted),

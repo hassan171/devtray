@@ -147,34 +147,51 @@ class StateInspector {
     return const {};
   }
 
-  /// Display overrides for a state value, keyed by the state's runtime type.
+  /// Display overrides keyed by the **state** value's runtime type — apply to
+  /// every source whose state is that type.
   final Map<String, String Function(Object)> _formatters = {};
 
-  /// Control how a source's state is **rendered** on the page — without
-  /// changing the state itself.
+  /// Display overrides keyed by the **source** type (the cubit/bloc class) —
+  /// apply to only that one source, and win over [_formatters].
+  final Map<String, String Function(Object)> _sourceFormatters = {};
+
+  /// Control how a state is **rendered** on the page — for **every** source
+  /// whose state is a `T`.
   ///
-  /// By default a state prints via `toString()`, so a `List<String>` shows as
-  /// the cramped `[todo 48, todo 48, todo 49]`. Register a formatter to render
-  /// it however reads best:
+  /// Keyed by the **state** type. Use this when the rendering is a property of
+  /// the state itself (e.g. every `CartState` should summarise the same way).
+  /// If you want to format just one source — the todo list, not *all*
+  /// `List<String>` states — use [formatSource] instead, which is more specific
+  /// and takes precedence.
   ///
   /// ```dart
-  /// // one todo per line
-  /// StateInspector.instance.format<List<String>>((s) => s.join('\n'));
-  ///
-  /// // a custom summary for a whole state class
   /// StateInspector.instance.format<CartState>((s) => '${s.items.length} items · \$${s.total}');
   /// ```
   ///
-  /// Keyed by the **state** type `T`, not the source type — so one registration
-  /// covers every cubit/bloc/notifier whose state is a `T`. Applies to the
-  /// current-state line and the from/to lines in the change history alike.
-  ///
-  /// Without a registration, [display] already handles the common cases —
-  /// `List`/`Map`/`Set` one entry per line, `DateTime` as ISO-8601 — and falls
-  /// back to `toString()` for everything else. Register a formatter only when
-  /// you want something different for a specific type.
+  /// Applies to the current-state line and the from/to lines in the change
+  /// history alike. Without any registration, [display] already handles the
+  /// common cases — `List`/`Map`/`Set` one entry per line, `DateTime` as
+  /// ISO-8601 — and falls back to `toString()`.
   void format<T extends Object>(String Function(T state) render) {
     _formatters[T.toString()] = (state) => render(state as T);
+  }
+
+  /// Control how **one specific source's** state is rendered — keyed by the
+  /// source type `S` (the cubit/bloc class), so it affects that class *only*.
+  ///
+  /// This is the answer to "I want the todo list rendered one-per-line, but not
+  /// every other `List<String>` state in the app":
+  ///
+  /// ```dart
+  /// StateInspector.instance.formatSource<TodoBloc>((state) => (state as List<String>).join('\n'));
+  /// ```
+  ///
+  /// The callback receives the state value (typed as `Object?` — cast it, since
+  /// the source type `S` doesn't tell us the state type). A registration here
+  /// wins over a [format] on the same state type, so you can special-case one
+  /// source while a broader state-type formatter still covers the rest.
+  void formatSource<S extends Object>(String Function(Object? state) render) {
+    _sourceFormatters[S.toString()] = (state) => render(state);
   }
 
   static const JsonEncoder _prettyJson = JsonEncoder.withIndent('  ');
@@ -182,18 +199,33 @@ class StateInspector {
   /// Render [value] the way the page should show it.
   ///
   /// Resolution order (first match wins):
-  /// 1. a registered [format] override for the value's exact runtime type;
-  /// 2. built-in defaults for the common cases — `DateTime` → ISO-8601,
+  /// 1. a [formatSource] override for [sourceType] — the most specific, one
+  ///    source only (the page passes the source's type here);
+  /// 2. a [format] override for the value's exact runtime type — every source
+  ///    with that state type;
+  /// 3. built-in defaults for the common cases — `DateTime` → ISO-8601,
   ///    `List`/`Map`/`Set`/`Iterable` → one entry per line (pretty JSON when
   ///    encodable, element-wise `toString()` otherwise);
-  /// 3. `toString()`.
+  /// 4. `toString()`.
   ///
-  /// Never throws — a bad formatter or an un-encodable collection degrades
-  /// gracefully.
-  String display(Object? value) {
+  /// [sourceType] is [TrackedSource.type]; omit it and step 1 is skipped (so a
+  /// direct caller with no source context still gets the state-type + defaults
+  /// path). Never throws — a bad formatter or an un-encodable collection
+  /// degrades gracefully.
+  String display(Object? value, {String? sourceType}) {
     if (value == null) return 'null';
 
-    // 1 — an app-registered override for this exact type.
+    // 1 — a source-scoped override (this cubit/bloc only).
+    final scoped = sourceType == null ? null : _sourceFormatters[sourceType];
+    if (scoped != null) {
+      try {
+        return scoped(value);
+      } catch (e) {
+        return '${value.toString()}  «formatter threw: $e»';
+      }
+    }
+
+    // 2 — an override for this state type (every source with it).
     final custom = _formatters[value.runtimeType.toString()];
     if (custom != null) {
       try {
@@ -203,7 +235,7 @@ class StateInspector {
       }
     }
 
-    // 2 — built-in defaults for the normal cases.
+    // 3 — built-in defaults for the normal cases.
     if (value is DateTime) return value.toIso8601String();
 
     if (value is Map) return _prettyCollection(value);
@@ -366,6 +398,7 @@ class StateInspector {
   void clearInspectors() {
     _inspectors.clear();
     _formatters.clear();
+    _sourceFormatters.clear();
   }
 
   /// Drops the closed ones, keeping what's live.

@@ -311,6 +311,28 @@ void main() {
       expect(StateInspector.instance.display(3), 'count=3');
     });
 
+    test('formatSource scopes to one source type, not every state of that type', () {
+      StateInspector.instance.formatSource<CounterCubit>((s) => 'only-counter=$s');
+      addTearDown(StateInspector.instance.clearInspectors);
+
+      // Matches when the source type is passed…
+      expect(StateInspector.instance.display(3, sourceType: 'CounterCubit'), 'only-counter=3');
+      // …but a different source with the same int state is untouched.
+      expect(StateInspector.instance.display(3, sourceType: 'OtherCubit'), '3');
+      // …and with no source context at all, it doesn't apply.
+      expect(StateInspector.instance.display(3), '3');
+    });
+
+    test('formatSource wins over a state-type format', () {
+      StateInspector.instance.format<int>((n) => 'by-type');
+      StateInspector.instance.formatSource<CounterCubit>((s) => 'by-source');
+      addTearDown(StateInspector.instance.clearInspectors);
+
+      expect(StateInspector.instance.display(1, sourceType: 'CounterCubit'), 'by-source');
+      // A source WITHOUT its own formatter still falls back to the state-type one.
+      expect(StateInspector.instance.display(1, sourceType: 'OtherCubit'), 'by-type');
+    });
+
     test('a List pretty-prints by default (no registration)', () {
       final out = StateInspector.instance.display(['a', 'b']);
       // JSON-indented — one entry per line, not the cramped [a, b].
