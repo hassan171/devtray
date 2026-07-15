@@ -1,6 +1,51 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../core/debug_overlay_kill_switch.dart';
+
+/// A [ValueNotifier] whose value updates **synchronously** but whose listener
+/// notifications are **coalesced onto a microtask**.
+///
+/// Why: the log store is fed from `FlutterError.onError`, which fires *during*
+/// the build/layout/paint phase. A plain `ValueNotifier` would call its
+/// listeners (a `ValueListenableBuilder`, marking it dirty) synchronously from
+/// inside that phase — the "notify during build" hazard. When the same error
+/// recurs every frame (a widget that re-throws on each rebuild), that becomes a
+/// rebuild → re-throw → notify → rebuild loop that freezes the app.
+///
+/// Keeping the value assignment synchronous means reads (`.value`) are always
+/// current — callers and tests that write then read see the new value at once.
+/// Only the *notification* is deferred, and repeated writes in one turn collapse
+/// into a single listener callback after the current stack unwinds.
+class CoalescingValueNotifier<T> extends ChangeNotifier implements ValueListenable<T> {
+  CoalescingValueNotifier(this._value);
+
+  T _value;
+  bool _notifyScheduled = false;
+
+  @override
+  T get value => _value;
+
+  set value(T newValue) {
+    if (_value == newValue) return;
+    _value = newValue;
+    _scheduleNotify();
+  }
+
+  /// Force a coalesced notification without changing [value] — used for the
+  /// `tick` "something changed" signal where the value is just a counter.
+  void bump() => _scheduleNotify();
+
+  void _scheduleNotify() {
+    if (_notifyScheduled) return;
+    _notifyScheduled = true;
+    scheduleMicrotask(() {
+      _notifyScheduled = false;
+      notifyListeners();
+    });
+  }
+}
 
 enum LogLevel { debug, info, warning, error }
 
@@ -99,12 +144,16 @@ class LogStore {
   int maxEntries = 1000;
 
   final List<LogEntry> _entries = [];
-  final ValueNotifier<int> tick = ValueNotifier<int>(0);
+
+  /// A "something changed" signal for the Logs page. Coalesced: many entries
+  /// added in one frame notify once (see [CoalescingValueNotifier]).
+  final CoalescingValueNotifier<int> tick = CoalescingValueNotifier<int>(0);
 
   /// Number of **errors** recorded since the user last opened the Logs page.
   /// The launcher badge reads this — it's how an error that happened while
-  /// nobody was looking still gets noticed.
-  final ValueNotifier<int> unseenErrorCount = ValueNotifier<int>(0);
+  /// nobody was looking still gets noticed. The value is current synchronously;
+  /// only the listener notification is deferred off the build phase.
+  final CoalescingValueNotifier<int> unseenErrorCount = CoalescingValueNotifier<int>(0);
 
   int _nextId = 0;
 
@@ -139,9 +188,8 @@ class LogStore {
     String? context,
     String? library,
   }) {
-    final message = error.toString();
-    _add(
-      message: message,
+    final recorded = _add(
+      message: error.toString(),
       level: LogLevel.error,
       tag: _sourceTag(source),
       error: error,
@@ -150,10 +198,15 @@ class LogStore {
       errorContext: context,
       library: library,
     );
-    unseenErrorCount.value++;
+    // Only badge if the entry was actually recorded — with the kill switch off
+    // _add is a no-op, and badging a launcher that isn't there would be a leak.
+    // The value updates now; the listener callback is coalesced off the build
+    // phase by CoalescingValueNotifier, so a mid-build report can't re-enter.
+    if (recorded) unseenErrorCount.value++;
   }
 
-  void _add({
+  /// Records an entry. Returns false (a no-op) when the kill switch is off.
+  bool _add({
     required String message,
     required LogLevel level,
     String? tag,
@@ -166,7 +219,7 @@ class LogStore {
     // The debugPrint/Zone/error hooks stay installed for the process lifetime,
     // so without this a release build would keep buffering entries nothing will
     // ever read — and badging a launcher that isn't there.
-    if (!DebugOverlayKillSwitch.enabled) return;
+    if (!DebugOverlayKillSwitch.enabled) return false;
 
     _entries.insert(
       0,
@@ -186,7 +239,10 @@ class LogStore {
     while (_entries.length > maxEntries) {
       _entries.removeLast();
     }
-    tick.value++;
+    // Never fire `tick`'s listeners inline — the report may be happening during
+    // a build. `bump` coalesces into one deferred notification.
+    tick.bump();
+    return true;
   }
 
   static String _sourceTag(ErrorSource s) => switch (s) {
@@ -202,7 +258,7 @@ class LogStore {
   void clear() {
     _entries.clear();
     unseenErrorCount.value = 0;
-    tick.value++;
+    tick.bump();
   }
 }
 

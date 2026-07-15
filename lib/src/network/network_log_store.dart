@@ -5,7 +5,7 @@ import '../logs/log_store.dart';
 
 enum NetworkLogStatus { pending, success, failed }
 
-/// Which failed requests are forwarded to the Errors page (and therefore badge
+/// Which failed requests are forwarded to the Logs page (and therefore badge
 /// the launcher).
 ///
 /// The default is [all] — every failure is recorded. Pass a narrower mode to
@@ -89,16 +89,16 @@ class NetworkLogEntry {
   }
 }
 
-/// A failed request, as reported to the Errors page.
+/// A failed request, as reported into the Logs stream.
 ///
-/// Holds the whole [NetworkLogEntry], so the Errors detail can show the URL,
-/// status, headers and response body — a transport failure has no meaningful
-/// Dart stack trace, so the request itself *is* the diagnostic.
+/// Holds the whole [NetworkLogEntry], so the expanded error row can show the
+/// URL, status, headers and response body — a transport failure has no
+/// meaningful Dart stack trace, so the request itself *is* the diagnostic.
 class NetworkError implements Exception {
   final NetworkLogEntry entry;
   const NetworkError(this.entry);
 
-  /// The one-line summary the Errors list shows.
+  /// The one-line summary an error row shows.
   @override
   String toString() {
     final code = entry.statusCode;
@@ -133,7 +133,7 @@ class NetworkLogStore {
   /// reporting) out of the list.
   final List<String> excludedUrlPatterns = [];
 
-  /// Which failed requests also land on the Errors page (and badge the
+  /// Which failed requests also land in the Logs stream (and badge the
   /// launcher). Defaults to [NetworkErrorReporting.all] — every failure is
   /// recorded. Set it from [NetworkDebugPage]'s `errorReporting` argument, or at
   /// any time from code:

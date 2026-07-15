@@ -49,6 +49,68 @@ void main() {
     });
   });
 
+  group('notification coalescing (freeze guard)', () {
+    // Regression: framework errors are reported *during* a build. If the store
+    // notified its listeners synchronously from there, a widget that re-throws
+    // every frame would spiral into a rebuild → re-throw → notify loop and
+    // freeze the app. The value must be live immediately; the notification must
+    // be deferred and coalesced.
+
+    test('value is synchronous, listener callback is deferred', () async {
+      final store = LogStore.instance;
+      var notified = 0;
+      void listener() => notified++;
+      store.unseenErrorCount.addListener(listener);
+      addTearDown(() => store.unseenErrorCount.removeListener(listener));
+
+      store.report('boom');
+
+      // Value updated now...
+      expect(store.unseenErrorCount.value, 1);
+      // ...but no listener has fired yet (still on this synchronous stack).
+      expect(notified, 0);
+
+      await Future<void>.microtask(() {});
+      expect(notified, 1);
+    });
+
+    test('many reports in one turn collapse into a single notification', () async {
+      final store = LogStore.instance;
+      var notified = 0;
+      void listener() => notified++;
+      store.tick.addListener(listener);
+      addTearDown(() => store.tick.removeListener(listener));
+
+      for (var i = 0; i < 50; i++) {
+        store.report('boom $i');
+      }
+      expect(store.entries.length, 50); // all recorded synchronously
+      expect(notified, 0); // none delivered yet
+
+      await Future<void>.microtask(() {});
+      expect(notified, 1); // 50 reports → one listener callback
+    });
+
+    testWidgets('reporting from inside build does not re-enter or throw', (tester) async {
+      // A widget that reports an error every time it builds — the exact shape
+      // that used to freeze. It must build cleanly and settle.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              LogStore.instance.report('reported during build');
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(LogStore.instance.entries, isNotEmpty);
+    });
+  });
+
   group('debugLevelFromName', () {
     test('maps the aliases used by logger / logging / talker', () {
       expect(debugLevelFromName('SEVERE'), LogLevel.error);

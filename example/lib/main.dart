@@ -78,7 +78,7 @@ void main() {
   // overlay, and runs it. `enabled` gates both — with it false this is a plain
   // runApp() and the package leaves no trace in the tree.
   runDebugApp(
-    MaterialApp(
+    app: MaterialApp(
       title: 'debug_overlay example',
       theme: ThemeData(colorSchemeSeed: Colors.blue),
       home: const _Bootstrap(),

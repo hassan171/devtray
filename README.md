@@ -481,13 +481,14 @@ Report your own caught errors — they show up as error rows just the same:
 try {
   await risky();
 } catch (e, s) {
-  ErrorStore.instance.report(e, stackTrace: s);
+  LogStore.instance.report(e, stackTrace: s);
   rethrow;
 }
 ```
 
-`ErrorStore` still exists — it's what feeds the badge, the inline report, and manual
-reporting. It just no longer has a page of its own.
+There is **one store**: `LogStore` holds ordinary logs and errors alike. An error is just an
+error-level entry carrying the extra report fields (`source`, context, stack) — `report()`
+records it and bumps the badge; there's no separate error store or tab.
 
 ### Failed requests land here too
 
@@ -685,7 +686,7 @@ in memory**, with nothing to read it and no reason to exist.
 `DebugOverlayKillSwitch` closes that. It defaults to `kDebugMode`, so **a release build
 captures nothing out of the box** and you don't have to remember anything. When it's off:
 
-- `NetworkLogStore`, `LogStore` and `ErrorStore` all become no-ops.
+- `NetworkLogStore` and `LogStore` (which also holds errors) become no-ops.
 - Mock rules never intercept (it beats an active rule *and* offline mode).
 - Turning it off **clears** whatever was already captured.
 - The interceptor stays a passthrough, so **disabling the tools can't break your networking**.

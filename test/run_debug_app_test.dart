@@ -29,7 +29,7 @@ void main() {
   group('runDebugApp', () {
     testWidgets('mounts the app under a DebugOverlay with the launcher', (tester) async {
       await withDebugPrintRestored(() async {
-        runDebugApp(_app, pages: const [LogsDebugPage()]);
+        runDebugApp(app: _app, pages: const [LogsDebugPage()]);
         await tester.pumpAndSettle();
 
         expect(find.text('app'), findsOneWidget);
@@ -40,7 +40,7 @@ void main() {
 
     testWidgets('opens the tools from the launcher', (tester) async {
       await withDebugPrintRestored(() async {
-        runDebugApp(_app, pages: const [LogsDebugPage()]);
+        runDebugApp(app: _app, pages: const [LogsDebugPage()]);
         await tester.pumpAndSettle();
 
         await tester.tap(find.byIcon(Icons.bug_report));
@@ -53,7 +53,7 @@ void main() {
 
     testWidgets('installs the capture hooks — debugPrint reaches the Logs page', (tester) async {
       await withDebugPrintRestored(() async {
-        runDebugApp(_app, pages: const [LogsDebugPage()]);
+        runDebugApp(app: _app, pages: const [LogsDebugPage()]);
         await tester.pumpAndSettle();
 
         debugPrint('hello from the app');
@@ -64,7 +64,7 @@ void main() {
 
     testWidgets('enabled: false is a plain runApp — no overlay in the tree at all', (tester) async {
       await withDebugPrintRestored(() async {
-        runDebugApp(_app, enabled: false, pages: const [LogsDebugPage()]);
+        runDebugApp(app: _app, enabled: false, pages: const [LogsDebugPage()]);
         await tester.pumpAndSettle();
 
         expect(find.text('app'), findsOneWidget);
@@ -82,7 +82,7 @@ void main() {
     testWidgets('forwards the controller, so open() works from the app', (tester) async {
       await withDebugPrintRestored(() async {
         final controller = DebugOverlayController(showLauncher: false);
-        runDebugApp(_app, controller: controller, pages: const [LogsDebugPage()]);
+        runDebugApp(app: _app, controller: controller, pages: const [LogsDebugPage()]);
         await tester.pumpAndSettle();
 
         expect(find.byIcon(Icons.bug_report), findsNothing);
@@ -110,7 +110,7 @@ void main() {
         );
 
         LogStore.instance.log('a line worth copying');
-        runDebugApp(_app, pages: const [LogsDebugPage()]);
+        runDebugApp(app: _app, pages: const [LogsDebugPage()]);
         await tester.pumpAndSettle();
 
         await tester.tap(find.byIcon(Icons.bug_report));
@@ -135,7 +135,7 @@ void main() {
     testWidgets('a copy button with nothing to copy is disabled', (tester) async {
       await withDebugPrintRestored(() async {
         // No logs — so "Copy all" has nothing to write.
-        runDebugApp(_app, pages: const [LogsDebugPage()]);
+        runDebugApp(app: _app, pages: const [LogsDebugPage()]);
         await tester.pumpAndSettle();
 
         await tester.tap(find.byIcon(Icons.bug_report));
@@ -151,7 +151,7 @@ void main() {
     testWidgets('forwards presentation and theme', (tester) async {
       await withDebugPrintRestored(() async {
         runDebugApp(
-          _app,
+          app: _app,
           presentation: DebugOverlayPresentation.fullscreen,
           theme: const DebugOverlayTheme.dark(),
           pages: const [LogsDebugPage()],

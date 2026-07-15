@@ -28,7 +28,7 @@ class NetworkDebugPage extends DebugPage {
   /// [MockStore.disable] to turn interception off for real.
   final bool enableMocking;
 
-  /// Which failed requests are forwarded to the Errors page (and badge the
+  /// Which failed requests are forwarded to the Logs page (and badge the
   /// launcher). Defaults to [NetworkErrorReporting.all] — every failure. Pass a
   /// narrower mode to cut routine 4xx noise. Applied to
   /// [NetworkLogStore.errorReporting] when the page builds; code can still

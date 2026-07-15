@@ -45,3 +45,28 @@ abstract class DebugStorageAdapter {
   /// delete controls for this section.
   bool get writable => true;
 }
+
+class DebugStorageAdapterInLine extends DebugStorageAdapter {
+  final String _name;
+  final Future<Map<String, Object?>> Function() _readAll;
+  final Future<void> Function(String key, Object? value) _write;
+  final Future<void> Function(String key) _delete;
+  final bool _writable;
+
+  DebugStorageAdapterInLine({required this._name, required this._readAll, required this._write, required this._delete, this._writable = true});
+
+  @override
+  String get name => _name;
+
+  @override
+  Future<Map<String, Object?>> readAll() => _readAll();
+
+  @override
+  Future<void> write(String key, Object? value) => _write(key, value);
+
+  @override
+  Future<void> delete(String key) => _delete(key);
+
+  @override
+  bool get writable => _writable;
+}
