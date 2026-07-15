@@ -16,7 +16,7 @@ class _FakeAdapter extends DebugStorageAdapter {
   final List<({String key, Object? value})> writes = [];
   final List<String> deletes = [];
 
-  _FakeAdapter(this.store, {this.writable = true}) : name = 'Fake';
+  _FakeAdapter(this.store, {this.writable = true, this.name = 'Fake'});
 
   @override
   Future<Map<String, Object?>> readAll() async => Map.of(store);
@@ -80,8 +80,21 @@ void main() {
       await tester.pumpWidget(_host([_ThrowingAdapter(), _FakeAdapter({'ok': 'yes'})]));
       await tester.pumpAndSettle();
 
+      // Two adapters → the store list shows first. Both stores are listed; the
+      // broken one is flagged but the page is fine.
+      expect(find.text('Broken'), findsOneWidget);
+      expect(find.text('Fake'), findsOneWidget);
+
+      // Drill into the broken store — its read error is surfaced there.
+      await tester.tap(find.text('Broken'));
+      await tester.pumpAndSettle();
       expect(find.textContaining('box not open'), findsOneWidget);
-      // The working section still renders.
+
+      // Back out and open the working one — it still renders its keys.
+      await tester.tap(find.byTooltip('Back to stores'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Fake'));
+      await tester.pumpAndSettle();
       expect(find.text('ok'), findsOneWidget);
     });
 
@@ -96,6 +109,63 @@ void main() {
 
       expect(find.text('api_url'), findsOneWidget);
       expect(find.text('user_id'), findsNothing);
+    });
+  });
+
+  group('multiple stores — master/detail', () {
+    testWidgets('opens on a list of stores with key-counts, drills into one', (tester) async {
+      await tester.pumpWidget(_host([
+        _FakeAdapter({'a': 1, 'b': 2}, name: 'Prefs'), // 2 keys
+        _FakeAdapter({'c': 3}, name: 'Cache'), //           1 key
+      ]));
+      await tester.pumpAndSettle();
+
+      // The list shows both stores — keys are NOT all dumped at once anymore.
+      expect(find.text('Stores'), findsOneWidget);
+      expect(find.text('Prefs'), findsOneWidget);
+      expect(find.text('Cache'), findsOneWidget);
+      expect(find.text('a'), findsNothing);
+      expect(find.text('c'), findsNothing);
+      // The row shows the KEY-COUNT, not any value.
+      expect(find.text('2'), findsOneWidget, reason: 'Prefs has 2 keys');
+      expect(find.text('1'), findsOneWidget, reason: 'Cache has 1 key');
+
+      // Drill into the first store.
+      await tester.tap(find.text('Prefs'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('a'), findsOneWidget);
+      expect(find.text('b'), findsOneWidget);
+      expect(find.text('c'), findsNothing, reason: 'the other store is not shown');
+    });
+
+    testWidgets('back arrow returns to the store list', (tester) async {
+      await tester.pumpWidget(_host([
+        _FakeAdapter({'a': 1}, name: 'Prefs'),
+        _FakeAdapter({'c': 3}, name: 'Cache'),
+      ]));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Prefs'));
+      await tester.pumpAndSettle();
+      expect(find.text('a'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Back to stores'));
+      await tester.pumpAndSettle();
+      expect(find.text('Stores'), findsOneWidget);
+      expect(find.text('a'), findsNothing);
+    });
+
+    testWidgets('a single adapter skips the list and opens straight into its keys', (tester) async {
+      await tester.pumpWidget(_host([
+        _FakeAdapter({'a': 1}),
+      ]));
+      await tester.pumpAndSettle();
+
+      // No store list, no back arrow — there's only one store.
+      expect(find.text('Stores'), findsNothing);
+      expect(find.byTooltip('Back to stores'), findsNothing);
+      expect(find.text('a'), findsOneWidget);
     });
   });
 
