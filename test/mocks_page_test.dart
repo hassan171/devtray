@@ -2,7 +2,15 @@ import 'package:debug_overlay/debug_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Widget _host(DebugPage page) => MaterialApp(
+/// Mocks are no longer a page — they render as [MocksView] inside the Network
+/// tab. The view is self-contained (reads MockStore directly), so host it in a
+/// bare Scaffold, sized so its Expanded list has bounded height.
+Widget _host(Widget child) => MaterialApp(
+      home: Scaffold(body: SizedBox(height: 600, child: child)),
+    );
+
+/// For the DebugPage-based tests (the Network tab), which need the tools screen.
+Widget _hostPage(DebugPage page) => MaterialApp(
       home: Scaffold(body: DebugToolsScreen(pages: [page])),
     );
 
@@ -18,9 +26,9 @@ void main() {
     NetworkLogStore.instance.clear();
   });
 
-  group('MocksDebugPage', () {
+  group('MocksView', () {
     testWidgets('shows an empty state that points at the seeded flow', (tester) async {
-      await tester.pumpWidget(_host(const MocksDebugPage()));
+      await tester.pumpWidget(_host(const MocksView()));
       await tester.pumpAndSettle();
 
       expect(find.text('No mock rules'), findsOneWidget);
@@ -30,7 +38,7 @@ void main() {
     testWidgets('lists rules and toggles one off', (tester) async {
       mocks.add(const MockRule(id: 'r', urlPattern: '/orders', statusCode: 500));
 
-      await tester.pumpWidget(_host(const MocksDebugPage()));
+      await tester.pumpWidget(_host(const MocksView()));
       await tester.pumpAndSettle();
 
       expect(find.text('/orders'), findsOneWidget);
@@ -46,7 +54,7 @@ void main() {
     testWidgets('deletes a rule', (tester) async {
       mocks.add(const MockRule(id: 'r', urlPattern: '/orders'));
 
-      await tester.pumpWidget(_host(const MocksDebugPage()));
+      await tester.pumpWidget(_host(const MocksView()));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byTooltip('Delete'));
@@ -56,7 +64,7 @@ void main() {
     });
 
     testWidgets('the offline master switch flips the store', (tester) async {
-      await tester.pumpWidget(_host(const MocksDebugPage()));
+      await tester.pumpWidget(_host(const MocksView()));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byType(Switch).first);
@@ -68,7 +76,7 @@ void main() {
 
   group('MockInterceptionBanner — the "did I fake this?" guard', () {
     testWidgets('hidden when nothing is intercepting', (tester) async {
-      await tester.pumpWidget(_host(const MocksDebugPage()));
+      await tester.pumpWidget(_host(const MocksView()));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('active'), findsNothing);
@@ -78,7 +86,7 @@ void main() {
     testWidgets('warns when a rule is active', (tester) async {
       mocks.add(const MockRule(id: 'r', urlPattern: '/orders'));
 
-      await tester.pumpWidget(_host(const MocksDebugPage()));
+      await tester.pumpWidget(_host(const MocksView()));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('1 mock rule active'), findsOneWidget);
@@ -87,7 +95,7 @@ void main() {
     testWidgets('warns when offline mode is on', (tester) async {
       mocks.offline.value = true;
 
-      await tester.pumpWidget(_host(const MocksDebugPage()));
+      await tester.pumpWidget(_host(const MocksView()));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Offline mode is ON'), findsOneWidget);
@@ -98,7 +106,7 @@ void main() {
         ..offline.value = true
         ..add(const MockRule(id: 'r', urlPattern: '/orders'));
 
-      await tester.pumpWidget(_host(const MocksDebugPage()));
+      await tester.pumpWidget(_host(const MocksView()));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Turn off'));
@@ -111,7 +119,7 @@ void main() {
     testWidgets('also appears on the Network page', (tester) async {
       mocks.add(const MockRule(id: 'r', urlPattern: '/orders'));
 
-      await tester.pumpWidget(_host(const NetworkDebugPage()));
+      await tester.pumpWidget(_hostPage(const NetworkDebugPage()));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('1 mock rule active'), findsOneWidget);
@@ -129,7 +137,7 @@ void main() {
       final real = logs.add(method: 'GET', uri: Uri.parse('https://api.test/users'))!;
       logs.complete(real.id, status: NetworkLogStatus.success, statusCode: 200);
 
-      await tester.pumpWidget(_host(const NetworkDebugPage()));
+      await tester.pumpWidget(_hostPage(const NetworkDebugPage()));
       await tester.pumpAndSettle();
 
       // Exactly one badge, for exactly one of the two rows.
@@ -145,14 +153,14 @@ void main() {
       final entry = logs.add(method: 'GET', uri: Uri.parse('https://api.test/orders'))!;
       logs.complete(entry.id, status: NetworkLogStatus.success, statusCode: 200);
 
-      await tester.pumpWidget(_host(const NetworkDebugPage(enableMocking: false)));
+      await tester.pumpWidget(_hostPage(const NetworkDebugPage(enableMocking: false)));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('/orders'));
       await tester.pumpAndSettle();
 
-      // Without a MocksDebugPage registered, this button would create a rule the
-      // user can't see, edit or delete.
+      // With mocking off there's no Mocks button either, so this rule would be
+      // unreachable — hence the button is hidden.
       expect(find.byTooltip('Mock this request'), findsNothing);
       // The rest of the detail is untouched.
       expect(find.byTooltip('Copy as cURL'), findsOneWidget);
@@ -161,7 +169,7 @@ void main() {
     testWidgets('enableMocking: false hides the interception banner', (tester) async {
       mocks.add(const MockRule(id: 'r', urlPattern: '/orders'));
 
-      await tester.pumpWidget(_host(const NetworkDebugPage(enableMocking: false)));
+      await tester.pumpWidget(_hostPage(const NetworkDebugPage(enableMocking: false)));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('mock rule active'), findsNothing);
@@ -172,7 +180,7 @@ void main() {
       final entry = logs.add(method: 'GET', uri: Uri.parse('https://api.test/orders'))!;
       logs.complete(entry.id, status: NetworkLogStatus.success, statusCode: 200);
 
-      await tester.pumpWidget(_host(const NetworkDebugPage()));
+      await tester.pumpWidget(_hostPage(const NetworkDebugPage()));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('/orders'));
@@ -202,6 +210,41 @@ void main() {
     });
   });
 
+  group('Mocks button inside the Network tab', () {
+    testWidgets('opens the MocksView and the back arrow returns to the list', (tester) async {
+      final logs = NetworkLogStore.instance;
+      final entry = logs.add(method: 'GET', uri: Uri.parse('https://api.test/orders'))!;
+      logs.complete(entry.id, status: NetworkLogStatus.success, statusCode: 200);
+      mocks.add(const MockRule(id: 'r', urlPattern: '/rules-list'));
+
+      await tester.pumpWidget(_hostPage(const NetworkDebugPage()));
+      await tester.pumpAndSettle();
+
+      // The request list is showing.
+      expect(find.text('/orders'), findsOneWidget);
+
+      // Tap the toolbar Mocks button → the mocking UI takes over the tab.
+      await tester.tap(find.byTooltip('Mocks'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('/rules-list'), findsOneWidget, reason: 'mock rule listed');
+      expect(find.text('/orders'), findsNothing, reason: 'the request list is hidden');
+
+      // Back arrow returns to the request list.
+      await tester.tap(find.byTooltip('Back to requests'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('/orders'), findsOneWidget);
+    });
+
+    testWidgets('enableMocking: false hides the Mocks button', (tester) async {
+      await tester.pumpWidget(_hostPage(const NetworkDebugPage(enableMocking: false)));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Mocks'), findsNothing);
+    });
+  });
+
   group('MockRuleEditor', () {
     testWidgets('seeds a new rule from a captured request, prefilling its body', (tester) async {
       final logs = NetworkLogStore.instance;
@@ -213,7 +256,7 @@ void main() {
         responseBody: {'items': []},
       );
 
-      await tester.pumpWidget(_host(const NetworkDebugPage()));
+      await tester.pumpWidget(_hostPage(const NetworkDebugPage()));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('/v1/orders'));
@@ -232,7 +275,7 @@ void main() {
     });
 
     testWidgets('rejects an invalid JSON body rather than saving it', (tester) async {
-      await tester.pumpWidget(_host(const MocksDebugPage()));
+      await tester.pumpWidget(_host(const MocksView()));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Add'));
@@ -250,7 +293,7 @@ void main() {
     });
 
     testWidgets('a non-JSON body is accepted — plain text is legitimate', (tester) async {
-      await tester.pumpWidget(_host(const MocksDebugPage()));
+      await tester.pumpWidget(_host(const MocksView()));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Add'));
@@ -267,7 +310,7 @@ void main() {
     });
 
     testWidgets('saves a rule with all its fields', (tester) async {
-      await tester.pumpWidget(_host(const MocksDebugPage()));
+      await tester.pumpWidget(_host(const MocksView()));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Add'));

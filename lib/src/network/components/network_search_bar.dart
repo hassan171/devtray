@@ -2,13 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../../core/debug_overlay_theme.dart';
 
-/// Search field + result count + clear-all button.
+/// Search field + result count + optional Mocks button + clear-all button.
 class NetworkSearchBar extends StatelessWidget {
   final int total;
   final ValueChanged<String> onChanged;
   final VoidCallback onClear;
 
-  const NetworkSearchBar({super.key, required this.total, required this.onChanged, required this.onClear});
+  /// Opens the mocking UI inside the Network tab. Null hides the button — used
+  /// when mocking is disabled for the page.
+  final VoidCallback? onMocks;
+
+  const NetworkSearchBar({super.key, required this.total, required this.onChanged, required this.onClear, this.onMocks});
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +38,12 @@ class NetworkSearchBar extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Text('$total', style: TextStyle(color: t.textMuted, fontSize: 12)),
+        if (onMocks != null)
+          IconButton(
+            tooltip: 'Mocks',
+            onPressed: onMocks,
+            icon: Icon(Icons.alt_route, color: t.accent),
+          ),
         IconButton(
           tooltip: 'Clear',
           onPressed: onClear,

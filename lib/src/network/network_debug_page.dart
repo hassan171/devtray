@@ -5,7 +5,7 @@ import '../core/debug_page.dart';
 import 'components/network_detail_pane.dart';
 import 'components/network_log_row.dart';
 import 'components/network_search_bar.dart';
-import 'mocking/mocks_debug_page.dart';
+import 'mocking/mocks_view.dart';
 import 'network_log_store.dart';
 
 /// The built-in network inspector page. Reads from [NetworkLogStore], which is
@@ -17,12 +17,12 @@ class NetworkDebugPage extends DebugPage {
   /// Width at or above which the list and detail are shown side by side.
   final double wideBreakpoint;
 
-  /// Whether this page offers the mocking affordances — the "Mock this request"
-  /// button and the interception warning banner.
+  /// Whether this tab offers the mocking affordances — the toolbar "Mocks"
+  /// button (which opens the [MocksView] in-tab), the "Mock this request" button
+  /// on a request's detail, and the interception warning banner.
   ///
-  /// Leave it on only if you also register a [MocksDebugPage]: without one,
-  /// "Mock this request" would create a rule the user has no way to see, edit or
-  /// delete. Set it to false to drop mocking from the UI entirely.
+  /// On by default. Set it to false to drop mocking from the UI entirely — then
+  /// there's no button to reach the rules, so "Mock this request" is hidden too.
   ///
   /// This is UI only. Rules added from code still apply — see
   /// [MockStore.disable] to turn interception off for real.
@@ -70,6 +70,11 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
   String _search = '';
   int? _selectedId;
 
+  /// When true the tab shows the mocking UI (reached via the toolbar button)
+  /// instead of the request list. Kept in-tab so mocks don't need their own
+  /// registered page.
+  bool _showMocks = false;
+
   List<NetworkLogEntry> _filtered(List<NetworkLogEntry> entries) {
     if (_search.isEmpty) return entries;
     final q = _search.toLowerCase();
@@ -82,6 +87,27 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
   Widget build(BuildContext context) {
     final t = DebugOverlayTheme.of(context);
     final store = NetworkLogStore.instance;
+
+    // The mocking UI lives inside this tab — a back arrow returns to the list.
+    if (_showMocks) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              IconButton(
+                tooltip: 'Back to requests',
+                icon: Icon(Icons.arrow_back, size: 18, color: t.text),
+                onPressed: () => setState(() => _showMocks = false),
+              ),
+              Text('Mocks', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: t.text)),
+            ],
+          ),
+          Divider(color: t.border),
+          const Expanded(child: MocksView()),
+        ],
+      );
+    }
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -117,6 +143,7 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
                     store.clear();
                     setState(() => _selectedId = null);
                   },
+                  onMocks: widget.enableMocking ? () => setState(() => _showMocks = true) : null,
                 ),
                 const SizedBox(height: 8),
                 Expanded(

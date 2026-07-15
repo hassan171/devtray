@@ -97,7 +97,6 @@ void main() {
       const UsersDebugPage(),
       // Live state + the change history behind it, for any state library.
       const StateDebugPage(),
-      const MocksDebugPage(),
       VisualDebugPage(),
       // Real device/OS/app facts, plus our own section merged in.
       const DeviceDebugPage(

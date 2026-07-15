@@ -1,31 +1,22 @@
 import 'package:flutter/material.dart';
 
 import '../../core/debug_overlay_theme.dart';
-import '../../core/debug_page.dart';
 import 'components/mock_rule_editor.dart';
 import 'mock_rule.dart';
 import 'mock_store.dart';
 
-/// Intercept requests: force a response, inject latency, or simulate offline.
+/// The mocking UI — intercept requests: force a response, inject latency, or
+/// simulate offline.
 ///
 /// This is what turns the network inspector from an observer into a test
 /// harness — it lets you reach app states (a 500, an empty list, a dead
 /// backend) that otherwise need a server-side change.
-class MocksDebugPage extends DebugPage {
-  const MocksDebugPage();
-
-  @override
-  String get title => 'Mocks';
-
-  @override
-  IconData? get icon => Icons.alt_route;
-
-  @override
-  Widget build(BuildContext context) => const _MocksView();
-}
-
-class _MocksView extends StatelessWidget {
-  const _MocksView();
+///
+/// Not a page of its own — it's shown *inside* the Network tab, reached via its
+/// "Mocks" button (see [NetworkDebugPage]). Kept as a standalone widget so that
+/// embedding is a plain child, and so a host could still drop it anywhere.
+class MocksView extends StatelessWidget {
+  const MocksView({super.key});
 
   @override
   Widget build(BuildContext context) {

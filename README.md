@@ -132,15 +132,21 @@ for HTML responses. Multipart bodies are snapshotted and rendered as `-F` flags 
 
 ## Mocking
 
-`MocksDebugPage` turns the network inspector from an observer into a **test harness**. Force
-a response, inject latency, or kill the network — reaching app states that would otherwise
-need a server-side change.
+Mocking turns the network inspector from an observer into a **test harness**. Force a
+response, inject latency, or kill the network — reaching app states that would otherwise need
+a server-side change.
+
+It's not a separate tab: the **Mocks** button in the Network tab's toolbar opens the mocking
+UI in-place (a back arrow returns to the request list). So registering the Network page is all
+you need:
 
 ```dart
-pages: const [NetworkDebugPage(), MocksDebugPage()],
+pages: const [NetworkDebugPage()],
 ```
 
-Nothing else to wire up: the dio and http adapters already consult the rules.
+Nothing else to wire up: the dio and http adapters already consult the rules. To drop mocking
+from the UI entirely, pass `NetworkDebugPage(enableMocking: false)` — that hides the Mocks
+button, the "Mock this request" action, and the interception banner.
 
 ### The workflow that matters
 
@@ -209,12 +215,11 @@ Turn it off with `runDebugApp(persistMockRules: false)`, or swap the backend by 
 
 ### Don't want mocking at all?
 
-Dropping `MocksDebugPage` is **not enough** — and this matters:
+`NetworkDebugPage(enableMocking: false)` hides the whole UI (the Mocks button, "Mock this
+request", the banner) — but that is **not enough** on its own:
 
-- The Network page's **"Mock this request"** button would still be there, and tapping it
-  would create a rule with no page to see, edit or delete it from.
-- The adapters consult `MockStore` regardless of which pages you register, so a rule added
-  **from code** would still fake traffic with nothing on screen to reveal it.
+- The adapters consult `MockStore` regardless of the UI, so a rule added **from code** would
+  still fake traffic with nothing on screen to reveal it.
 
 So opt out on both levels:
 

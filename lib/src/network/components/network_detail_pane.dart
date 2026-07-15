@@ -23,9 +23,9 @@ class NetworkDetailPane extends StatefulWidget {
   final NetworkLogEntry entry;
   final VoidCallback onBack;
 
-  /// Shows the "Mock this request" action. Off when the host app didn't register
-  /// a [MocksDebugPage] — otherwise the button would create a rule the user has
-  /// no way to see, edit or delete.
+  /// Shows the "Mock this request" action. Off when the Network tab has
+  /// `enableMocking: false` — otherwise the button would create a rule the user
+  /// has no way to reach (the Mocks button is hidden too).
   final bool enableMocking;
 
   const NetworkDetailPane({
