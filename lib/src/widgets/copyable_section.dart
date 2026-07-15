@@ -59,13 +59,7 @@ class CopyButton extends StatefulWidget {
   final IconData icon;
   final double size;
 
-  const CopyButton({
-    super.key,
-    required this.text,
-    this.tooltip = 'Copy',
-    this.icon = Icons.copy,
-    this.size = 14,
-  });
+  const CopyButton({super.key, required this.text, this.tooltip = 'Copy', this.icon = Icons.copy, this.size = 14});
 
   @override
   State<CopyButton> createState() => _CopyButtonState();
@@ -103,11 +97,7 @@ class _CopyButtonState extends State<CopyButton> {
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
       onPressed: widget.text.isEmpty ? null : _copy,
-      icon: Icon(
-        _copied ? Icons.check : widget.icon,
-        size: widget.size,
-        color: _copied ? t.success : t.textMuted,
-      ),
+      icon: Icon(_copied ? Icons.check : widget.icon, size: widget.size, color: _copied ? t.success : t.textMuted),
     );
   }
 }

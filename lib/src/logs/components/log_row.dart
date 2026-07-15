@@ -4,22 +4,23 @@ import '../../core/debug_overlay_theme.dart';
 import '../log_store.dart';
 
 Color logLevelColor(LogLevel level, DebugOverlayTheme t) => switch (level) {
-      LogLevel.debug => t.textMuted,
-      LogLevel.info => t.accent,
-      LogLevel.warning => t.warning,
-      LogLevel.error => t.error,
-    };
+  LogLevel.debug => t.textMuted,
+  LogLevel.info => t.accent,
+  LogLevel.warning => t.warning,
+  LogLevel.error => t.error,
+};
 
 String logLevelLabel(LogLevel level) => switch (level) {
-      LogLevel.debug => 'DBG',
-      LogLevel.info => 'INF',
-      LogLevel.warning => 'WRN',
-      LogLevel.error => 'ERR',
-    };
+  LogLevel.debug => 'DBG',
+  LogLevel.info => 'INF',
+  LogLevel.warning => 'WRN',
+  LogLevel.error => 'ERR',
+};
 
 String formatLogTime(DateTime t) {
   String two(int v) => v.toString().padLeft(2, '0');
-  return '${two(t.hour)}:${two(t.minute)}:${two(t.second)}.${t.millisecond.toString().padLeft(3, '0')}';
+  //.${t.millisecond.toString().padLeft(3, '0')}
+  return '${two(t.hour)}:${two(t.minute)}:${two(t.second)}';
 }
 
 /// One line in the log list. Tapping expands it — log lines are frequently
@@ -37,14 +38,18 @@ class LogRow extends StatelessWidget {
     final t = DebugOverlayTheme.of(context);
     final color = logLevelColor(entry.level, t);
 
-    return InkWell(
+    // GestureDetector, not InkWell — no Material ripple/splash on tap.
+    return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        constraints: const BoxConstraints(minHeight: 40),
+        alignment: Alignment.centerLeft,
         decoration: BoxDecoration(
-          color: entry.level == LogLevel.error ? t.error.withValues(alpha: 0.06) : null,
-          border: Border(bottom: BorderSide(color: t.border, width: 0.5)),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: t.border, width: 0.5),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,

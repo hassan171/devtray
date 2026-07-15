@@ -130,7 +130,7 @@ class _LogsViewState extends State<_LogsView> {
                   ? Center(
                       child: Text(entries.isEmpty ? 'No logs yet' : 'No matches', style: TextStyle(color: t.textMuted)),
                     )
-                  : ListView.builder(
+                  : ListView.separated(
                       itemCount: filtered.length,
                       itemBuilder: (context, i) {
                         final e = filtered[i];
@@ -144,6 +144,7 @@ class _LogsViewState extends State<_LogsView> {
                         }
                         return LogRow(entry: e, isExpanded: expanded, onTap: onTap);
                       },
+                      separatorBuilder: (context, i) => SizedBox(height: 8),
                     ),
             ),
           ],
@@ -167,14 +168,18 @@ class _ErrorLogRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = DebugOverlayTheme.of(context);
 
-    return InkWell(
+    // GestureDetector, not InkWell — no Material ripple/splash on tap.
+    return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        constraints: const BoxConstraints(minHeight: 40),
+        alignment: Alignment.centerLeft,
         decoration: BoxDecoration(
-          color: t.error.withValues(alpha: 0.06),
-          border: Border(bottom: BorderSide(color: t.border, width: 0.5)),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: t.error.withValues(alpha: 0.5), width: 0.5),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
