@@ -356,8 +356,10 @@ void main() {
 
     test('a Map renders too, and a non-encodable one degrades to key: value', () {
       expect(StateInspector.instance.display({'a': 1}), contains('"a"'));
-      final out = StateInspector.instance.display({'c': CounterCubit()});
-      expect(out, startsWith('c: CounterCubit'));
+      // A value JsonEncoder can't take (a live object) → "key: value" lines,
+      // each value via its own toString().
+      final out = StateInspector.instance.display({'c': 'hi', 'n': const Duration(seconds: 1)});
+      expect(out, 'c: hi\nn: 0:00:01.000000');
     });
 
     test('a DateTime uses ISO-8601', () {
@@ -458,8 +460,14 @@ void main() {
       final bloc = CounterBloc();
       addTearDown(bloc.close);
 
-      bloc.add(const Increment());
-      await Future<void>.delayed(Duration.zero);
+      // Dispatch and let the event process INSIDE the tester's async zone. A
+      // bare `await Future.delayed(Duration.zero)` here leaves the bloc's event
+      // subscription with pending work that later `pump()`s block on — the test
+      // then hangs. runAsync drains it against real async before we mount.
+      await tester.runAsync(() async {
+        bloc.add(const Increment());
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      });
 
       await tester.pumpWidget(_host());
       await tester.pumpAndSettle();
@@ -474,7 +482,10 @@ void main() {
       // that caused each) only show once the section is expanded.
       expect(find.text('Increment'), findsNothing);
       await tester.tap(find.text('Changes'));
-      await tester.pumpAndSettle();
+      // Fixed pumps, not pumpAndSettle: tapping the header's InkWell starts a
+      // Material splash animation that pumpAndSettle would wait on forever.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
       expect(find.text('Increment'), findsOneWidget);
     });
 

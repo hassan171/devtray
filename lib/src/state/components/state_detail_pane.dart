@@ -137,8 +137,11 @@ class _StateDetailPaneState extends State<StateDetailPane> {
               const SizedBox(height: 12),
               // Collapsible — the history is the longest, noisiest part of the
               // pane, so it's closed by default and the state/fields lead.
-              InkWell(
+              // GestureDetector, not InkWell — no ripple, and no splash
+              // animation for pumpAndSettle to hang on in tests.
+              GestureDetector(
                 onTap: () => setState(() => _changesExpanded = !_changesExpanded),
+                behavior: HitTestBehavior.opaque,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Row(
@@ -247,7 +250,7 @@ class _StateLine extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: SelectableText(
+          child: Text(
             // Same formatting as the current-state line, so from/to read
             // consistently — a source-scoped/state-type formatter or the pretty
             // List/Map dump.
