@@ -28,7 +28,18 @@ class NetworkDebugPage extends DebugPage {
   /// [MockStore.disable] to turn interception off for real.
   final bool enableMocking;
 
-  const NetworkDebugPage({this.wideBreakpoint = 700, this.enableMocking = true});
+  /// Which failed requests are forwarded to the Errors page (and badge the
+  /// launcher). Defaults to [NetworkErrorReporting.all] — every failure. Pass a
+  /// narrower mode to cut routine 4xx noise. Applied to
+  /// [NetworkLogStore.errorReporting] when the page builds; code can still
+  /// override it at any time.
+  final NetworkErrorReporting errorReporting;
+
+  const NetworkDebugPage({
+    this.wideBreakpoint = 700,
+    this.enableMocking = true,
+    this.errorReporting = NetworkErrorReporting.all,
+  });
 
   @override
   String get title => 'Network';
@@ -37,10 +48,12 @@ class NetworkDebugPage extends DebugPage {
   IconData? get icon => Icons.swap_vert;
 
   @override
-  Widget build(BuildContext context) => _NetworkDebugView(
-        wideBreakpoint: wideBreakpoint,
-        enableMocking: enableMocking,
-      );
+  Widget build(BuildContext context) {
+    // The page owns the policy now (no in-app toggle). Set it here so it takes
+    // effect as soon as the page is in the tree.
+    NetworkLogStore.instance.errorReporting.value = errorReporting;
+    return _NetworkDebugView(wideBreakpoint: wideBreakpoint, enableMocking: enableMocking);
+  }
 }
 
 class _NetworkDebugView extends StatefulWidget {

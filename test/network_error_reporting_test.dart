@@ -20,6 +20,9 @@ void main() {
   setUp(() {
     NetworkLogStore.instance
       ..clear()
+      // Pin serverAndTransport as the baseline for these tests (the product
+      // default is `all` now — set on the page — but the store logic is what's
+      // under test here, and each case sets the mode it needs).
       ..errorReporting.value = NetworkErrorReporting.serverAndTransport;
     ErrorStore.instance.clear();
     // ErrorStore.report now mirrors into LogStore — clear it too so forwarded
@@ -28,16 +31,16 @@ void main() {
   });
 
   group('network → errors forwarding', () {
-    test('default policy forwards 5xx', () {
+    test('serverAndTransport forwards 5xx', () {
       expect(_failWith(code: 500), 1);
       expect(ErrorStore.instance.entries.single.source, ErrorSource.network);
     });
 
-    test('default policy forwards transport failures (no status code)', () {
+    test('serverAndTransport forwards transport failures (no status code)', () {
       expect(_failWith(errorMessage: 'Connection timed out'), 1);
     });
 
-    test('default policy does NOT forward 4xx — a 404 probe should not badge', () {
+    test('serverAndTransport does NOT forward 4xx — a 404 probe should not badge', () {
       expect(_failWith(code: 404), 0);
       expect(ErrorStore.instance.unseenCount.value, 0);
     });
@@ -61,10 +64,10 @@ void main() {
       expect(_failWith(errorMessage: 'timeout'), 0);
     });
 
-    test('the toggle takes effect immediately, mid-session', () {
+    test('changing the mode takes effect immediately, mid-session', () {
       final store = NetworkLogStore.instance;
 
-      expect(_failWith(code: 404), 0); // default: not reported
+      expect(_failWith(code: 404), 0); // serverAndTransport: not reported
       store.errorReporting.value = NetworkErrorReporting.all;
       expect(_failWith(code: 404), 1); // now it is
     });
@@ -136,31 +139,31 @@ void main() {
     });
   });
 
-  group('NetworkErrorReportingButton', () {
-    testWidgets('changes the policy from the Network page', (tester) async {
-      // Mount the way a real app does — DebugOverlay ABOVE MaterialApp, opened
-      // through the launcher. Hosting DebugToolsScreen inside a MaterialApp
-      // instead would lend the panel the app's Navigator, hiding the fact that
-      // PopupMenuButton needs one (it calls Navigator.of) when there is none.
-      final controller = DebugOverlayController();
-      await tester.pumpWidget(DebugOverlay(
-        controller: controller,
-        pages: const [NetworkDebugPage()],
-        child: const MaterialApp(home: Scaffold(body: Text('app'))),
+  group('NetworkDebugPage error-reporting param', () {
+    testWidgets('defaults to reporting all failures', (tester) async {
+      NetworkLogStore.instance.errorReporting.value = NetworkErrorReporting.none; // start off
+
+      await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(body: DebugToolsScreen(pages: [NetworkDebugPage()])),
       ));
-
-      controller.open();
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.byType(NetworkErrorReportingButton));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Report all failures (incl. 4xx)'));
       await tester.pumpAndSettle();
 
       expect(NetworkLogStore.instance.errorReporting.value, NetworkErrorReporting.all);
     });
 
+    testWidgets('a narrower mode passed to the page is applied', (tester) async {
+      NetworkLogStore.instance.errorReporting.value = NetworkErrorReporting.all;
+
+      await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(body: DebugToolsScreen(pages: [NetworkDebugPage(errorReporting: NetworkErrorReporting.none)])),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(NetworkLogStore.instance.errorReporting.value, NetworkErrorReporting.none);
+    });
+  });
+
+  group('NetworkDebugPage panel', () {
     testWidgets('the HTML preview dialog opens from inside the panel', (tester) async {
       // Same trap as the popup menu: showDialog() calls Navigator.of(), and the
       // panel sits above MaterialApp where there is none.

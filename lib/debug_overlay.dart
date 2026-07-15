@@ -34,7 +34,6 @@ export 'src/core/run_debug_app.dart';
 // Network page
 export 'src/network/adapters/dio_adapter.dart';
 export 'src/network/adapters/http_adapter.dart';
-export 'src/network/components/network_search_bar.dart' show NetworkErrorReportingButton;
 export 'src/network/curl_builder.dart';
 export 'src/network/mocking/components/mock_rule_editor.dart';
 export 'src/network/mocking/mock_interceptor.dart';

@@ -8,10 +8,10 @@ enum NetworkLogStatus { pending, success, failed }
 /// Which failed requests are forwarded to the Errors page (and therefore badge
 /// the launcher).
 ///
-/// The default is [serverAndTransport], deliberately: a 404 on a "does this
-/// exist?" probe or a 401 that triggers a token refresh are routine, and
-/// badging on those trains you to ignore the badge. A 5xx or a dead connection
-/// is not routine.
+/// The default is [all] — every failure is recorded. Pass a narrower mode to
+/// [NetworkDebugPage] if the noise gets in the way: [serverAndTransport] skips
+/// routine 4xx (a 404 probe, a 401 that triggers a token refresh), which would
+/// otherwise keep the badge lit.
 enum NetworkErrorReporting {
   /// Nothing is forwarded. Failures still show on the Network page.
   none,
@@ -134,13 +134,14 @@ class NetworkLogStore {
   final List<String> excludedUrlPatterns = [];
 
   /// Which failed requests also land on the Errors page (and badge the
-  /// launcher). Live — the Network page exposes a toggle for it, and you can
-  /// set it yourself at any time:
+  /// launcher). Defaults to [NetworkErrorReporting.all] — every failure is
+  /// recorded. Set it from [NetworkDebugPage]'s `errorReporting` argument, or at
+  /// any time from code:
   ///
   /// ```dart
-  /// NetworkLogStore.instance.errorReporting.value = NetworkErrorReporting.all;
+  /// NetworkLogStore.instance.errorReporting.value = NetworkErrorReporting.serverAndTransport;
   /// ```
-  final ValueNotifier<NetworkErrorReporting> errorReporting = ValueNotifier(NetworkErrorReporting.serverAndTransport);
+  final ValueNotifier<NetworkErrorReporting> errorReporting = ValueNotifier(NetworkErrorReporting.all);
 
   final List<NetworkLogEntry> _entries = [];
   final ValueNotifier<int> tick = ValueNotifier<int>(0);

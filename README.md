@@ -491,24 +491,23 @@ which means a dead backend badges the launcher instead of waiting for you to thi
 the Network tab. The expanded error row shows the request, response headers and response body
 (a transport failure has no meaningful Dart stack, so the request itself is the diagnostic).
 
-**Not every failure, though.** A 404 on a "does this exist?" probe and a 401 that kicks off a
-token refresh are routine — badging on those trains you to ignore the badge. So the default
-forwards **5xx and transport failures** (timeout, refused connection, bad certificate) and
-leaves 4xx to the Network page.
-
-Change it at any time — it's live, and there's a **bell menu on the Network page** to flip it
-mid-session without touching code:
+By default **every failure is forwarded** (`all`). If routine 4xx get in the way — a 404 on a
+"does this exist?" probe, a 401 that kicks off a token refresh — pass a narrower mode to the
+Network page:
 
 ```dart
-NetworkLogStore.instance.errorReporting.value = NetworkErrorReporting.all;   // include 4xx
-NetworkLogStore.instance.errorReporting.value = NetworkErrorReporting.none;  // stop forwarding
+NetworkDebugPage(errorReporting: NetworkErrorReporting.serverAndTransport)  // skip 4xx
+NetworkDebugPage(errorReporting: NetworkErrorReporting.none)                // stop forwarding
 ```
 
 | Mode | Forwards |
 |---|---|
 | `none` | nothing — failures stay on the Network page |
-| `serverAndTransport` *(default)* | 5xx + transport failures |
-| `all` | every failed request, 4xx included |
+| `serverAndTransport` | 5xx + transport failures (timeout, refused connection, bad cert) |
+| `all` *(default)* | every failed request, 4xx included |
+
+The page sets this when it builds; you can still override it live from code at any time via
+`NetworkLogStore.instance.errorReporting.value = ...`.
 
 URLs in `excludedUrlPatterns` never reach either page.
 
