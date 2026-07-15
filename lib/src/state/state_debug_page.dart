@@ -3,52 +3,54 @@ import 'package:flutter/material.dart';
 import '../core/debug_overlay_theme.dart';
 import '../core/debug_page.dart';
 import '../widgets/debug_search_bar.dart';
-import 'bloc_store.dart';
-import 'components/bloc_detail_pane.dart';
-import 'components/bloc_row.dart';
+import 'components/state_detail_pane.dart';
+import 'components/state_row.dart';
+import 'state_inspector.dart';
 
-/// Every bloc/cubit the app has created, its **live state**, and its transition
-/// history.
+/// Every state source the app has created, its **live state**, and its change
+/// history — cubits, blocs, or anything else pushed into [StateInspector].
 ///
-/// Requires the observer:
+/// For bloc, install the adapter:
 ///
 /// ```dart
 /// Bloc.observer = DebugBlocObserver();
 /// ```
 ///
+/// For other libraries, feed [StateInspector] directly (see `state_bridge.dart`).
+///
 /// Narrow layouts show the list OR the detail; wide layouts show both.
-class BlocDebugPage extends DebugPage {
+class StateDebugPage extends DebugPage {
   /// Width at or above which the list and detail sit side by side.
   final double wideBreakpoint;
 
-  const BlocDebugPage({this.wideBreakpoint = 700});
+  const StateDebugPage({this.wideBreakpoint = 700});
 
   @override
-  String get title => 'Blocs';
+  String get title => 'State';
 
   @override
   IconData? get icon => Icons.account_tree_outlined;
 
   @override
-  Widget build(BuildContext context) => _BlocView(wideBreakpoint: wideBreakpoint);
+  Widget build(BuildContext context) => _StateView(wideBreakpoint: wideBreakpoint);
 }
 
-class _BlocView extends StatefulWidget {
+class _StateView extends StatefulWidget {
   final double wideBreakpoint;
-  const _BlocView({required this.wideBreakpoint});
+  const _StateView({required this.wideBreakpoint});
 
   @override
-  State<_BlocView> createState() => _BlocViewState();
+  State<_StateView> createState() => _StateViewState();
 }
 
-class _BlocViewState extends State<_BlocView> {
+class _StateViewState extends State<_StateView> {
   String _search = '';
   int? _selectedId;
 
   @override
   Widget build(BuildContext context) {
     final t = DebugOverlayTheme.of(context);
-    final store = BlocStore.instance;
+    final store = StateInspector.instance;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -57,24 +59,24 @@ class _BlocViewState extends State<_BlocView> {
         return ValueListenableBuilder<int>(
           valueListenable: store.tick,
           builder: (context, _, _) {
-            final all = store.blocs;
+            final all = store.sources;
             final q = _search.toLowerCase();
             final filtered = q.isEmpty ? all : all.where((b) => b.type.toLowerCase().contains(q)).toList();
 
-            TrackedBloc? selected;
+            TrackedSource? selected;
             for (final b in all) {
               if (b.id == _selectedId) selected = b;
             }
 
             // Narrow: the detail replaces the list.
             if (!isWide && selected != null) {
-              return BlocDetailPane(bloc: selected, onBack: () => setState(() => _selectedId = null), onRefresh: () => setState(() {}));
+              return StateDetailPane(source: selected, onBack: () => setState(() => _selectedId = null), onRefresh: () => setState(() {}));
             }
 
             final list = Column(
               children: [
                 DebugSearchBar(
-                  hintText: 'Search cubits',
+                  hintText: 'Search sources',
                   total: filtered.length,
                   onChanged: (v) => setState(() => _search = v),
                   actions: [
@@ -94,7 +96,8 @@ class _BlocViewState extends State<_BlocView> {
                       ? Center(
                           child: Text(
                             all.isEmpty
-                                ? 'No blocs seen yet.\nDid you set Bloc.observer = DebugBlocObserver()?'
+                                ? 'No state sources seen yet.\nDid you install an observer '
+                                    '(e.g. Bloc.observer = DebugBlocObserver()),\nor push into StateInspector?'
                                 : 'No matches',
                             textAlign: TextAlign.center,
                             style: TextStyle(color: t.textMuted),
@@ -102,8 +105,8 @@ class _BlocViewState extends State<_BlocView> {
                         )
                       : ListView.builder(
                           itemCount: filtered.length,
-                          itemBuilder: (context, i) => BlocRow(
-                            bloc: filtered[i],
+                          itemBuilder: (context, i) => StateRow(
+                            source: filtered[i],
                             isSelected: filtered[i].id == _selectedId,
                             onTap: () => setState(() => _selectedId = filtered[i].id),
                           ),
@@ -124,8 +127,8 @@ class _BlocViewState extends State<_BlocView> {
                 Expanded(
                   flex: 60,
                   child: selected == null
-                      ? Center(child: Text('Select a cubit to see its state', style: TextStyle(color: t.textMuted)))
-                      : BlocDetailPane(bloc: selected, onBack: () => setState(() => _selectedId = null), onRefresh: () => setState(() {})),
+                      ? Center(child: Text('Select a source to see its state', style: TextStyle(color: t.textMuted)))
+                      : StateDetailPane(source: selected, onBack: () => setState(() => _selectedId = null), onRefresh: () => setState(() {})),
                 ),
               ],
             );

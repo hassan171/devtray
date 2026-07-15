@@ -48,12 +48,10 @@ class _LogsView extends StatefulWidget {
 
 class _LogsViewState extends State<_LogsView> {
   String _search = '';
-  final Set<LogLevel> _levels = {};
-  final Set<String> _tags = {};
   int? _expandedId;
 
-  /// Advanced conditions, AND-ed on top of the search + chips. Kept in state so
-  /// they survive rebuilds while the page is open.
+  /// Advanced conditions, AND-ed on top of the search. Kept in state so they
+  /// survive rebuilds while the page is open.
   final List<FilterCondition<LogEntry>> _conditions = [];
 
   @override
@@ -75,14 +73,8 @@ class _LogsViewState extends State<_LogsView> {
 
   List<LogEntry> _filtered(List<LogEntry> entries, Map<String, FilterField<LogEntry>> fields) {
     final q = _search.toLowerCase();
-    final quick = entries.where((e) {
-      // An empty chip set means "everything" — see DebugFilterChips.
-      if (_levels.isNotEmpty && !_levels.contains(e.level)) return false;
-      if (_tags.isNotEmpty && (e.tag == null || !_tags.contains(e.tag))) return false;
-      if (q.isNotEmpty && !e.searchable.toLowerCase().contains(q)) return false;
-      return true;
-    }).toList();
-    return applyFilter(quick, _conditions, fields);
+    final searched = q.isEmpty ? entries : entries.where((e) => e.searchable.toLowerCase().contains(q)).toList();
+    return applyFilter(searched, _conditions, fields);
   }
 
   String _asPlainText(List<LogEntry> entries) {

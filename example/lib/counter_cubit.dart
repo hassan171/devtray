@@ -5,12 +5,12 @@ import 'package:debug_overlay/debug_overlay.dart';
 ///
 /// Note `history` and `lastTouched`: they're **not in the state**, they're just
 /// fields. `BlocObserver` never sees them, and Flutter has no reflection to go
-/// find them — so the Blocs page can only show them if something points at them.
+/// find them — so the State page can only show them if something points at them.
 ///
 /// This cubit is wired up from the OUTSIDE, in main.dart:
 ///
 /// ```dart
-/// BlocStore.instance.inspect<CounterCubit>((c) => {
+/// StateInspector.instance.inspect<CounterCubit>((c) => {
 ///   'history': c.history,
 ///   'lastTouched': c.lastTouched,
 /// });
@@ -44,12 +44,12 @@ class CounterCubit extends Cubit<int> {
 
   void reset() => emit(0);
 
-  /// Lands in the cubit's Error section on the Blocs page.
+  /// Lands in the source's Error section on the State page.
   void boom() => addError(StateError('Something broke in CounterCubit'), StackTrace.current);
 }
 
-/// A real Bloc — so the Blocs page can show the **event** that caused each
-/// transition, which a plain cubit doesn't have.
+/// A real Bloc — so the State page can show the **event** that caused each
+/// change, which a plain cubit doesn't have.
 sealed class TodoEvent {
   const TodoEvent();
 }
@@ -72,7 +72,7 @@ class TodoCleared extends TodoEvent {
 /// The other way to expose non-state fields: implement [DebugInspectable].
 ///
 /// Lives next to the fields it exposes, so it can't drift out of sync — at the
-/// cost of a debug_overlay import in the class. (A [BlocStore.inspect]
+/// cost of a debug_overlay import in the class. (A [StateInspector.inspect]
 /// registration would override this, so you can still change what's shown from
 /// the outside.)
 class TodoBloc extends Bloc<TodoEvent, List<String>> implements DebugInspectable {
@@ -93,9 +93,9 @@ class TodoBloc extends Bloc<TodoEvent, List<String>> implements DebugInspectable
 
   @override
   Map<String, Object?> get debugFields => {
-        'addedCount': addedCount,
-        'clearedCount': clearedCount,
-        // Keep values small — `length` reads better than dumping a 500-item list.
-        'items': state.length,
-      };
+    'addedCount': addedCount,
+    'clearedCount': clearedCount,
+    // Keep values small — `length` reads better than dumping a 500-item list.
+    'items': state.length,
+  };
 }

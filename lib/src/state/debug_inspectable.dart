@@ -1,12 +1,12 @@
-/// A cubit/bloc that exposes fields the Blocs page should show **alongside its
-/// state**.
+/// A state source (cubit/bloc/notifier/…) that exposes fields the State page
+/// should show **alongside its state**.
 ///
 /// ## Why this is needed
 ///
-/// `BlocObserver` only ever hands the overlay `bloc.state`. Anything else a
+/// The inspector only ever sees a source's current state value. Anything else a
 /// cubit holds — a sync queue, a lookup map, a retry counter — is just an
 /// instance field on a class the package has never heard of, and Flutter has no
-/// runtime reflection to go find it. So the cubit has to say what to show.
+/// runtime reflection to go find it. So the source has to say what to show.
 ///
 /// ```dart
 /// class SyncCubit extends Cubit<SyncState> implements DebugInspectable {
@@ -22,9 +22,9 @@
 /// }
 /// ```
 ///
-/// **Prefer [BlocStore.inspect] if you'd rather not import this package from
-/// your production classes** — it does the same thing from the outside, and it
-/// wins over this interface when both are present.
+/// **Prefer [StateInspector.inspect] if you'd rather not import this package
+/// from your production classes** — it does the same thing from the outside, and
+/// it wins over this interface when both are present.
 ///
 /// Read fresh every time the page rebuilds, so the values are live.
 abstract class DebugInspectable {

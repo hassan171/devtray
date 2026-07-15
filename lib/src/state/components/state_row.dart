@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../../core/debug_overlay_theme.dart';
-import '../bloc_store.dart';
+import '../state_inspector.dart';
 
-/// One cubit in the list: type, current state, transition count.
-class BlocRow extends StatelessWidget {
-  final TrackedBloc bloc;
+/// One source in the list: type, current state, change count.
+class StateRow extends StatelessWidget {
+  final TrackedSource source;
   final bool isSelected;
   final VoidCallback onTap;
 
-  const BlocRow({super.key, required this.bloc, required this.isSelected, required this.onTap});
+  const StateRow({super.key, required this.source, required this.isSelected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -18,15 +18,15 @@ class BlocRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Opacity(
-        // A closed cubit is kept — you often want to see what it did just before
-        // its screen was popped — but shown as past-tense.
-        opacity: bloc.isClosed ? 0.5 : 1,
+        // A closed source is kept — you often want to see what it did just
+        // before its screen was popped — but shown as past-tense.
+        opacity: source.isClosed ? 0.5 : 1,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           decoration: BoxDecoration(
             color: isSelected
                 ? t.accent.withValues(alpha: 0.12)
-                : bloc.error != null
+                : source.error != null
                     ? t.error.withValues(alpha: 0.06)
                     : null,
             border: Border(bottom: BorderSide(color: t.border, width: 0.5)),
@@ -41,16 +41,16 @@ class BlocRow extends StatelessWidget {
                       children: [
                         Flexible(
                           child: Text(
-                            bloc.type,
+                            source.type,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: t.text),
                           ),
                         ),
-                        if (bloc.isClosed) ...[
+                        if (source.isClosed) ...[
                           const SizedBox(width: 6),
                           _Tag(label: 'closed', color: t.textMuted, theme: t),
                         ],
-                        if (bloc.error != null) ...[
+                        if (source.error != null) ...[
                           const SizedBox(width: 6),
                           _Tag(label: 'error', color: t.error, theme: t),
                         ],
@@ -59,7 +59,9 @@ class BlocRow extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       // The live state — the thing you opened this page for.
-                      bloc.state?.toString() ?? 'null',
+                      // Through display() so a registered formatter / pretty
+                      // default applies; the row keeps it to one line.
+                      StateInspector.instance.display(source.state),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: t.textMuted),
@@ -69,7 +71,7 @@ class BlocRow extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                '${bloc.changes.length}',
+                '${source.changes.length}',
                 style: TextStyle(fontSize: 11, color: t.textMuted),
               ),
             ],

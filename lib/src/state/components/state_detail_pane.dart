@@ -2,24 +2,34 @@ import 'package:flutter/material.dart';
 
 import '../../core/debug_overlay_theme.dart';
 import '../../widgets/copyable_section.dart';
-import '../bloc_store.dart';
+import '../state_inspector.dart';
 
-/// One cubit in full: its live state, any error, and every transition it has
+/// One source in full: its live state, any error, and every change it has
 /// made — newest first.
-class BlocDetailPane extends StatelessWidget {
-  final TrackedBloc bloc;
+class StateDetailPane extends StatefulWidget {
+  final TrackedSource source;
   final VoidCallback onBack;
 
-  /// Re-reads the cubit's non-state fields. They change without an emit, and the
-  /// page only rebuilds on emits — so this is the only way to see them update.
+  /// Re-reads the source's non-state fields. They change without a state emit,
+  /// and the page only rebuilds on emits — so this is the only way to see them
+  /// update.
   final VoidCallback onRefresh;
 
-  const BlocDetailPane({
+  const StateDetailPane({
     super.key,
-    required this.bloc,
+    required this.source,
     required this.onBack,
     required this.onRefresh,
   });
+
+  @override
+  State<StateDetailPane> createState() => _StateDetailPaneState();
+}
+
+class _StateDetailPaneState extends State<StateDetailPane> {
+  /// The change history can be long and is the noisiest part of the pane —
+  /// collapsed by default so the state + fields are what you see first.
+  bool _changesExpanded = false;
 
   static String _formatTime(DateTime t) {
     String two(int v) => v.toString().padLeft(2, '0');
@@ -29,10 +39,11 @@ class BlocDetailPane extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = DebugOverlayTheme.of(context);
+    final source = widget.source;
 
     // Read on every build, so the values are live rather than a snapshot from
-    // whenever the cubit last emitted.
-    final fields = BlocStore.instance.liveFieldsOf(bloc);
+    // whenever the source last emitted.
+    final fields = StateInspector.instance.liveFieldsOf(source);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -42,16 +53,16 @@ class BlocDetailPane extends StatelessWidget {
             IconButton(
               tooltip: 'Back',
               icon: Icon(Icons.arrow_back, size: 18, color: t.text),
-              onPressed: onBack,
+              onPressed: widget.onBack,
             ),
             Expanded(
               child: Text(
-                bloc.type,
+                source.type,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: t.text),
               ),
             ),
-            if (bloc.isClosed)
+            if (source.isClosed)
               Text('closed', style: TextStyle(fontSize: 10, color: t.textMuted)),
           ],
         ),
@@ -59,11 +70,11 @@ class BlocDetailPane extends StatelessWidget {
         Expanded(
           child: ListView(
             children: [
-              CopyableSection(title: 'Current state', body: bloc.state?.toString() ?? 'null'),
+              CopyableSection(title: 'Current state', body: StateInspector.instance.display(source.state)),
 
-              // Fields the cubit holds OUTSIDE its state — a sync queue, a lookup
-              // map, a retry counter. Read live from the instance on every
-              // rebuild, so they're current. See BlocStore.inspect.
+              // Fields the source holds OUTSIDE its state — a sync queue, a
+              // lookup map, a retry counter. Read live from the instance on every
+              // rebuild, so they're current. See StateInspector.inspect.
               if (fields.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Row(
@@ -81,7 +92,7 @@ class BlocDetailPane extends StatelessWidget {
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
                       icon: Icon(Icons.refresh, size: 14, color: t.textMuted),
-                      onPressed: onRefresh,
+                      onPressed: widget.onRefresh,
                     ),
                   ],
                 ),
@@ -116,33 +127,45 @@ class BlocDetailPane extends StatelessWidget {
                 ),
               ],
 
-              if (bloc.error != null)
+              if (source.error != null)
                 CopyableSection(
                   title: 'Error',
                   titleColor: t.error,
-                  body: '${bloc.error}\n\n${bloc.stackTrace ?? ''}',
+                  body: '${source.error}\n\n${source.stackTrace ?? ''}',
                 ),
 
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Text(
-                    'Transitions',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: t.text),
+              // Collapsible — the history is the longest, noisiest part of the
+              // pane, so it's closed by default and the state/fields lead.
+              InkWell(
+                onTap: () => setState(() => _changesExpanded = !_changesExpanded),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Icon(_changesExpanded ? Icons.expand_more : Icons.chevron_right, size: 18, color: t.textMuted),
+                      const SizedBox(width: 2),
+                      Text(
+                        'Changes',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: t.text),
+                      ),
+                      const SizedBox(width: 8),
+                      Text('${source.changes.length}', style: TextStyle(fontSize: 11, color: t.textMuted)),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  Text('${bloc.changes.length}', style: TextStyle(fontSize: 11, color: t.textMuted)),
-                ],
+                ),
               ),
-              const SizedBox(height: 4),
 
-              if (bloc.changes.isEmpty)
-                Text(
-                  'No transitions yet — this cubit is still on its initial state.',
-                  style: TextStyle(fontSize: 11, color: t.textMuted),
-                )
-              else
-                for (final change in bloc.changes) _ChangeTile(change: change, theme: t, formatTime: _formatTime),
+              if (_changesExpanded) ...[
+                const SizedBox(height: 4),
+                if (source.changes.isEmpty)
+                  Text(
+                    'No changes yet — this source is still on its initial state.',
+                    style: TextStyle(fontSize: 11, color: t.textMuted),
+                  )
+                else
+                  for (final change in source.changes) _ChangeTile(change: change, theme: t, formatTime: _formatTime),
+              ],
 
               const SizedBox(height: 8),
             ],
@@ -154,7 +177,7 @@ class BlocDetailPane extends StatelessWidget {
 }
 
 class _ChangeTile extends StatelessWidget {
-  final BlocChangeEntry change;
+  final StateChangeEntry change;
   final DebugOverlayTheme theme;
   final String Function(DateTime) formatTime;
 
@@ -178,7 +201,8 @@ class _ChangeTile extends StatelessWidget {
                 formatTime(change.time),
                 style: TextStyle(fontSize: 10, fontFamily: 'monospace', color: theme.textMuted),
               ),
-              // Only a Bloc has events — a plain Cubit's emit has none.
+              // Only some sources carry an event — a bloc's transition does, a
+              // plain cubit emit or a ValueNotifier set does not.
               if (change.event != null) ...[
                 const SizedBox(width: 8),
                 Flexible(
@@ -222,7 +246,9 @@ class _StateLine extends StatelessWidget {
         ),
         Expanded(
           child: SelectableText(
-            value?.toString() ?? 'null',
+            // Same formatting as the current-state line, so from/to read
+            // consistently — a registered formatter or the pretty List/Map dump.
+            StateInspector.instance.display(value),
             style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: color),
           ),
         ),

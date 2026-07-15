@@ -49,20 +49,27 @@ void main() {
   // Keep background noise out of the inspector.
   NetworkLogStore.instance.excludedUrlPatterns.add('/health');
 
-  // Feeds the Blocs page. Already have an observer? Chain it:
+  // Feeds the State page from bloc. The observer is the only bloc-specific
+  // adapter — StateInspector itself is library-agnostic. Already have an
+  // observer? Chain it:
   //   Bloc.observer = DebugBlocObserver(next: MyObserver());
   Bloc.observer = DebugBlocObserver();
 
-  // Show fields a cubit holds OUTSIDE its state. The observer only ever sees
-  // `bloc.state`, and Flutter has no reflection to go find the rest — so you
-  // point at them. Registered from out here, CounterCubit needs no debug import.
+  // Show fields a source holds OUTSIDE its state. The inspector only ever sees
+  // the current state, and Flutter has no reflection to go find the rest — so
+  // you point at them. Registered from out here, CounterCubit needs no debug
+  // import.
   //
   // (TodoBloc does the same thing the other way, by implementing
   // DebugInspectable — see counter_cubit.dart.)
-  BlocStore.instance.inspect<CounterCubit>((c) => {
-        'history': c.history,
-        'lastTouched': c.lastTouched,
-      });
+  StateInspector.instance.inspect<CounterCubit>((c) => {'history': c.history, 'lastTouched': c.lastTouched});
+
+  // Control how a state is DISPLAYED (not the data). TodoBloc's state is a
+  // List<String>, which by default prints cramped: [todo 48, todo 48, todo 49].
+  // Render one todo per line instead. Keyed by the state type, so it covers the
+  // current-state line and the from/to history alike. (List/Map already get a
+  // pretty JSON dump for free — this is the per-type override.)
+  StateInspector.instance.format<List<String>>((todos) => todos.isEmpty ? '(no todos)' : todos.map((t) => '• $t').join('\n'));
 
   // One call: installs the log/error capture Zone, wraps the app in the
   // overlay, and runs it. `enabled` gates both — with it false this is a plain
@@ -88,8 +95,8 @@ void main() {
       // A custom page — the Storage page can browse the Hive box generically,
       // but when you know what the data is, a purpose-built view beats a dump.
       const UsersDebugPage(),
-      // Live cubit state + the transition history behind it.
-      const BlocDebugPage(),
+      // Live state + the change history behind it, for any state library.
+      const StateDebugPage(),
       const MocksDebugPage(),
       VisualDebugPage(),
       // Real device/OS/app facts, plus our own section merged in.
@@ -205,14 +212,8 @@ class HomeScreen extends StatelessWidget {
                 // emits, so this only appears after "Re-read fields" in the
                 // detail pane — which is exactly why that button exists.
                 OutlinedButton(onPressed: counter.touch, child: const Text('touch (no emit)')),
-                OutlinedButton(
-                  onPressed: () => todos.add(TodoAdded('todo ${DateTime.now().second}')),
-                  child: const Text('add todo (Bloc)'),
-                ),
-                OutlinedButton(
-                  onPressed: () => todos.add(const TodoCleared()),
-                  child: const Text('clear todos'),
-                ),
+                OutlinedButton(onPressed: () => todos.add(TodoAdded('todo ${DateTime.now().second}')), child: const Text('add todo (Bloc)')),
+                OutlinedButton(onPressed: () => todos.add(const TodoCleared()), child: const Text('clear todos')),
               ],
             ),
             const Divider(height: 24),

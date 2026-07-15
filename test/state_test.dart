@@ -45,13 +45,13 @@ class CounterBloc extends Bloc<CounterEvent, int> {
 }
 
 Widget _host() => const MaterialApp(
-      home: Scaffold(body: DebugToolsScreen(pages: [BlocDebugPage()])),
+      home: Scaffold(body: DebugToolsScreen(pages: [StateDebugPage()])),
     );
 
 void main() {
   setUp(() {
     DebugOverlayKillSwitch.reset();
-    BlocStore.instance.clear();
+    StateInspector.instance.clear();
     Bloc.observer = DebugBlocObserver();
   });
 
@@ -65,10 +65,10 @@ void main() {
       final cubit = CounterCubit();
       addTearDown(cubit.close);
 
-      final tracked = BlocStore.instance.blocs.single;
+      final tracked = StateInspector.instance.sources.single;
       expect(tracked.type, 'CounterCubit');
       expect(tracked.state, 0);
-      expect(tracked.changes, isEmpty, reason: 'creation is not a transition');
+      expect(tracked.changes, isEmpty, reason: 'creation is not a change');
     });
 
     test('emits are recorded, newest first', () {
@@ -79,7 +79,7 @@ void main() {
         ..increment()
         ..increment();
 
-      final tracked = BlocStore.instance.blocs.single;
+      final tracked = StateInspector.instance.sources.single;
       expect(tracked.state, 2);
       expect(tracked.changes, hasLength(2));
 
@@ -100,9 +100,9 @@ void main() {
 
       a.increment();
 
-      final blocs = BlocStore.instance.blocs;
-      expect(blocs, hasLength(2));
-      expect(blocs.map((x) => x.state), containsAll([1, 0]));
+      final sources = StateInspector.instance.sources;
+      expect(sources, hasLength(2));
+      expect(sources.map((x) => x.state), containsAll([1, 0]));
     });
 
     test('errors are captured', () {
@@ -111,7 +111,7 @@ void main() {
 
       cubit.boom();
 
-      final tracked = BlocStore.instance.blocs.single;
+      final tracked = StateInspector.instance.sources.single;
       expect(tracked.error, isA<StateError>());
       expect(tracked.stackTrace, isNotNull);
     });
@@ -121,7 +121,7 @@ void main() {
       cubit.increment();
       await cubit.close();
 
-      final tracked = BlocStore.instance.blocs.single;
+      final tracked = StateInspector.instance.sources.single;
       // You often want to see what a cubit did just before its screen was popped.
       expect(tracked.isClosed, isTrue);
       expect(tracked.state, 1);
@@ -135,8 +135,8 @@ void main() {
       final live = CounterCubit();
       addTearDown(live.close);
 
-      expect(BlocStore.instance.blocs.first.isClosed, isFalse);
-      expect(BlocStore.instance.blocs.last.isClosed, isTrue);
+      expect(StateInspector.instance.sources.first.isClosed, isFalse);
+      expect(StateInspector.instance.sources.last.isClosed, isTrue);
     });
 
     test('clearClosed drops the dead ones and keeps the live', () async {
@@ -145,18 +145,18 @@ void main() {
       final live = CounterCubit();
       addTearDown(live.close);
 
-      BlocStore.instance.clearClosed();
+      StateInspector.instance.clearClosed();
 
-      expect(BlocStore.instance.blocs.single.isClosed, isFalse);
+      expect(StateInspector.instance.sources.single.isClosed, isFalse);
     });
   });
 
   group('events — the ordering trap', () {
     // A Bloc calls onTransition and THEN emit (which fires onChange) — see
     // Bloc._on's onEmit. So the event arrives BEFORE the change it caused.
-    // Assuming the reverse staples each event onto the *previous* transition.
+    // Assuming the reverse staples each event onto the *previous* change.
 
-    test('each transition carries the event that actually caused it', () async {
+    test('each change carries the event that actually caused it', () async {
       final bloc = CounterBloc();
       addTearDown(bloc.close);
 
@@ -165,7 +165,7 @@ void main() {
       bloc.add(const Decrement());
       await Future<void>.delayed(Duration.zero);
 
-      final tracked = BlocStore.instance.blocs.single;
+      final tracked = StateInspector.instance.sources.single;
       expect(tracked.changes, hasLength(2));
 
       // Newest first: the Decrement (1 → 0) and the Increment (0 → 1).
@@ -178,16 +178,16 @@ void main() {
       expect(tracked.changes[1].to, 1);
     });
 
-    test('a bloc transition is recorded ONCE, not twice', () async {
+    test('a bloc change is recorded ONCE, not twice', () async {
       // onTransition and onChange both fire for the same state change. Recording
-      // in both would double-log every transition.
+      // in both would double-log every change.
       final bloc = CounterBloc();
       addTearDown(bloc.close);
 
       bloc.add(const Increment());
       await Future<void>.delayed(Duration.zero);
 
-      expect(BlocStore.instance.blocs.single.changes, hasLength(1));
+      expect(StateInspector.instance.sources.single.changes, hasLength(1));
     });
 
     test('a plain cubit has no event', () {
@@ -196,85 +196,85 @@ void main() {
 
       cubit.increment();
 
-      expect(BlocStore.instance.blocs.single.changes.single.event, isNull);
+      expect(StateInspector.instance.sources.single.changes.single.event, isNull);
     });
   });
 
   group('fields outside the state', () {
-    // BlocObserver only ever hands over `bloc.state`. Anything else a cubit holds
+    // The inspector only ever sees the current state. Anything else a cubit holds
     // — a sync queue, a lookup map, a counter — is invisible to it, and Flutter
     // has no reflection to go find it. So the cubit (or the app) has to point.
 
     test('inspect() exposes fields without touching the cubit', () {
-      BlocStore.instance.inspect<CounterCubit>((c) => {'extra': c.extra});
-      addTearDown(BlocStore.instance.clearInspectors);
+      StateInspector.instance.inspect<CounterCubit>((c) => {'extra': c.extra});
+      addTearDown(StateInspector.instance.clearInspectors);
 
       final cubit = CounterCubit();
       addTearDown(cubit.close);
       cubit.extra = 'hello';
 
-      final tracked = BlocStore.instance.blocs.single;
-      expect(BlocStore.instance.liveFieldsOf(tracked), {'extra': 'hello'});
+      final tracked = StateInspector.instance.sources.single;
+      expect(StateInspector.instance.liveFieldsOf(tracked), {'extra': 'hello'});
     });
 
     test('fields are read LIVE, not snapshotted at emit time', () {
-      BlocStore.instance.inspect<CounterCubit>((c) => {'extra': c.extra});
-      addTearDown(BlocStore.instance.clearInspectors);
+      StateInspector.instance.inspect<CounterCubit>((c) => {'extra': c.extra});
+      addTearDown(StateInspector.instance.clearInspectors);
 
       final cubit = CounterCubit();
       addTearDown(cubit.close);
 
-      final tracked = BlocStore.instance.blocs.single;
-      expect(BlocStore.instance.liveFieldsOf(tracked)['extra'], isNull);
+      final tracked = StateInspector.instance.sources.single;
+      expect(StateInspector.instance.liveFieldsOf(tracked)['extra'], isNull);
 
       // Changed with NO emit — the whole reason the detail pane has a re-read
       // button.
       cubit.extra = 'changed';
 
-      expect(BlocStore.instance.liveFieldsOf(tracked)['extra'], 'changed');
+      expect(StateInspector.instance.liveFieldsOf(tracked)['extra'], 'changed');
     });
 
     test('DebugInspectable works too', () {
       final cubit = InspectableCubit();
       addTearDown(cubit.close);
 
-      final tracked = BlocStore.instance.blocs.single;
-      expect(BlocStore.instance.liveFieldsOf(tracked), {'from': 'the interface'});
+      final tracked = StateInspector.instance.sources.single;
+      expect(StateInspector.instance.liveFieldsOf(tracked), {'from': 'the interface'});
     });
 
     test('a registration WINS over the interface, so you can override a cubit', () {
-      BlocStore.instance.inspect<InspectableCubit>((c) => {'from': 'the registry'});
-      addTearDown(BlocStore.instance.clearInspectors);
+      StateInspector.instance.inspect<InspectableCubit>((c) => {'from': 'the registry'});
+      addTearDown(StateInspector.instance.clearInspectors);
 
       final cubit = InspectableCubit();
       addTearDown(cubit.close);
 
-      final tracked = BlocStore.instance.blocs.single;
-      expect(BlocStore.instance.liveFieldsOf(tracked), {'from': 'the registry'});
+      final tracked = StateInspector.instance.sources.single;
+      expect(StateInspector.instance.liveFieldsOf(tracked), {'from': 'the registry'});
     });
 
     test('a cubit exposing nothing yields no fields', () {
       final cubit = CounterCubit();
       addTearDown(cubit.close);
 
-      expect(BlocStore.instance.liveFieldsOf(BlocStore.instance.blocs.single), isEmpty);
+      expect(StateInspector.instance.liveFieldsOf(StateInspector.instance.sources.single), isEmpty);
     });
 
     test('a throwing extractor does NOT take the page down', () {
-      BlocStore.instance.inspect<CounterCubit>((c) => throw StateError('bad extractor'));
-      addTearDown(BlocStore.instance.clearInspectors);
+      StateInspector.instance.inspect<CounterCubit>((c) => throw StateError('bad extractor'));
+      addTearDown(StateInspector.instance.clearInspectors);
 
       final cubit = CounterCubit();
       addTearDown(cubit.close);
 
-      final fields = BlocStore.instance.liveFieldsOf(BlocStore.instance.blocs.single);
+      final fields = StateInspector.instance.liveFieldsOf(StateInspector.instance.sources.single);
       expect(fields.keys.single, contains('threw'));
       expect(fields.values.single.toString(), contains('bad extractor'));
     });
 
     test('the instance is held WEAKLY — the tool must not keep your cubits alive', () {
       final cubit = CounterCubit();
-      final tracked = BlocStore.instance.blocs.single;
+      final tracked = StateInspector.instance.sources.single;
 
       // A strong reference would make this debug tool the thing leaking every
       // cubit the app ever created — the exact bug it exists to help you find.
@@ -286,9 +286,9 @@ void main() {
   });
 
   group('caps', () {
-    test('transitions are capped per bloc, keeping the newest', () {
-      BlocStore.instance.maxChangesPerBloc = 3;
-      addTearDown(() => BlocStore.instance.maxChangesPerBloc = 100);
+    test('changes are capped per source, keeping the newest', () {
+      StateInspector.instance.maxChangesPerSource = 3;
+      addTearDown(() => StateInspector.instance.maxChangesPerSource = 100);
 
       final cubit = CounterCubit();
       addTearDown(cubit.close);
@@ -297,9 +297,71 @@ void main() {
         cubit.increment();
       }
 
-      final changes = BlocStore.instance.blocs.single.changes;
+      final changes = StateInspector.instance.sources.single.changes;
       expect(changes, hasLength(3));
       expect(changes.first.to, 10, reason: 'the newest is kept');
+    });
+  });
+
+  group('display / format', () {
+    test('a registered formatter renders the state', () {
+      StateInspector.instance.format<int>((n) => 'count=$n');
+      addTearDown(StateInspector.instance.clearInspectors);
+
+      expect(StateInspector.instance.display(3), 'count=3');
+    });
+
+    test('a List pretty-prints by default (no registration)', () {
+      final out = StateInspector.instance.display(['a', 'b']);
+      // JSON-indented — one entry per line, not the cramped [a, b].
+      expect(out, contains('\n'));
+      expect(out, contains('"a"'));
+    });
+
+    test('a non-JSON-encodable list lays out element-wise, not one cramped line', () {
+      // A list of objects JsonEncoder can't handle must not throw — each element
+      // gets its own line via toString().
+      final out = StateInspector.instance.display([CounterCubit(), CounterCubit()]);
+      expect(out, contains('CounterCubit'));
+      expect(out, contains('\n'), reason: 'one entry per line');
+    });
+
+    test('a Set is rendered one entry per line', () {
+      final out = StateInspector.instance.display({'x', 'y'});
+      expect(out, contains('"x"'));
+      expect(out, contains('\n'));
+    });
+
+    test('a Map renders too, and a non-encodable one degrades to key: value', () {
+      expect(StateInspector.instance.display({'a': 1}), contains('"a"'));
+      final out = StateInspector.instance.display({'c': CounterCubit()});
+      expect(out, startsWith('c: CounterCubit'));
+    });
+
+    test('a DateTime uses ISO-8601', () {
+      final out = StateInspector.instance.display(DateTime.utc(2026, 7, 15, 9, 30));
+      expect(out, '2026-07-15T09:30:00.000Z');
+    });
+
+    test('a throwing formatter degrades instead of taking the page down', () {
+      StateInspector.instance.format<int>((_) => throw StateError('bad'));
+      addTearDown(StateInspector.instance.clearInspectors);
+
+      expect(StateInspector.instance.display(1), contains('formatter threw'));
+    });
+
+    testWidgets('the formatted state shows on the page', (tester) async {
+      StateInspector.instance.format<int>((n) => 'COUNT_$n');
+      addTearDown(StateInspector.instance.clearInspectors);
+
+      final cubit = CounterCubit();
+      addTearDown(cubit.close);
+      cubit.increment();
+
+      await tester.pumpWidget(_host());
+      await tester.pumpAndSettle();
+
+      expect(find.text('COUNT_1'), findsOneWidget);
     });
   });
 
@@ -311,7 +373,7 @@ void main() {
       addTearDown(cubit.close);
       cubit.increment();
 
-      expect(BlocStore.instance.blocs, isEmpty);
+      expect(StateInspector.instance.sources, isEmpty);
     });
   });
 
@@ -328,19 +390,19 @@ void main() {
       expect(seen, contains('create'));
       expect(seen, contains('change'));
       // …and ours does too.
-      expect(BlocStore.instance.blocs.single.changes, hasLength(1));
+      expect(StateInspector.instance.sources.single.changes, hasLength(1));
     });
   });
 
-  group('BlocDebugPage', () {
-    testWidgets('tells you when the observer is not installed', (tester) async {
+  group('StateDebugPage', () {
+    testWidgets('tells you when no observer is installed', (tester) async {
       Bloc.observer = _NoopObserver();
-      BlocStore.instance.clear();
+      StateInspector.instance.clear();
 
       await tester.pumpWidget(_host());
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Did you set Bloc.observer'), findsOneWidget);
+      expect(find.textContaining('Did you install an observer'), findsOneWidget);
     });
 
     testWidgets('lists cubits with their live state', (tester) async {
@@ -366,11 +428,11 @@ void main() {
       await tester.pumpAndSettle();
 
       // This is the whole point — watching state change on-device.
-      expect(BlocStore.instance.blocs.single.state, 1);
+      expect(StateInspector.instance.sources.single.state, 1);
       expect(find.text('CounterCubit'), findsOneWidget);
     });
 
-    testWidgets('tapping a cubit shows its transition history', (tester) async {
+    testWidgets('tapping a source shows its change history', (tester) async {
       final bloc = CounterBloc();
       addTearDown(bloc.close);
 
@@ -384,8 +446,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Current state'), findsOneWidget);
-      expect(find.text('Transitions'), findsOneWidget);
-      // The event that caused it.
+      expect(find.text('Changes'), findsOneWidget);
+
+      // The change history is collapsed by default — its tiles (and the event
+      // that caused each) only show once the section is expanded.
+      expect(find.text('Increment'), findsNothing);
+      await tester.tap(find.text('Changes'));
+      await tester.pumpAndSettle();
       expect(find.text('Increment'), findsOneWidget);
     });
 

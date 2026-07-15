@@ -115,26 +115,6 @@ void main() {
       expect(find.text('beta message'), findsNothing);
     });
 
-    testWidgets('filters by level chip', (tester) async {
-      LogStore.instance
-        ..log('a debug line')
-        ..log('an error line', level: LogLevel.error);
-
-      await tester.pumpWidget(_host(const LogsDebugPage()));
-      await tester.pumpAndSettle();
-
-      // Both visible with no filter active.
-      expect(find.text('a debug line'), findsOneWidget);
-      expect(find.text('an error line'), findsOneWidget);
-
-      // "ERR" also appears as the level badge on the error row — target the chip.
-      await tester.tap(find.descendant(of: find.byType(DebugFilterChips<LogLevel>), matching: find.text('ERR')));
-      await tester.pumpAndSettle();
-
-      expect(find.text('a debug line'), findsNothing);
-      expect(find.text('an error line'), findsOneWidget);
-    });
-
     testWidgets('shows an empty state', (tester) async {
       await tester.pumpWidget(_host(const LogsDebugPage()));
       await tester.pumpAndSettle();

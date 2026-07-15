@@ -72,10 +72,12 @@ export 'src/visual/visual_debug_page.dart';
 export 'src/export/debug_report.dart';
 export 'src/export/export_debug_page.dart';
 
-// Bloc page — live cubit state + transition history.
-export 'src/bloc/bloc_debug_page.dart';
-export 'src/bloc/bloc_store.dart';
-export 'src/bloc/debug_inspectable.dart';
+// State page — live state + change history for any state library.
+export 'src/state/bloc_adapter.dart';
+export 'src/state/debug_inspectable.dart';
+export 'src/state/state_bridge.dart';
+export 'src/state/state_debug_page.dart';
+export 'src/state/state_inspector.dart';
 
 // Storage page — browse and edit key/value storage at runtime.
 export 'src/storage/components/storage_list_editor.dart';
