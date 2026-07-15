@@ -13,7 +13,6 @@ Widget _host(DebugPage page) {
 void main() {
   setUp(() {
     LogStore.instance.clear();
-    ErrorStore.instance.clear();
   });
 
   group('LogStore', () {
@@ -69,30 +68,32 @@ void main() {
     });
   });
 
-  group('ErrorStore', () {
-    test('report() records and increments the unseen badge', () {
-      final store = ErrorStore.instance;
-      expect(store.unseenCount.value, 0);
+  group('errors in the one LogStore', () {
+    test('report() records an error-level entry and increments the badge', () {
+      final store = LogStore.instance;
+      expect(store.unseenErrorCount.value, 0);
 
       store.report(StateError('boom'), stackTrace: StackTrace.current);
 
-      expect(store.entries.single.title, contains('boom'));
-      expect(store.entries.single.source, ErrorSource.manual);
-      expect(store.unseenCount.value, 1);
+      final entry = store.entries.single;
+      expect(entry.title, contains('boom'));
+      expect(entry.isError, isTrue);
+      expect(entry.source, ErrorSource.reported);
+      expect(store.unseenErrorCount.value, 1);
     });
 
-    test('markAllSeen clears the badge but keeps the entries', () {
-      final store = ErrorStore.instance;
+    test('markErrorsSeen clears the badge but keeps the entries', () {
+      final store = LogStore.instance;
       store.report('boom');
-      store.markAllSeen();
+      store.markErrorsSeen();
 
-      expect(store.unseenCount.value, 0);
+      expect(store.unseenErrorCount.value, 0);
       expect(store.entries, hasLength(1));
     });
 
     test('title is the first line only', () {
-      ErrorStore.instance.report('line one\nline two');
-      expect(ErrorStore.instance.entries.single.title, 'line one');
+      LogStore.instance.report('line one\nline two');
+      expect(LogStore.instance.entries.single.title, 'line one');
     });
   });
 
@@ -124,14 +125,14 @@ void main() {
 
   group('errors in the combined Logs page', () {
     testWidgets('an error shows as a row, expands to its report, and clears the badge', (tester) async {
-      ErrorStore.instance.report(StateError('kaboom'), stackTrace: StackTrace.current);
-      expect(ErrorStore.instance.unseenCount.value, 1);
+      LogStore.instance.report(StateError('kaboom'), stackTrace: StackTrace.current);
+      expect(LogStore.instance.unseenErrorCount.value, 1);
 
       await tester.pumpWidget(_host(const LogsDebugPage()));
       await tester.pumpAndSettle();
 
       // Opening the Logs page marks them seen — that's what drops the badge.
-      expect(ErrorStore.instance.unseenCount.value, 0);
+      expect(LogStore.instance.unseenErrorCount.value, 0);
       expect(find.textContaining('kaboom'), findsOneWidget);
 
       // Expand the error row inline (no separate detail screen anymore).
@@ -189,7 +190,7 @@ void main() {
 
       expect(find.text('1'), findsNothing);
 
-      ErrorStore.instance.report('boom');
+      LogStore.instance.report('boom');
       await tester.pumpAndSettle();
 
       expect(find.text('1'), findsOneWidget);

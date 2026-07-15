@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
-import '../errors/error_store.dart';
+import '../logs/log_store.dart';
 import 'debug_overlay_theme.dart';
 
 /// The draggable floating bug button. Positioned by the parent overlay; this
 /// widget only draws it.
 ///
-/// When errors have been captured since the Errors page was last opened, a
-/// count badge appears — that's the whole point of capturing them, since
-/// nobody is watching the console on a device.
+/// When errors have been captured since the Logs page was last opened, a count
+/// badge appears — that's the whole point of capturing them, since nobody is
+/// watching the console on a device.
 class DebugLauncherButton extends StatelessWidget {
   final double size;
   final IconData icon;
@@ -42,7 +42,7 @@ class DebugLauncherButton extends StatelessWidget {
       color: Colors.transparent,
       child: showErrorBadge
           ? ValueListenableBuilder<int>(
-              valueListenable: ErrorStore.instance.unseenCount,
+              valueListenable: LogStore.instance.unseenErrorCount,
               builder: (context, count, child) => Stack(
                 clipBehavior: Clip.none,
                 alignment: Alignment.topLeft,

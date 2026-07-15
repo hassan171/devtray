@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import '../errors/error_store.dart';
 import '../logs/log_store.dart';
 import '../network/network_log_store.dart';
 
@@ -63,16 +62,18 @@ class DebugReport {
     }
 
     if (sections.errors) {
-      final errors = ErrorStore.instance.entries.take(maxErrors).toList();
-      buffer.writeln('## Errors (${ErrorStore.instance.entries.length})');
+      // Errors are the error-level entries of the one log store.
+      final allErrors = LogStore.instance.entries.where((e) => e.isError).toList();
+      final errors = allErrors.take(maxErrors).toList();
+      buffer.writeln('## Errors (${allErrors.length})');
       if (errors.isEmpty) buffer.writeln('None.');
 
       for (final e in errors) {
         buffer
           ..writeln('### ${e.title}')
-          ..writeln('Source: ${e.source.name}')
+          ..writeln('Source: ${e.source!.name}')
           ..writeln('Time: ${e.time.toIso8601String()}');
-        if (e.context != null) buffer.writeln('Context: ${e.context}');
+        if (e.errorContext != null) buffer.writeln('Context: ${e.errorContext}');
         if (e.stackTrace != null) {
           buffer
             ..writeln('```')

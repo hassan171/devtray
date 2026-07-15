@@ -24,7 +24,7 @@ void main() {
     DebugOverlayKillSwitch.reset();
     NetworkLogStore.instance.clear();
     LogStore.instance.clear();
-    ErrorStore.instance.clear();
+    LogStore.instance.clear();
     MockStore.instance
       ..enable()
       ..clear()
@@ -61,10 +61,10 @@ void main() {
     });
 
     test('errors are not captured, and the launcher badge stays at zero', () {
-      ErrorStore.instance.report(StateError('boom'));
+      LogStore.instance.report(StateError('boom'));
 
-      expect(ErrorStore.instance.entries, isEmpty);
-      expect(ErrorStore.instance.unseenCount.value, 0);
+      expect(LogStore.instance.entries, isEmpty);
+      expect(LogStore.instance.unseenErrorCount.value, 0);
     });
 
     test('mocks never intercept — the worst thing this package could do', () {
@@ -81,11 +81,11 @@ void main() {
     test('drops whatever was already captured', () {
       NetworkLogStore.instance.add(method: 'GET', uri: Uri.parse('https://api.test/x'));
       LogStore.instance.log('secret');
-      ErrorStore.instance.report('boom');
+      LogStore.instance.report('boom');
 
       expect(NetworkLogStore.instance.entries, isNotEmpty);
       expect(LogStore.instance.entries, isNotEmpty);
-      expect(ErrorStore.instance.entries, isNotEmpty);
+      expect(LogStore.instance.entries, isNotEmpty);
 
       DebugOverlayKillSwitch.enabled = false;
 
@@ -93,7 +93,7 @@ void main() {
       // exists to prevent.
       expect(NetworkLogStore.instance.entries, isEmpty);
       expect(LogStore.instance.entries, isEmpty);
-      expect(ErrorStore.instance.entries, isEmpty);
+      expect(LogStore.instance.entries, isEmpty);
     });
 
     test('turning it back on resumes capture', () {

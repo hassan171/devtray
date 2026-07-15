@@ -23,7 +23,7 @@ const _app = MaterialApp(home: Scaffold(body: Text('app')));
 void main() {
   setUp(() {
     LogStore.instance.clear();
-    ErrorStore.instance.clear();
+    LogStore.instance.clear();
   });
 
   group('runDebugApp', () {

@@ -28,14 +28,14 @@ void _seedStores() {
   );
 
   LogStore.instance.log('Signed in', level: LogLevel.info, tag: 'auth');
-  ErrorStore.instance.report(StateError('boom'), stackTrace: StackTrace.current);
+  LogStore.instance.report(StateError('boom'), stackTrace: StackTrace.current);
 }
 
 void main() {
   setUp(() {
     NetworkLogStore.instance.clear();
     LogStore.instance.clear();
-    ErrorStore.instance.clear();
+    LogStore.instance.clear();
   });
 
   group('DebugReport', () {

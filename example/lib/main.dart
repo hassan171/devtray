@@ -23,15 +23,15 @@ final todos = TodoBloc();
 final httpClient = DebugHttpClient(http.Client());
 
 /// Seeds one pref of each type, so the Storage page has something to edit.
-Future<void> _seedPrefs() async {
-  final prefs = await SharedPreferences.getInstance();
-  if (prefs.containsKey('seen_onboarding')) return;
+Future<void> _seedPref() async {
+  final pref = await SharedPreferences.getInstance();
+  if (pref.containsKey('seen_onboarding')) return;
 
-  await prefs.setBool('seen_onboarding', true);
-  await prefs.setInt('retry_count', 3);
-  await prefs.setDouble('scroll_offset', 12.5);
-  await prefs.setString('api_url', 'https://jsonplaceholder.typicode.com');
-  await prefs.setStringList('recent_tags', ['flutter', 'dart']);
+  await pref.setBool('seen_onboarding', true);
+  await pref.setInt('retry_count', 3);
+  await pref.setDouble('scroll_offset', 12.5);
+  await pref.setString('api_url', 'https://jsonplaceholder.typicode.com');
+  await pref.setStringList('recent_tags', ['flutter', 'dart']);
 }
 
 /// Opens the Hive box. Awaited by [_Bootstrap] rather than in `main`, because
@@ -125,7 +125,7 @@ void main() {
 
   // After runDebugApp — it calls ensureInitialized() inside the Zone, so the
   // binding (and therefore the SharedPreferences channel) exists by now.
-  _seedPrefs();
+  _seedPref();
 }
 
 /// Holds the app back until Hive is open, so nothing touches a closed box.

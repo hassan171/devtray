@@ -63,7 +63,7 @@ void main() {
       ..offline.value = false
       ..rulesEnabled.value = true;
     logs = NetworkLogStore.instance..clear();
-    ErrorStore.instance.clear();
+    LogStore.instance.clear();
   });
 
   group('MockRule.matches', () {
@@ -318,8 +318,8 @@ void main() {
 
       await dio.get<dynamic>('https://api.test/orders', options: Options(validateStatus: (_) => true));
 
-      expect(ErrorStore.instance.entries.single.source, ErrorSource.network);
-      expect(ErrorStore.instance.unseenCount.value, 1);
+      expect(LogStore.instance.entries.single.source, ErrorSource.network);
+      expect(LogStore.instance.unseenErrorCount.value, 1);
     });
   });
 

@@ -2,26 +2,23 @@ import 'package:flutter/material.dart';
 
 import '../core/debug_overlay_theme.dart';
 import '../core/debug_page.dart';
-import '../errors/error_detail_view.dart';
-import '../errors/error_store.dart';
 import '../filter/debug_filter.dart';
 import '../filter/debug_filter_builder.dart';
 import '../widgets/copyable_section.dart';
 import '../widgets/debug_search_bar.dart';
 import 'components/log_row.dart';
+import 'error_log_detail.dart';
 import 'log_store.dart';
 
 /// Captured logs **and** errors in one stream — `debugPrint`, `print` (under
 /// [DebugOverlayCapture.runApp]), [LogStore.log], plus every framework/uncaught
-/// error and forwarded network failure (which [ErrorStore] mirrors in as
-/// error-level lines).
+/// error and forwarded network failure ([LogStore.report]).
 ///
-/// One store, one entry type: errors arrive here as [LogEntry]s carrying an
-/// [LogEntry.errorRef], so `Source = network` (or `Level = ERR`) in the
-/// advanced filter reproduces the old standalone Errors view without a separate
-/// tab. Search the text, one-tap the quick chips, or build a JQL-style filter
-/// over level / source / tag / message / time. Expand an error row to see its
-/// full report (request, response, stack) inline.
+/// One store, one entry type: errors are [LogEntry]s with [LogEntry.isError]
+/// set, so `Source = network` (or `Level = ERR`) in the advanced filter isolates
+/// an errors-only view. Search the text or build a JQL-style filter over level /
+/// source / tag / message / time. Expand an error row to see its full report
+/// (request, response, stack) inline.
 class LogsDebugPage extends DebugPage {
   const LogsDebugPage();
 
@@ -57,8 +54,8 @@ class _LogsViewState extends State<_LogsView> {
   @override
   void initState() {
     super.initState();
-    // The errors are on screen now (folded into this list) — drop the badge.
-    ErrorStore.instance.markAllSeen();
+    // The errors are on screen now — drop the launcher's error badge.
+    LogStore.instance.markErrorsSeen();
   }
 
   /// The structured fields the advanced builder can target. Built fresh so tag
@@ -107,10 +104,7 @@ class _LogsViewState extends State<_LogsView> {
                   tooltip: 'Clear',
                   icon: Icon(Icons.delete_outline, color: t.error),
                   onPressed: () {
-                    // Clears the forwarded error lines too; also reset the badge
-                    // source so it doesn't re-badge from stale entries.
                     store.clear();
-                    ErrorStore.instance.clear();
                     setState(() => _expandedId = null);
                   },
                 ),
@@ -139,8 +133,8 @@ class _LogsViewState extends State<_LogsView> {
 
                         // An error row expands into the full report; a plain log
                         // line uses the existing inline expansion.
-                        if (e.errorRef case final ErrorEntry err) {
-                          return _ErrorLogRow(entry: e, error: err, isExpanded: expanded, onTap: onTap);
+                        if (e.isError) {
+                          return _ErrorLogRow(entry: e, isExpanded: expanded, onTap: onTap);
                         }
                         return LogRow(entry: e, isExpanded: expanded, onTap: onTap);
                       },
@@ -154,15 +148,13 @@ class _LogsViewState extends State<_LogsView> {
   }
 }
 
-/// An error-level log row that expands into the same rich report the standalone
-/// Errors page shows.
+/// An error-level log row that expands into its full report.
 class _ErrorLogRow extends StatelessWidget {
   final LogEntry entry;
-  final ErrorEntry error;
   final bool isExpanded;
   final VoidCallback onTap;
 
-  const _ErrorLogRow({required this.entry, required this.error, required this.isExpanded, required this.onTap});
+  const _ErrorLogRow({required this.entry, required this.isExpanded, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -203,20 +195,20 @@ class _ErrorLogRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Icon(error.source == ErrorSource.network ? Icons.cloud_off : Icons.error_outline, size: 14, color: t.error),
+                Icon(entry.source == ErrorSource.network ? Icons.cloud_off : Icons.error_outline, size: 14, color: t.error),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        error.title,
+                        entry.title,
                         maxLines: isExpanded ? null : 2,
                         overflow: isExpanded ? null : TextOverflow.ellipsis,
                         style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: t.text),
                       ),
                       Text(
-                        '${errorSourceLabel(error.source)}${error.context == null ? '' : ' · ${error.context}'}',
+                        '${errorSourceLabel(entry.source!)}${entry.errorContext == null ? '' : ' · ${entry.errorContext}'}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontSize: 10, color: t.textMuted),
@@ -227,7 +219,7 @@ class _ErrorLogRow extends StatelessWidget {
                 Icon(isExpanded ? Icons.expand_less : Icons.expand_more, size: 16, color: t.textMuted),
               ],
             ),
-            if (isExpanded) ...[const SizedBox(height: 8), ErrorDetailSections(entry: error)],
+            if (isExpanded) ...[const SizedBox(height: 8), ErrorDetailSections(entry: entry)],
           ],
         ),
       ),

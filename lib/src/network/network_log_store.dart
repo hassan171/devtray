@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../core/debug_overlay_kill_switch.dart';
-import '../errors/error_store.dart';
+import '../logs/log_store.dart';
 
 enum NetworkLogStatus { pending, success, failed }
 
@@ -209,7 +209,7 @@ class NetworkLogStore {
     // Every adapter funnels through complete(), so hooking here forwards
     // failures from dio, http and any hand-rolled client alike.
     if (status == NetworkLogStatus.failed && _shouldReport(entry)) {
-      ErrorStore.instance.report(
+      LogStore.instance.report(
         NetworkError(entry),
         // Transport failures have no useful Dart stack (the throw site is deep
         // in the HTTP client), so the entry itself is the diagnostic.

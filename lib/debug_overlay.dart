@@ -48,11 +48,10 @@ export 'src/logs/log_bridge.dart';
 export 'src/logs/log_store.dart';
 export 'src/logs/logs_debug_page.dart';
 
-// Errors — no standalone page; errors fold into the combined Logs stream.
-// These stay for the launcher badge, the inline error report, and manual
-// reporting via ErrorStore.report.
-export 'src/errors/error_detail_view.dart' show ErrorDetailSections, errorSourceLabel, errorAsPlainText, requestSummary;
-export 'src/errors/error_store.dart';
+// Errors — no separate store or page. Errors live in the one LogStore as
+// error-level entries (LogStore.report / captureErrors, ErrorSource, the badge)
+// and render in the Logs page. This is just the shared detail renderer.
+export 'src/logs/error_log_detail.dart' show ErrorDetailSections, errorSourceLabel, errorAsPlainText, requestSummary;
 
 // Advanced filtering — the JQL-style condition builder, reusable on any page.
 export 'src/filter/debug_filter.dart';

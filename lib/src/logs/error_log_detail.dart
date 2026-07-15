@@ -4,13 +4,13 @@ import '../core/debug_overlay_theme.dart';
 import '../network/components/network_formatters.dart';
 import '../network/network_log_store.dart';
 import '../widgets/copyable_section.dart';
-import 'error_store.dart';
+import 'log_store.dart';
 
 String errorSourceLabel(ErrorSource s) => switch (s) {
       ErrorSource.flutter => 'Flutter',
       ErrorSource.uncaught => 'Uncaught',
       ErrorSource.network => 'Network',
-      ErrorSource.manual => 'Reported',
+      ErrorSource.reported => 'Reported',
     };
 
 /// The request side of a failed call, as a copyable block.
@@ -28,9 +28,9 @@ String requestSummary(NetworkError e) {
   ].join('\n');
 }
 
-/// The full error report as plain text — used by the copy button on both the
-/// standalone Errors page and the combined Logs page.
-String errorAsPlainText(ErrorEntry e) {
+/// The full error report as plain text — used by the copy button on an expanded
+/// error row.
+String errorAsPlainText(LogEntry e) {
   if (e.error case final NetworkError n) {
     return [
       n.toString(),
@@ -46,8 +46,8 @@ String errorAsPlainText(ErrorEntry e) {
   }
 
   return [
-    e.error.toString(),
-    if (e.context != null) '\nContext: ${e.context}',
+    e.error?.toString() ?? e.message,
+    if (e.errorContext != null) '\nContext: ${e.errorContext}',
     if (e.library != null) 'Library: ${e.library}',
     if (e.stackTrace != null) '\n${e.stackTrace}',
   ].join('\n');
@@ -55,10 +55,9 @@ String errorAsPlainText(ErrorEntry e) {
 
 /// The copyable sections that make up an error report: exception, context,
 /// library, and either the request/response (network errors) or the stack
-/// trace. Shared so the standalone Errors detail and the inline Logs expansion
-/// render identically.
+/// trace. Rendered from a [LogEntry] — the single store's error-level entry.
 class ErrorDetailSections extends StatelessWidget {
-  final ErrorEntry entry;
+  final LogEntry entry;
   const ErrorDetailSections({super.key, required this.entry});
 
   @override
@@ -68,8 +67,8 @@ class ErrorDetailSections extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        CopyableSection(title: 'Exception', body: entry.error.toString(), titleColor: t.error),
-        if (entry.context != null) CopyableSection(title: 'Context', body: entry.context!),
+        CopyableSection(title: 'Exception', body: entry.error?.toString() ?? entry.message, titleColor: t.error),
+        if (entry.errorContext != null) CopyableSection(title: 'Context', body: entry.errorContext!),
         if (entry.library != null) CopyableSection(title: 'Library', body: entry.library!),
 
         // A failed request has no useful Dart stack — the throw site is deep

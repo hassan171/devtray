@@ -101,7 +101,7 @@ void runDebugApp(
       );
     },
     (error, stack) {
-      ErrorStore.instance.report(error, stackTrace: stack, source: ErrorSource.uncaught);
+      LogStore.instance.report(error, stackTrace: stack, source: ErrorSource.uncaught);
       // Keep the default behaviour — print it. Without this the Zone would
       // silently eat every uncaught error, which is far worse than the bug
       // we're trying to observe.

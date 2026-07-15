@@ -2,8 +2,8 @@ import 'package:debug_overlay/debug_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// Completes a request with [status]/[code] and returns how many errors it
-/// pushed onto the Errors page.
+/// Completes a request with [status]/[code] and returns how many error-level
+/// entries it pushed into the one LogStore.
 int _failWith({int? code, String? errorMessage}) {
   final store = NetworkLogStore.instance;
   final entry = store.add(method: 'GET', uri: Uri.parse('https://x.test/thing'))!;
@@ -13,7 +13,7 @@ int _failWith({int? code, String? errorMessage}) {
     statusCode: code,
     errorMessage: errorMessage,
   );
-  return ErrorStore.instance.entries.length;
+  return LogStore.instance.entries.length;
 }
 
 void main() {
@@ -24,16 +24,13 @@ void main() {
       // default is `all` now — set on the page — but the store logic is what's
       // under test here, and each case sets the mode it needs).
       ..errorReporting.value = NetworkErrorReporting.serverAndTransport;
-    ErrorStore.instance.clear();
-    // ErrorStore.report now mirrors into LogStore — clear it too so forwarded
-    // rows don't leak between tests.
     LogStore.instance.clear();
   });
 
   group('network → errors forwarding', () {
     test('serverAndTransport forwards 5xx', () {
       expect(_failWith(code: 500), 1);
-      expect(ErrorStore.instance.entries.single.source, ErrorSource.network);
+      expect(LogStore.instance.entries.single.source, ErrorSource.network);
     });
 
     test('serverAndTransport forwards transport failures (no status code)', () {
@@ -42,7 +39,7 @@ void main() {
 
     test('serverAndTransport does NOT forward 4xx — a 404 probe should not badge', () {
       expect(_failWith(code: 404), 0);
-      expect(ErrorStore.instance.unseenCount.value, 0);
+      expect(LogStore.instance.unseenErrorCount.value, 0);
     });
 
     test('successful requests never forward', () {
@@ -50,7 +47,7 @@ void main() {
       final entry = store.add(method: 'GET', uri: Uri.parse('https://x.test/ok'))!;
       store.complete(entry.id, status: NetworkLogStatus.success, statusCode: 200);
 
-      expect(ErrorStore.instance.entries, isEmpty);
+      expect(LogStore.instance.entries, isEmpty);
     });
 
     test('"all" forwards 4xx too', () {
@@ -74,12 +71,12 @@ void main() {
 
     test('a forwarded failure badges the launcher', () {
       _failWith(code: 503);
-      expect(ErrorStore.instance.unseenCount.value, 1);
+      expect(LogStore.instance.unseenErrorCount.value, 1);
     });
 
     test('NetworkError carries the entry and summarises itself', () {
       _failWith(code: 500);
-      final error = ErrorStore.instance.entries.single.error;
+      final error = LogStore.instance.entries.single.error;
 
       expect(error, isA<NetworkError>());
       expect((error as NetworkError).entry.statusCode, 500);
@@ -89,7 +86,7 @@ void main() {
 
     test('a transport failure summarises with its message, not a status', () {
       _failWith(errorMessage: 'Connection refused');
-      expect(ErrorStore.instance.entries.single.error.toString(), contains('Connection refused'));
+      expect(LogStore.instance.entries.single.error.toString(), contains('Connection refused'));
     });
 
     test('excluded URLs never reach the Errors page either', () {
@@ -99,7 +96,7 @@ void main() {
 
       // add() returns null for an excluded URL, so nothing is ever completed.
       expect(store.add(method: 'GET', uri: Uri.parse('https://x.test/health')), isNull);
-      expect(ErrorStore.instance.entries, isEmpty);
+      expect(LogStore.instance.entries, isEmpty);
     });
   });
 
