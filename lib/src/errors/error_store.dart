@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../core/debug_overlay_kill_switch.dart';
+import '../logs/log_store.dart';
 
 /// Where a caught error came from.
 enum ErrorSource {
@@ -86,24 +87,42 @@ class ErrorStore {
     // badging a launcher that isn't there.
     if (!DebugOverlayKillSwitch.enabled) return;
 
-    _entries.insert(
-      0,
-      ErrorEntry(
-        id: _nextId++,
-        time: DateTime.now(),
-        source: source,
-        error: error,
-        stackTrace: stackTrace,
-        context: context,
-        library: library,
-      ),
+    final entry = ErrorEntry(
+      id: _nextId++,
+      time: DateTime.now(),
+      source: source,
+      error: error,
+      stackTrace: stackTrace,
+      context: context,
+      library: library,
     );
+    _entries.insert(0, entry);
     while (_entries.length > maxEntries) {
       _entries.removeLast();
     }
     unseenCount.value++;
     tick.value++;
+
+    // Every error also shows in the combined Logs stream as an error-level line,
+    // carrying a ref back to this entry so the row can expand into the full
+    // report. The Logs page is the single list; ErrorStore stays the source of
+    // the badge and the detail data.
+    LogStore.instance.log(
+      entry.title,
+      level: LogLevel.error,
+      tag: _sourceTag(source),
+      error: error,
+      stackTrace: stackTrace,
+      errorRef: entry,
+    );
   }
+
+  static String _sourceTag(ErrorSource s) => switch (s) {
+        ErrorSource.flutter => 'flutter',
+        ErrorSource.uncaught => 'uncaught',
+        ErrorSource.network => 'network',
+        ErrorSource.manual => 'reported',
+      };
 
   /// Called by the Errors page when it's shown.
   void markAllSeen() => unseenCount.value = 0;

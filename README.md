@@ -32,8 +32,7 @@ void main() => runDebugApp(
   enabled: kDebugMode,
   pages: const [
     NetworkDebugPage(),
-    LogsDebugPage(),
-    ErrorsDebugPage(),
+    LogsDebugPage(), // logs + errors in one filterable stream
     DeviceDebugPage(provider: PluginDeviceInfoProvider()),
   ],
 );
@@ -458,17 +457,20 @@ See `lib/src/logs/log_bridge.dart` for these snippets in-source.
 
 ## Errors
 
-`ErrorsDebugPage` collects uncaught exceptions and framework errors, with the full stack
-trace, the widget-ownership context, and a one-tap "copy report".
+There's no separate Errors tab — errors are folded into the **Logs page** as error-level
+rows. Expand one for the full report: the exception, the widget-ownership context, and either
+the failed request/response (network errors) or the Dart stack trace, with a one-tap "copy
+report". Filter the Logs page to `Level = ERR`, or `Source = flutter / uncaught / network /
+reported`, and you have an errors-only view without leaving the stream.
 
 The point is the errors **nobody was watching the console for** — so the launcher grows a red
-count badge when errors arrive, and opening the page clears it:
+count badge when errors arrive, and opening the Logs page clears it:
 
 ```dart
 DebugOverlay(showErrorBadge: false, ...)   // if you'd rather it didn't
 ```
 
-Report your own caught errors into it:
+Report your own caught errors — they show up as error rows just the same:
 
 ```dart
 try {
@@ -479,11 +481,14 @@ try {
 }
 ```
 
+`ErrorStore` still exists — it's what feeds the badge, the inline report, and manual
+reporting. It just no longer has a page of its own.
+
 ### Failed requests land here too
 
-A failed request is an error, so the Network page forwards failures to the Errors page —
+A failed request is an error, so the Network page forwards failures into the same stream —
 which means a dead backend badges the launcher instead of waiting for you to think to open
-the Network tab. The Errors detail shows the request, response headers and response body
+the Network tab. The expanded error row shows the request, response headers and response body
 (a transport failure has no meaningful Dart stack, so the request itself is the diagnostic).
 
 **Not every failure, though.** A 404 on a "does this exist?" probe and a 401 that kicks off a

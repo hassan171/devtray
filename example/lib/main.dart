@@ -77,8 +77,10 @@ void main() {
     controller: debug,
     pages: [
       const NetworkDebugPage(),
+      // Combined logs + errors. Errors fold in as error-level rows (expand one
+      // for its full report); the advanced filter's `Source`/`Level` fields
+      // reproduce an errors-only view. Search + quick chips still on top.
       const LogsDebugPage(),
-      const ErrorsDebugPage(),
       // Two stores side by side: SharedPreferences (built in) and a TYPED,
       // hand-written Hive adapter — which is exactly why DebugStorageAdapter is
       // an interface rather than a bundled Hive implementation.

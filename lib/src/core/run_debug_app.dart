@@ -18,8 +18,7 @@ import 'debug_page.dart';
 ///       enabled: kDebugMode,
 ///       pages: const [
 ///         NetworkDebugPage(),
-///         LogsDebugPage(),
-///         ErrorsDebugPage(),
+///         LogsDebugPage(), // logs + errors in one filterable stream
 ///         DeviceDebugPage(provider: PluginDeviceInfoProvider()),
 ///       ],
 ///     );

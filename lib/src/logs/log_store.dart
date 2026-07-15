@@ -17,6 +17,12 @@ class LogEntry {
   final Object? error;
   final StackTrace? stackTrace;
 
+  /// The `ErrorEntry` behind an error-level row, when this line was forwarded
+  /// from [ErrorStore]. Typed as [Object?] so [LogStore] needn't import the
+  /// errors layer (which imports back). The Logs page casts it to render the
+  /// rich report on expand. Null for ordinary log lines.
+  final Object? errorRef;
+
   const LogEntry({
     required this.id,
     required this.time,
@@ -25,7 +31,10 @@ class LogEntry {
     this.tag,
     this.error,
     this.stackTrace,
+    this.errorRef,
   });
+
+  bool get isError => errorRef != null;
 
   /// Everything a search should look at, lowercased once at match time.
   String get searchable => '$message ${tag ?? ''} ${error ?? ''}';
@@ -68,6 +77,7 @@ class LogStore {
     String? tag,
     Object? error,
     StackTrace? stackTrace,
+    Object? errorRef,
   }) {
     // The debugPrint/Zone hooks stay installed for the process lifetime, so
     // without this a release build would keep buffering 1000 log lines nothing
@@ -84,6 +94,7 @@ class LogStore {
         tag: tag,
         error: error,
         stackTrace: stackTrace,
+        errorRef: errorRef,
       ),
     );
     while (_entries.length > maxEntries) {

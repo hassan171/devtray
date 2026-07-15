@@ -142,29 +142,30 @@ void main() {
     });
   });
 
-  group('ErrorsDebugPage', () {
-    testWidgets('lists errors, opens the detail, and clears the badge', (tester) async {
+  group('errors in the combined Logs page', () {
+    testWidgets('an error shows as a row, expands to its report, and clears the badge', (tester) async {
       ErrorStore.instance.report(StateError('kaboom'), stackTrace: StackTrace.current);
       expect(ErrorStore.instance.unseenCount.value, 1);
 
-      await tester.pumpWidget(_host(const ErrorsDebugPage()));
+      await tester.pumpWidget(_host(const LogsDebugPage()));
       await tester.pumpAndSettle();
 
-      // Opening the page marks them seen — that's what drops the launcher badge.
+      // Opening the Logs page marks them seen — that's what drops the badge.
       expect(ErrorStore.instance.unseenCount.value, 0);
       expect(find.textContaining('kaboom'), findsOneWidget);
 
+      // Expand the error row inline (no separate detail screen anymore).
       await tester.tap(find.textContaining('kaboom'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Stack Trace'), findsOneWidget);
       expect(find.text('Exception'), findsOneWidget);
+      expect(find.text('Stack Trace'), findsOneWidget);
     });
 
-    testWidgets('shows a reassuring empty state', (tester) async {
-      await tester.pumpWidget(_host(const ErrorsDebugPage()));
+    testWidgets('shows the empty state when nothing has been captured', (tester) async {
+      await tester.pumpWidget(_host(const LogsDebugPage()));
       await tester.pumpAndSettle();
-      expect(find.text('No errors'), findsOneWidget);
+      expect(find.text('No logs yet'), findsOneWidget);
     });
   });
 
@@ -201,7 +202,7 @@ void main() {
   group('launcher error badge', () {
     testWidgets('appears on the launcher when an error is unseen', (tester) async {
       await tester.pumpWidget(DebugOverlay(
-        pages: const [ErrorsDebugPage()],
+        pages: const [LogsDebugPage()],
         child: const MaterialApp(home: Scaffold(body: Text('app'))),
       ));
       await tester.pumpAndSettle();

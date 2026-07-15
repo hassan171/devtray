@@ -22,6 +22,9 @@ void main() {
       ..clear()
       ..errorReporting.value = NetworkErrorReporting.serverAndTransport;
     ErrorStore.instance.clear();
+    // ErrorStore.report now mirrors into LogStore — clear it too so forwarded
+    // rows don't leak between tests.
+    LogStore.instance.clear();
   });
 
   group('network → errors forwarding', () {
@@ -97,7 +100,7 @@ void main() {
     });
   });
 
-  group('ErrorsDebugPage network detail', () {
+  group('network error detail in the combined Logs page', () {
     testWidgets('shows the request/response instead of an empty stack trace', (tester) async {
       final store = NetworkLogStore.instance;
       final entry = store.add(
@@ -116,10 +119,11 @@ void main() {
       );
 
       await tester.pumpWidget(const MaterialApp(
-        home: Scaffold(body: DebugToolsScreen(pages: [ErrorsDebugPage()])),
+        home: Scaffold(body: DebugToolsScreen(pages: [LogsDebugPage()])),
       ));
       await tester.pumpAndSettle();
 
+      // The forwarded error is a row in the Logs stream; expand it inline.
       await tester.tap(find.textContaining('HTTP 500'));
       await tester.pumpAndSettle();
 
