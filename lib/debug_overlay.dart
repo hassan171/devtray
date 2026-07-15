@@ -21,7 +21,6 @@
 library;
 
 // Core
-export 'src/core/debug_capture.dart';
 export 'src/core/debug_launcher_button.dart';
 export 'src/core/debug_overlay.dart';
 export 'src/core/debug_overlay_controller.dart';

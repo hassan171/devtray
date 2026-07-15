@@ -1,13 +1,7 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
-import '../network/mocking/mock_store.dart';
-import '../network/mocking/shared_preferences_mock_storage.dart';
-import 'debug_capture.dart';
-import 'debug_overlay_kill_switch.dart';
-import 'debug_overlay.dart';
-import 'debug_overlay_controller.dart';
-import 'debug_overlay_theme.dart';
-import 'debug_page.dart';
+import 'package:debug_overlay/debug_overlay.dart';
+import 'package:flutter/material.dart';
 
 /// Installs log/error capture, wraps [app] in a [DebugOverlay], and runs it —
 /// the whole setup in one call.
@@ -71,8 +65,14 @@ void runDebugApp(
     return;
   }
 
-  DebugOverlayCapture.runApp(
+  runZonedGuarded(
     () {
+      // Must be inside the Zone: the binding latches onto the Zone it was
+      // created in, and errors it reports would otherwise escape ours.
+      WidgetsFlutterBinding.ensureInitialized();
+      captureErrors();
+      captureDebugPrint();
+
       // Don't restore rules into a store the app has turned off — they'd apply
       // with no UI to reveal them.
       if (persistMockRules && !MockStore.instance.isDisabled) {
@@ -82,6 +82,7 @@ void runDebugApp(
         MockStore.instance.storage = SharedPreferencesMockRuleStorage();
         MockStore.instance.load();
       }
+
       runApp(
         DebugOverlay(
           pages: pages,
@@ -99,5 +100,18 @@ void runDebugApp(
         ),
       );
     },
+    (error, stack) {
+      ErrorStore.instance.report(error, stackTrace: stack, source: ErrorSource.uncaught);
+      // Keep the default behaviour — print it. Without this the Zone would
+      // silently eat every uncaught error, which is far worse than the bug
+      // we're trying to observe.
+      Zone.root.print('Uncaught (in debug overlay zone): $error\n$stack');
+    },
+    zoneSpecification: ZoneSpecification(
+      print: (self, parent, zone, line) {
+        LogStore.instance.log(line);
+        parent.print(zone, line);
+      },
+    ),
   );
 }
