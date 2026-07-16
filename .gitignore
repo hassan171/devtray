@@ -23,9 +23,17 @@ migrate_working_dir/
 
 # Flutter/Dart/Pub related
 # Libraries should not include pubspec.lock, per https://dart.dev/guides/libraries/private-files#pubspeclock.
-/pubspec.lock
+#
+# A pub workspace has exactly ONE lockfile, at the root — the members don't get
+# their own. It's ignored for the same reason a library's is: this repo publishes
+# libraries, so pinning resolutions here would only hide breakage from a
+# consumer's own resolution.
+pubspec.lock
 **/doc/api/
 .dart_tool/
 .flutter-plugins-dependencies
-/build/
-/coverage/
+# Unanchored, so it matches packages/*/build/ and example/build/ too. Anchored
+# (`/build/`), it only ever matched the repo root — which stopped being where the
+# builds happen once the packages moved under packages/.
+build/
+coverage/

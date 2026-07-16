@@ -6,16 +6,40 @@ version: 1.0.0+1
 environment:
   sdk: ^3.12.2
 
+resolution: workspace
+
 dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
+  # The core, plus one package per integration this example demonstrates. An app
+  # that only used `http` and Riverpod would take just the first two — which is
+  # the whole point of the split (see MIGRATION_PLAN.md).
   debug_overlay:
-    path: ../
+    path: ../packages/debug_overlay
+  debug_overlay_dio:
+    path: ../packages/debug_overlay_dio
+  debug_overlay_http:
+    path: ../packages/debug_overlay_http
+  debug_overlay_bloc:
+    path: ../packages/debug_overlay_bloc
+  debug_overlay_riverpod:
+    path: ../packages/debug_overlay_riverpod
+  debug_overlay_prefs:
+    path: ../packages/debug_overlay_prefs
+  debug_overlay_device:
+    path: ../packages/debug_overlay_device
+  debug_overlay_html:
+    path: ../packages/debug_overlay_html
+  debug_overlay_hive:
+    path: ../packages/debug_overlay_hive
+  debug_overlay_sqflite:
+    path: ../packages/debug_overlay_sqflite
   dio: ^5.7.0
   http: ^1.2.0
   shared_preferences: ^2.3.0
   bloc: ^9.0.0
+  flutter_riverpod: ^3.0.0
   hive_ce: ^2.10.0
   hive_ce_flutter: ^2.2.0
   # A relational store, to prove DebugStorageAdapter isn't secretly key/value

@@ -1,40 +1,30 @@
-name: debug_overlay
-description: "A draggable in-app debugging overlay with a pluggable page system and a built-in network inspector (dio + http adapters)."
-version: 0.1.0
-homepage:
+name: debug_overlay_workspace
+description: "Workspace root for debug_overlay and its integration packages. Not published."
+publish_to: "none"
+version: 0.0.0
 
 environment:
-  sdk: ">=3.12.0 <4.0.0"
+  # Pub workspaces need 3.6+. They give every member one shared lockfile and one
+  # `pub get`, which is the whole reason this repo doesn't need melos.
+  sdk: ^3.12.2
 
-dependencies:
-  flutter:
-    sdk: flutter
-  dio: ^5.7.0
-  http: ^1.2.0
-  flutter_html: ^3.0.0
-  device_info_plus: ">=11.0.0 <13.0.0"
-  package_info_plus: ">=8.0.0 <10.0.0"
-  shared_preferences: ^2.3.0
-  bloc: ^9.0.0
+# The core plus one package per integration. The core carries no runtime
+# dependencies; each integration package owns exactly one — so an app that uses
+# `http` and Riverpod never compiles dio or bloc.
+#
+# See MIGRATION_PLAN.md for why, and for what moved where.
+workspace:
+  - packages/debug_overlay
+  - packages/debug_overlay_dio
+  - packages/debug_overlay_http
+  - packages/debug_overlay_bloc
+  - packages/debug_overlay_riverpod
+  - packages/debug_overlay_prefs
+  - packages/debug_overlay_device
+  - packages/debug_overlay_html
+  - packages/debug_overlay_hive
+  - packages/debug_overlay_sqflite
+  - example
 
 dev_dependencies:
-  flutter_test:
-    sdk: flutter
   flutter_lints: ^6.0.0
-
-flutter:
-  # Bundled so the overlay's data columns render identically on every platform,
-  # with no setup in the host app. Debug tooling only ships in debug builds, so
-  # the ~800KB never reaches a release binary.
-  #
-  # JetBrains Mono is SIL Open Font License 1.1 — assets/fonts/JetBrainsMono-OFL.txt
-  # ships alongside the font, as the licence requires.
-  fonts:
-    - family: JetBrainsMono
-      fonts:
-        - asset: assets/fonts/JetBrainsMono-Regular.ttf
-          weight: 400
-        - asset: assets/fonts/JetBrainsMono-Medium.ttf
-          weight: 500
-        - asset: assets/fonts/JetBrainsMono-Bold.ttf
-          weight: 700
