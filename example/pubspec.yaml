@@ -6,12 +6,14 @@ version: 1.0.0+1
 environment:
   sdk: ^3.12.2
 
+resolution: workspace
+
 dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
   debug_overlay:
-    path: ../
+    path: ../packages/debug_overlay
   dio: ^5.7.0
   http: ^1.2.0
   shared_preferences: ^2.3.0
