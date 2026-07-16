@@ -161,9 +161,9 @@ void main() {
   });
 
   group('NetworkDebugPage panel', () {
-    testWidgets('the HTML preview dialog opens from inside the panel', (tester) async {
-      // Same trap as the popup menu: showDialog() calls Navigator.of(), and the
-      // panel sits above MaterialApp where there is none.
+    /// Records an HTML response and mounts the Network page inside a real
+    /// overlay panel, optionally with a previewer.
+    Future<void> pumpWithHtmlResponse(WidgetTester tester, {DebugHtmlPreviewer? onPreviewHtml}) async {
       final store = NetworkLogStore.instance;
       final entry = store.add(method: 'GET', uri: Uri.parse('https://x.test/page'))!;
       store.complete(
@@ -180,7 +180,7 @@ void main() {
       await tester.pumpWidget(DebugOverlay(
         controller: controller,
         presentation: DebugOverlayPresentation.fullscreen,
-        pages: const [NetworkDebugPage()],
+        pages: [NetworkDebugPage(onPreviewHtml: onPreviewHtml)],
         child: const MaterialApp(home: Scaffold(body: Text('app'))),
       ));
 
@@ -189,11 +189,38 @@ void main() {
 
       await tester.tap(find.textContaining('/page'));
       await tester.pumpAndSettle();
+    }
+
+    testWidgets('the preview button calls the previewer, from inside the panel', (tester) async {
+      // Same trap as the popup menu: a previewer will call showDialog(), which
+      // calls Navigator.of() — and the panel sits above MaterialApp, where there
+      // is none. So it has to be reachable from *this* context.
+      //
+      // The core has no HTML renderer (it doesn't depend on flutter_html), so
+      // this stands in for one. The real dialog is tested in debug_overlay_html.
+      BuildContext? calledWith;
+      String? previewed;
+
+      await pumpWithHtmlResponse(
+        tester,
+        onPreviewHtml: (context, html) {
+          calledWith = context;
+          previewed = html;
+        },
+      );
 
       await tester.tap(find.byTooltip('Preview HTML'));
       await tester.pumpAndSettle();
 
-      expect(find.text('HTML Preview'), findsOneWidget);
+      expect(previewed, contains('<h1>hello</h1>'));
+      // The context must be able to reach a Navigator, or showDialog would throw.
+      expect(Navigator.maybeOf(calledWith!), isNotNull);
+    });
+
+    testWidgets('no previewer, no button — the core cannot render HTML', (tester) async {
+      // Rather than a button that opens nothing.
+      await pumpWithHtmlResponse(tester);
+      expect(find.byTooltip('Preview HTML'), findsNothing);
     });
   });
 }

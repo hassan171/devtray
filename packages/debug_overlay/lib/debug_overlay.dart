@@ -36,6 +36,9 @@ export 'src/core/run_debug_app.dart';
 export 'src/network/adapters/dio_adapter.dart';
 export 'src/network/adapters/http_adapter.dart';
 export 'src/network/curl_builder.dart';
+// The shape of an HTML previewer. The renderer itself lives in
+// debug_overlay_html — see DebugHtmlPreviewer for why it isn't in here.
+export 'src/network/html_previewer.dart';
 export 'src/network/mocking/components/mock_rule_editor.dart';
 export 'src/network/mocking/mock_interceptor.dart';
 export 'src/network/mocking/mock_rule.dart';

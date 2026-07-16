@@ -4,8 +4,8 @@ import '../../core/debug_overlay_theme.dart';
 import '../../core/debug_text_styles.dart';
 import '../../widgets/copyable_section.dart';
 import '../../widgets/debug_tab_bar.dart';
-import '../../widgets/html_preview_dialog.dart';
 import '../curl_builder.dart';
+import '../html_previewer.dart';
 import '../mocking/components/mock_rule_editor.dart';
 import '../network_log_store.dart';
 import 'network_badges.dart';
@@ -29,11 +29,16 @@ class NetworkDetailPane extends StatefulWidget {
   /// has no way to reach (the Mocks button is hidden too).
   final bool enableMocking;
 
+  /// Renders an HTML response body. Null hides the preview button — the core has
+  /// no HTML renderer of its own, so there'd be nothing behind it.
+  final DebugHtmlPreviewer? onPreviewHtml;
+
   const NetworkDetailPane({
     super.key,
     required this.entry,
     required this.onBack,
     this.enableMocking = true,
+    this.onPreviewHtml,
   });
 
   @override
@@ -136,15 +141,18 @@ class _NetworkDetailPaneState extends State<NetworkDetailPane> with TickerProvid
                 ],
               ),
             ),
+            // Two conditions, not one: the body has to *be* HTML, and something
+            // has to be able to render it. Without a previewer the core has no
+            // HTML renderer at all, so the button would open nothing —
             // isHtmlResponse sniffs the body, so it can only be true when there
-            // is one — no empty-body case to guard against here.
-            if (e.isHtmlResponse)
+            // is one, and no empty-body case needs guarding here.
+            if (e.isHtmlResponse && widget.onPreviewHtml != null)
               IconButton(
                 tooltip: 'Preview HTML',
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                 icon: Icon(Icons.preview, size: 16, color: t.textMuted),
-                onPressed: () => HtmlPreviewDialog.show(context, e.responseBodyString!),
+                onPressed: () => widget.onPreviewHtml!(context, e.responseBodyString!),
               ),
             if (widget.enableMocking)
               IconButton(

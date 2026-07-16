@@ -4,6 +4,7 @@ import '../core/debug_overlay_theme.dart';
 import '../core/debug_page.dart';
 import '../core/debug_text_styles.dart';
 import 'components/network_detail_pane.dart';
+import 'html_previewer.dart';
 import 'components/network_log_row.dart';
 import 'components/network_search_bar.dart';
 import 'mocking/mocks_view.dart';
@@ -36,10 +37,22 @@ class NetworkDebugPage extends DebugPage {
   /// override it at any time.
   final NetworkErrorReporting errorReporting;
 
+  /// Renders an HTML response body when the preview button is tapped.
+  ///
+  /// Null — the default — hides the button entirely. The core has no HTML
+  /// renderer (see [DebugHtmlPreviewer]); install `debug_overlay_html` and pass
+  /// its dialog to get one:
+  ///
+  /// ```dart
+  /// NetworkDebugPage(onPreviewHtml: HtmlPreviewDialog.show)
+  /// ```
+  final DebugHtmlPreviewer? onPreviewHtml;
+
   const NetworkDebugPage({
     this.wideBreakpoint = 700,
     this.enableMocking = true,
     this.errorReporting = NetworkErrorReporting.all,
+    this.onPreviewHtml,
   });
 
   @override
@@ -53,15 +66,16 @@ class NetworkDebugPage extends DebugPage {
     // The page owns the policy now (no in-app toggle). Set it here so it takes
     // effect as soon as the page is in the tree.
     NetworkLogStore.instance.errorReporting.value = errorReporting;
-    return _NetworkDebugView(wideBreakpoint: wideBreakpoint, enableMocking: enableMocking);
+    return _NetworkDebugView(wideBreakpoint: wideBreakpoint, enableMocking: enableMocking, onPreviewHtml: onPreviewHtml);
   }
 }
 
 class _NetworkDebugView extends StatefulWidget {
   final double wideBreakpoint;
   final bool enableMocking;
+  final DebugHtmlPreviewer? onPreviewHtml;
 
-  const _NetworkDebugView({required this.wideBreakpoint, required this.enableMocking});
+  const _NetworkDebugView({required this.wideBreakpoint, required this.enableMocking, required this.onPreviewHtml});
 
   @override
   State<_NetworkDebugView> createState() => _NetworkDebugViewState();
@@ -130,7 +144,12 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
 
             // Narrow: detail replaces the list entirely.
             if (!isWide && selected != null) {
-              return NetworkDetailPane(entry: selected, enableMocking: widget.enableMocking, onBack: () => setState(() => _selectedId = null));
+              return NetworkDetailPane(
+                entry: selected,
+                enableMocking: widget.enableMocking,
+                onPreviewHtml: widget.onPreviewHtml,
+                onBack: () => setState(() => _selectedId = null),
+              );
             }
 
             final list = Column(
@@ -181,7 +200,12 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
                   flex: 60,
                   child: selected == null
                       ? _DetailPlaceholder()
-                      : NetworkDetailPane(entry: selected, enableMocking: widget.enableMocking, onBack: () => setState(() => _selectedId = null)),
+                      : NetworkDetailPane(
+                entry: selected,
+                enableMocking: widget.enableMocking,
+                onPreviewHtml: widget.onPreviewHtml,
+                onBack: () => setState(() => _selectedId = null),
+              ),
                 ),
               ],
             );

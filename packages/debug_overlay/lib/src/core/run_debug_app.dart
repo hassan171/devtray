@@ -79,10 +79,28 @@ void runDebugApp({
 
   /// Keep mock rules across restarts (via `shared_preferences`).
   ///
-  /// On by default: you otherwise re-add "force /orders to 500" after every hot
-  /// restart, which is exactly when you're iterating on an error state. Only
-  /// the rules are stored — no logs, no request bodies.
-  bool persistMockRules = true,
+  /// Restore mock rules saved by a previous run, so they survive a hot restart.
+  ///
+  /// **Off by default, and it needs a storage backend to do anything.** The core
+  /// has no way to persist on its own — that would mean depending on
+  /// `shared_preferences`, which most apps don't want dragged in for a debug
+  /// tool. So persistence is opt-in on both counts:
+  ///
+  /// ```dart
+  /// // with debug_overlay_prefs installed
+  /// MockStore.instance.storage = SharedPreferencesMockRuleStorage();
+  /// runDebugApp(app: MyApp(), persistMockRules: true);
+  /// ```
+  ///
+  /// Worth wiring up if you use mocks at all: without it you re-add "force
+  /// /orders to 500" after every hot restart — which is exactly when you're
+  /// iterating on an error state. Only the rules are stored: no logs, no request
+  /// bodies, so none of the PII concerns that make persisting the *data* a bad
+  /// idea.
+  ///
+  /// With no [MockStore.storage] set this is a no-op — it loads from the default
+  /// in-memory storage, which is always empty at startup.
+  bool persistMockRules = false,
 
   /// Route `FlutterError.onError` and `PlatformDispatcher.onError` into the Logs
   /// page (via [captureErrors]). Turn off if your app installs its own handlers
@@ -143,10 +161,13 @@ void runDebugApp({
       // Don't restore rules into a store the app has turned off — they'd apply
       // with no UI to reveal them.
       if (persistMockRules && !MockStore.instance.isDisabled) {
+        // Loads whatever storage the app installed — the core never constructs
+        // one. With none set, `MockStore.storage` is an InMemoryMockRuleStorage
+        // and this is a harmless no-op.
+        //
         // Fire-and-forget: `rules` is a ValueNotifier, so the Mocks page picks
         // them up the moment they land. Awaiting here would mean holding up the
         // first frame for a debug tool's scratch file, which is a bad trade.
-        MockStore.instance.storage = SharedPreferencesMockRuleStorage();
         MockStore.instance.load();
       }
 
