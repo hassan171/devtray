@@ -6,9 +6,11 @@ import 'package:debug_overlay/debug_overlay.dart';
 import 'package:debug_overlay_bloc/debug_overlay_bloc.dart';
 import 'package:debug_overlay_device/debug_overlay_device.dart';
 import 'package:debug_overlay_dio/debug_overlay_dio.dart';
+import 'package:debug_overlay_hive/debug_overlay_hive.dart';
 import 'package:debug_overlay_html/debug_overlay_html.dart';
 import 'package:debug_overlay_http/debug_overlay_http.dart';
 import 'package:debug_overlay_prefs/debug_overlay_prefs.dart';
+import 'package:debug_overlay_sqflite/debug_overlay_sqflite.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -17,9 +19,7 @@ import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'counter_cubit.dart';
-import 'hive_storage.dart';
 import 'notes_db.dart';
-import 'sqflite_storage.dart';
 import 'users_box.dart';
 import 'users_debug_page.dart';
 

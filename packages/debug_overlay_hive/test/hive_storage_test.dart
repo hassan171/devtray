@@ -3,10 +3,11 @@
 // the capture is right, and that a box it CAN'T edit is honest about it.
 import 'dart:io';
 
-import 'package:debug_overlay_example/hive_storage.dart';
-import 'package:debug_overlay_example/users_box.dart';
+import 'package:debug_overlay_hive/debug_overlay_hive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
+
+import 'test_user.dart';
 
 late Directory dir;
 

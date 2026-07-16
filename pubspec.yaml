@@ -21,6 +21,8 @@ workspace:
   - packages/debug_overlay_prefs
   - packages/debug_overlay_device
   - packages/debug_overlay_html
+  - packages/debug_overlay_hive
+  - packages/debug_overlay_sqflite
   - example
 
 dev_dependencies:

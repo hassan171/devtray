@@ -29,6 +29,10 @@ dependencies:
     path: ../packages/debug_overlay_device
   debug_overlay_html:
     path: ../packages/debug_overlay_html
+  debug_overlay_hive:
+    path: ../packages/debug_overlay_hive
+  debug_overlay_sqflite:
+    path: ../packages/debug_overlay_sqflite
   dio: ^5.7.0
   http: ^1.2.0
   shared_preferences: ^2.3.0

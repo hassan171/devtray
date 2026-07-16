@@ -1,7 +1,7 @@
 // The generic SQLite adapter discovers everything from the database itself, so
 // the only way to know it works is to point it at real schemas — including the
 // awkward ones (no primary key, a keyword for a name, a text key).
-import 'package:debug_overlay_example/sqflite_storage.dart';
+import 'package:debug_overlay_sqflite/debug_overlay_sqflite.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
