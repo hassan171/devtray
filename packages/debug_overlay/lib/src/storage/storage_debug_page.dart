@@ -22,7 +22,8 @@ import 'debug_storage_adapter.dart';
 /// With more than one adapter, the page opens on a **list of stores** (name,
 /// key-count, read-only badge); tap one to drill into its keys, back arrow to
 /// return. A single adapter skips the list and opens straight into its keys —
-/// there's nothing to choose. Search scopes to the store you're in.
+/// there's nothing to choose. Search matches keys **and** values, scoped to
+/// the store you're in.
 ///
 /// Editing is per-field: tap Edit, change the value, tap Save. A value is
 /// written back as the **same type** it already was, and bad input is rejected
@@ -284,10 +285,21 @@ class _StoreDetail extends StatelessWidget {
 
   /// The keys to show — filtered by [search], sorted once. (At 1000 keys, doing
   /// this twice per build is real work.)
+  /// Keys matching [search] — by key **or** value, sorted once.
+  ///
+  /// Values are searched as they're rendered (see [storageSearchableText]), so
+  /// finding `admin` in a JSON blob or a tag inside a chip list works. Keys
+  /// alone would be a poor filter for the case that matters: you usually know
+  /// what you're looking *for*, not which key it's under.
   List<String> _keys() {
     if (section.error != null) return const [];
     final q = search.toLowerCase();
-    return section.values.keys.where((k) => q.isEmpty || k.toLowerCase().contains(q)).toList()..sort();
+    if (q.isEmpty) return section.values.keys.toList()..sort();
+
+    return section.values.keys
+        .where((k) => storageSearchableText(k, section.values[k]).toLowerCase().contains(q))
+        .toList()
+      ..sort();
   }
 
   @override
@@ -324,7 +336,7 @@ class _StoreDetail extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         DebugSearchBar(
-          hintText: 'Search keys',
+          hintText: 'Search keys and values',
           total: keys.length,
           onChanged: onSearch,
           actions: [
@@ -352,7 +364,7 @@ class _StoreDetail extends StatelessWidget {
               : keys.isEmpty
                   ? _StorageMessage(
                       icon: search.isEmpty ? Icons.inbox_outlined : Icons.search_off,
-                      title: search.isEmpty ? 'This store is empty' : 'No matching keys',
+                      title: search.isEmpty ? 'This store is empty' : 'No matches',
                       detail: search.isEmpty ? 'Nothing has been written to it yet.' : 'Nothing matches "$search".',
                       theme: theme,
                     )

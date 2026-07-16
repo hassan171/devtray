@@ -22,6 +22,35 @@ Color storageTypeColor(Object? v, DebugOverlayTheme t) => switch (v) {
       _ => t.textMuted,
     };
 
+/// Everything about a key/value pair that a search should look at — the key,
+/// and the value as it's *rendered on screen*.
+///
+/// Matching the rendering matters. A `List<String>` shows as chips and a `Map`
+/// as pretty-printed JSON, so searching `flutter` has to find the tag inside the
+/// list, and `admin` the role inside the object. Matching `toString()` instead
+/// would find `[flutter, dart]` but miss the JSON's quoting and indentation —
+/// i.e. it would disagree with what you can see, which is the one thing a search
+/// mustn't do.
+///
+/// Lowercased once by the caller, not here: this runs per key per keystroke.
+String storageSearchableText(String key, Object? value) => '$key ${storageValueAsText(value)}';
+
+/// A value as text, for search and for the scalar editor.
+///
+/// Lists are included even though [StorageListEditor] owns their *display* —
+/// they're still readable on screen as chips, so they must be searchable.
+String storageValueAsText(Object? v) => switch (v) {
+      null => '',
+      final String s => s,
+      // A structured value (an object from a typed store) is shown as
+      // pretty-printed JSON — its real shape, every field named.
+      final Map<dynamic, dynamic> m => const JsonEncoder.withIndent('  ').convert(m),
+      // Chips, one per element. Joined loosely: search shouldn't care about the
+      // brackets and commas of `toString()`, which aren't on screen anyway.
+      final List<dynamic> l => l.join(' '),
+      _ => v.toString(),
+    };
+
 /// A pill naming the value's type — the control you get is chosen from it, and
 /// it's what your edit will be written back as.
 class StorageTypeBadge extends StatelessWidget {
@@ -103,15 +132,10 @@ class _StorageValueEditorState extends State<StorageValueEditor> {
     super.dispose();
   }
 
-  // Lists never reach here — StorageListEditor owns them.
-  static String _asText(Object? v) => switch (v) {
-        null => '',
-        final String s => s,
-        // A structured value (an object from a typed store) is shown as
-        // pretty-printed JSON — its real shape, every field named.
-        final Map<dynamic, dynamic> m => const JsonEncoder.withIndent('  ').convert(m),
-        _ => v.toString(),
-      };
+  // Shared with the page's search, so what you can read and what you can find
+  // are the same string. (Lists never reach the scalar editor — StorageListEditor
+  // owns them — but they're searchable, hence the shared function handling them.)
+  static String _asText(Object? v) => storageValueAsText(v);
 
   static String _typeLabel(Object? v) => switch (v) {
         null => 'null',

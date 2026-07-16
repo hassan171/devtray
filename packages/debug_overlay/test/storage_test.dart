@@ -110,6 +110,105 @@ void main() {
       expect(find.text('api_url'), findsOneWidget);
       expect(find.text('user_id'), findsNothing);
     });
+
+    group('search matches values too', () {
+      // Keys alone are a poor filter for the case that matters: you usually know
+      // what you're looking *for*, not which key it's filed under.
+
+      testWidgets('a string value', (tester) async {
+        await tester.pumpWidget(_host([
+          _FakeAdapter({'api_url': 'https://staging.example.com', 'user_id': 'u_42'}),
+        ]));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(find.byType(TextField).first, 'staging');
+        await tester.pumpAndSettle();
+
+        expect(find.text('api_url'), findsOneWidget);
+        expect(find.text('user_id'), findsNothing);
+      });
+
+      testWidgets('inside a List — the chips are readable, so they must be findable', (tester) async {
+        await tester.pumpWidget(_host([
+          _FakeAdapter({
+            'recent_tags': ['flutter', 'dart'],
+            'other': 'x',
+          }),
+        ]));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(find.byType(TextField).first, 'dart');
+        await tester.pumpAndSettle();
+
+        expect(find.text('recent_tags'), findsOneWidget);
+        expect(find.text('other'), findsNothing);
+      });
+
+      testWidgets('inside a Map — searching the JSON you can see', (tester) async {
+        await tester.pumpWidget(_host([
+          _FakeAdapter({
+            'session': {'userId': 42, 'role': 'admin'},
+            'other': 'x',
+          }),
+        ]));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(find.byType(TextField).first, 'admin');
+        await tester.pumpAndSettle();
+
+        expect(find.text('session'), findsOneWidget);
+        expect(find.text('other'), findsNothing);
+      });
+
+      testWidgets('a non-string scalar', (tester) async {
+        await tester.pumpWidget(_host([
+          _FakeAdapter({'retry_count': 3, 'enabled': true}),
+        ]));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(find.byType(TextField).first, 'true');
+        await tester.pumpAndSettle();
+
+        expect(find.text('enabled'), findsOneWidget);
+        expect(find.text('retry_count'), findsNothing);
+      });
+
+      testWidgets('matching is case-insensitive on both sides', (tester) async {
+        await tester.pumpWidget(_host([
+          _FakeAdapter({'api_url': 'https://STAGING.example.com'}),
+        ]));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(find.byType(TextField).first, 'staging');
+        await tester.pumpAndSettle();
+
+        expect(find.text('api_url'), findsOneWidget);
+      });
+    });
+  });
+
+  group('storageValueAsText — what search reads, and what the editor shows', () {
+    // One function, so the two can't disagree: a value you can read on screen is
+    // a value you can find.
+
+    test('a Map is the pretty-printed JSON the editor shows', () {
+      expect(storageValueAsText({'role': 'admin'}), contains('"role": "admin"'));
+    });
+
+    test('a List is its elements, without toString\'s brackets', () {
+      // The brackets aren't on screen — the chips are — so search shouldn't see
+      // them either.
+      expect(storageValueAsText(['flutter', 'dart']), 'flutter dart');
+    });
+
+    test('null is empty, not the word "null"', () {
+      expect(storageValueAsText(null), '');
+    });
+
+    test('the searchable text covers the key as well as the value', () {
+      expect(storageSearchableText('api_url', 'https://x.test'), contains('api_url'));
+      expect(storageSearchableText('api_url', 'https://x.test'), contains('x.test'));
+    });
   });
 
   group('multiple stores — master/detail', () {
