@@ -44,14 +44,28 @@
 /// });
 /// ```
 ///
-/// ## dart:developer / your own logger
+/// ## dart:developer
+///
+/// **`dart:developer`'s `log()` cannot be captured.** Every other channel the
+/// overlay hooks works by grabbing a Dart-level indirection point: `print` has a
+/// `ZoneSpecification` entry, `debugPrint` is a reassignable global,
+/// `FlutterError.onError` is an assignable handler. `developer.log` is declared
+/// `external` in the SDK — implemented natively, straight to the VM service
+/// protocol for the DevTools Logging view. There is no hook to install.
+///
+/// So it has to be bridged at the call site instead. [debugLog] is a drop-in
+/// with the same signature — swap the import and every existing `log(...)` call
+/// keeps working, but now also lands in the Logs page:
 ///
 /// ```dart
-/// void myLog(String msg, {String? tag}) {
-///   LogStore.instance.log(msg, tag: tag, level: LogLevel.info);
-///   dev.log(msg, name: tag ?? '');
-/// }
+/// // import 'dart:developer';
+/// import 'package:debug_overlay/debug_overlay.dart';
+///
+/// log('user signed in', name: 'auth');   // now visible in DevTools *and* the overlay
 /// ```
+///
+/// If `log` collides with something in scope, import it under a prefix or use
+/// [debugLog] directly.
 ///
 /// ## package:logging
 ///
@@ -68,7 +82,65 @@
 /// ```
 library;
 
+import 'dart:async';
+import 'dart:developer' as developer;
+
 import 'log_store.dart';
+
+/// A drop-in replacement for `dart:developer`'s `log()` that also records into
+/// [LogStore], so the line shows up on the Logs page.
+///
+/// `developer.log` is `external` — implemented by the VM, with no hook to
+/// intercept (see the library docs above). Bridging at the call site is the only
+/// option, so this mirrors its signature exactly: swap
+/// `import 'dart:developer'` for `package:debug_overlay/debug_overlay.dart` and
+/// existing `log(...)` calls keep compiling unchanged.
+///
+/// Nothing is swallowed — the real `developer.log` is still called, so DevTools'
+/// Logging view is unaffected. When the kill switch is off, only the
+/// [LogStore] side no-ops.
+///
+/// [level] follows the `package:logging` scale that `developer.log` documents
+/// (FINE 500 / INFO 800 / WARNING 900 / SEVERE 1000) and is mapped onto
+/// [LogLevel] with [debugLevelFromSeverity]. [name] becomes the entry's tag.
+void debugLog(
+  String message, {
+  DateTime? time,
+  int? sequenceNumber,
+  int level = 0,
+  String name = '',
+  Zone? zone,
+  Object? error,
+  StackTrace? stackTrace,
+}) {
+  developer.log(
+    message,
+    time: time,
+    sequenceNumber: sequenceNumber,
+    level: level,
+    name: name,
+    zone: zone,
+    error: error,
+    stackTrace: stackTrace,
+  );
+  LogStore.instance.log(
+    message,
+    // `log()` defaults level to 0, which is *not* "debug" on the logging scale —
+    // it means "unset". Treat it as debug rather than mapping 0 to something
+    // louder than the caller intended.
+    level: debugLevelFromSeverity(level),
+    tag: name.isEmpty ? null : name,
+    error: error,
+    stackTrace: stackTrace,
+  );
+}
+
+/// [debugLog] under the name `log`, so swapping `import 'dart:developer'` for
+/// this package needs no call-site edits.
+///
+/// Import with a prefix if it collides with another `log` in scope (`dart:math`
+/// exports one too).
+const log = debugLog;
 
 /// Maps a foreign level name onto a [LogLevel].
 ///

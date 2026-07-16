@@ -388,15 +388,44 @@ whole filtered view copyable as plain text for a bug report.
 
 **What gets captured depends on how you start the app:**
 
-| | `debugPrint` | framework errors | bare `print()` | uncaught async errors |
-|---|---|---|---|---|
-| `runDebugApp(...)` / `DebugOverlayCapture.runApp(...)` | ✅ | ✅ | ✅ | ✅ |
-| `DebugOverlayCapture.installHooks()` | ✅ | ✅ | ❌ | ❌ |
+| | `debugPrint` | framework errors | bare `print()` | uncaught async errors | `dart:developer` `log()` |
+|---|---|---|---|---|---|
+| `runDebugApp(...)` / `DebugOverlayCapture.runApp(...)` | ✅ | ✅ | ✅ | ✅ | ❌ — see below |
+| `DebugOverlayCapture.installHooks()` | ✅ | ✅ | ❌ | ❌ | ❌ — see below |
 
 Bare `print()` and uncaught async errors can only be intercepted from inside a custom `Zone`,
 which means owning the `runApp` call. If you'd rather not, call `installHooks()` anywhere
 during startup and accept the two gaps. Nothing is ever swallowed — logs still print and
 errors still reach the console and the red error screen.
+
+Each capture channel is a separate switch on `runDebugApp`, all on by default —
+`captureFlutterErrors`, `captureDebugPrints`, `captureZonePrints`, `captureUncaughtErrors`.
+Turn one off when your app already forwards that channel itself and you'd otherwise
+double-report. There's also `onUncaughtError` if you want to forward the Zone's errors to your
+own crash reporter.
+
+### `dart:developer`'s `log()` is never captured — and can't be
+
+Every channel above is hooked by grabbing a Dart-level indirection point: `print` has a
+`ZoneSpecification` entry, `debugPrint` is a reassignable global, `FlutterError.onError` is an
+assignable handler. **`developer.log` has none of those** — it's declared `external` in the SDK
+and implemented natively, emitting straight to the VM service protocol for DevTools' Logging
+view. There is nothing to install a hook on, by any package.
+
+So it's bridged at the call site instead. This package exports a drop-in with the identical
+signature — change the import, and every existing `log(...)` call keeps compiling:
+
+```dart
+// import 'dart:developer';
+import 'package:debug_overlay/debug_overlay.dart';
+
+log('user signed in', name: 'auth', level: 800);   // DevTools *and* the Logs page
+```
+
+`name` becomes the entry's tag, `level` maps onto `LogLevel` via the `package:logging` scale
+(FINE 500 / INFO 800 / WARNING 900 / SEVERE 1000) that `developer.log` documents. The real
+`developer.log` is still called, so DevTools is unaffected. If `log` collides with something in
+scope (`dart:math` exports one too), use `debugLog` — same function, unambiguous name.
 
 ### Hooking in your own logger
 

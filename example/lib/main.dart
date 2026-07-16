@@ -221,10 +221,16 @@ class HomeScreen extends StatelessWidget {
             const Divider(height: 24),
             FilledButton(
               onPressed: () {
-                // All three land in the Logs page.
+                // All four land in the Logs page.
                 debugPrint('debugPrint — captured by the debugPrint hook');
                 print('print — captured by the Zone'); // ignore: avoid_print
                 LogStore.instance.log('Tagged, levelled log', level: LogLevel.warning, tag: 'example');
+                // `dart:developer`'s log() is `external` — it goes straight to the
+                // VM service, so there is NO hook that could capture it. This
+                // `log` is the package's drop-in: same signature, still reaches
+                // DevTools, and also records into the store. The only change a
+                // real app makes is its import.
+                log('developer.log — bridged, not captured', level: 900, name: 'example');
               },
               child: const Text('Write some logs'),
             ),

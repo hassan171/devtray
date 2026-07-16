@@ -111,6 +111,41 @@ void main() {
     });
   });
 
+  group('debugLog (the dart:developer drop-in)', () {
+    // developer.log is `external` — no hook can capture it, so this bridge is
+    // the only way those lines reach the store. It must mirror the real
+    // signature, or swapping the import stops being a drop-in.
+
+    test('records into the store, mapping severity and name', () {
+      debugLog('signed in', level: 800, name: 'auth');
+
+      final entry = LogStore.instance.entries.single;
+      expect(entry.message, 'signed in');
+      expect(entry.level, LogLevel.info); // 800 = INFO on the logging scale
+      expect(entry.tag, 'auth');
+    });
+
+    test('an empty name is no tag, not an empty one', () {
+      debugLog('no name given');
+      expect(LogStore.instance.entries.single.tag, isNull);
+    });
+
+    test('carries the error and stack trace through', () {
+      final err = StateError('boom');
+      final stack = StackTrace.current;
+      debugLog('failed', level: 1000, error: err, stackTrace: stack);
+
+      final entry = LogStore.instance.entries.single;
+      expect(entry.level, LogLevel.error);
+      expect(entry.error, same(err));
+      expect(entry.stackTrace, same(stack));
+    });
+
+    test('`log` is the same function, so an import swap needs no call-site edit', () {
+      expect(log, same(debugLog));
+    });
+  });
+
   group('debugLevelFromName', () {
     test('maps the aliases used by logger / logging / talker', () {
       expect(debugLevelFromName('SEVERE'), LogLevel.error);
