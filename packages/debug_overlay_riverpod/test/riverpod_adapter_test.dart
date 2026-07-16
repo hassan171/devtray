@@ -36,7 +36,15 @@ class _Counter extends Notifier<int> {
   @override
   int build() => 0;
 
-  void set(int v) => state = v;
+  /// A field held OUTSIDE the state — what StateInspector.inspect exists for,
+  /// and the thing that silently didn't work until the adapter started passing
+  /// the notifier as `instance`.
+  int sets = 0;
+
+  void set(int v) {
+    state = v;
+    sets++;
+  }
 }
 
 final counter = NotifierProvider<_Counter, int>(_Counter.new, name: 'counter');
@@ -90,6 +98,46 @@ void main() {
     c.read(counter.notifier).set(1);
 
     expect(StateInspector.instance.sources, hasLength(1));
+  });
+
+  group('StateInspector.inspect — fields outside the state', () {
+    // Regression: the adapter recorded no `instance`, so inspect<T> had nothing
+    // to read fields off and the extra fields silently never appeared. Bloc
+    // worked (a bloc IS the object); Riverpod didn't, because it splits the
+    // const provider declaration from the notifier that actually holds the
+    // fields. The notifier is the analogue of the bloc, and the thing to pass.
+    setUp(() {
+      StateInspector.instance.inspect<_Counter>((c) => {'sets': c.sets});
+      addTearDown(StateInspector.instance.clearInspectors);
+    });
+
+    test('a notifier field shows up on its source', () {
+      final c = _container();
+      c.read(counter.notifier).set(1);
+      c.read(counter.notifier).set(2);
+
+      final source = StateInspector.instance.sources.single;
+      // liveFieldsOf is what the page itself calls to render the extra fields.
+      expect(StateInspector.instance.liveFieldsOf(source), {'sets': 2});
+    });
+
+    test('the notifier is carried from the very first record', () {
+      // Not just on later updates — the row is inspectable as soon as it exists.
+      final c = _container();
+      c.read(counter);
+
+      expect(StateInspector.instance.sources.single.ref?.target, isA<_Counter>());
+    });
+
+    test('a plain Provider has no notifier, and that is not an error', () {
+      // Its value already IS the state; there is nothing else to read.
+      final plain = Provider<int>((ref) => 7, name: 'plain');
+      _container().read(plain);
+
+      final source = StateInspector.instance.sources.single;
+      expect(source.state, 7);
+      expect(source.ref?.target, isNull);
+    });
   });
 
   test('two different providers are two sources', () {

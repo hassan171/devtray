@@ -23,6 +23,8 @@ dependencies:
     path: ../packages/debug_overlay_http
   debug_overlay_bloc:
     path: ../packages/debug_overlay_bloc
+  debug_overlay_riverpod:
+    path: ../packages/debug_overlay_riverpod
   debug_overlay_prefs:
     path: ../packages/debug_overlay_prefs
   debug_overlay_device:
@@ -37,6 +39,7 @@ dependencies:
   http: ^1.2.0
   shared_preferences: ^2.3.0
   bloc: ^9.0.0
+  flutter_riverpod: ^3.0.0
   hive_ce: ^2.10.0
   hive_ce_flutter: ^2.2.0
   # A relational store, to prove DebugStorageAdapter isn't secretly key/value

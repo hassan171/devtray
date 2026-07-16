@@ -1,8 +1,9 @@
 import 'package:bloc/bloc.dart';
 import 'package:debug_overlay/debug_overlay.dart';
-// One import per integration. The core knows nothing about dio, http, bloc,
-// shared_preferences, device_info_plus or flutter_html — each lives in its own
-// package, so an app only compiles the ones it actually uses.
+// One import per integration. The core knows nothing about any of these — each
+// lives in its own package, so an app only compiles the ones it actually uses.
+// This example takes the lot because it demonstrates the lot; a real app takes
+// two or three.
 import 'package:debug_overlay_bloc/debug_overlay_bloc.dart';
 import 'package:debug_overlay_device/debug_overlay_device.dart';
 import 'package:debug_overlay_dio/debug_overlay_dio.dart';
@@ -10,16 +11,19 @@ import 'package:debug_overlay_hive/debug_overlay_hive.dart';
 import 'package:debug_overlay_html/debug_overlay_html.dart';
 import 'package:debug_overlay_http/debug_overlay_http.dart';
 import 'package:debug_overlay_prefs/debug_overlay_prefs.dart';
+import 'package:debug_overlay_riverpod/debug_overlay_riverpod.dart';
 import 'package:debug_overlay_sqflite/debug_overlay_sqflite.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'counter_cubit.dart';
 import 'notes_db.dart';
+import 'session_provider.dart';
 import 'users_box.dart';
 import 'users_debug_page.dart';
 
@@ -124,6 +128,15 @@ void main() {
   // DebugInspectable — see counter_cubit.dart.)
   StateInspector.instance.inspect<CounterCubit>((c) => {'history': c.history, 'lastTouched': c.lastTouched});
 
+  // The same mechanism, for a Riverpod notifier — `inspect` is keyed by type and
+  // knows nothing about which library produced it. Nothing here is bloc- or
+  // Riverpod-specific; that's the whole point.
+  //
+  // (It reads the notifier's own fields, not `state`: Riverpod protects that,
+  // where a bloc's is public. The state is already on the page anyway — `inspect`
+  // is for what ISN'T.)
+  StateInspector.instance.inspect<Session>((s) => {'signIns': s.signIns, 'lastSignIn': s.lastSignIn});
+
   // Control how a state is DISPLAYED (not the data). TodoBloc's state is a
   // List<String>, which by default prints cramped: [todo 48, todo 48, todo 49].
   // Render one todo per line — but ONLY for TodoBloc, not every List<String>
@@ -138,10 +151,18 @@ void main() {
   // overlay, and runs it. `enabled` gates both — with it false this is a plain
   // runApp() and the package leaves no trace in the tree.
   runDebugApp(
-    app: MaterialApp(
-      title: 'debug_overlay example',
-      theme: ThemeData(colorSchemeSeed: Colors.blue),
-      home: const _Bootstrap(),
+    // The Riverpod scope wraps the app, so the observer sees every provider.
+    // Note what ISN'T here: no second State page, no choosing between libraries.
+    // The bloc observer above and this one push into the same StateInspector,
+    // and the page shows both — which is exactly what an app migrating from one
+    // to the other needs.
+    app: ProviderScope(
+      observers: [const DebugRiverpodObserver()],
+      child: MaterialApp(
+        title: 'debug_overlay example',
+        theme: ThemeData(colorSchemeSeed: Colors.blue),
+        home: const _Bootstrap(),
+      ),
     ),
     enabled: kDebugMode,
     controller: debug,
@@ -295,6 +316,21 @@ class HomeScreen extends StatelessWidget {
                 OutlinedButton(onPressed: counter.touch, child: const Text('touch (no emit)')),
                 OutlinedButton(onPressed: () => todos.add(TodoAdded('todo ${DateTime.now().second}')), child: const Text('add todo (Bloc)')),
                 OutlinedButton(onPressed: () => todos.add(const TodoCleared()), child: const Text('clear todos')),
+                // A Riverpod provider, driven from the same row as the cubits —
+                // and landing on the same State page. Nothing had to choose
+                // between the two libraries.
+                Consumer(
+                  builder: (context, ref, _) => OutlinedButton(
+                    onPressed: () => ref.read(sessionProvider.notifier).signIn('ada'),
+                    child: const Text('sign in (Riverpod)'),
+                  ),
+                ),
+                Consumer(
+                  builder: (context, ref, _) => OutlinedButton(
+                    onPressed: () => ref.read(sessionProvider.notifier).signOut(),
+                    child: const Text('sign out'),
+                  ),
+                ),
               ],
             ),
             const Divider(height: 24),

@@ -41,9 +41,43 @@ base class DebugRiverpodObserver extends ProviderObserver {
   /// What the page labels the source.
   ///
   /// A provider's `name` is set when you pass one to the constructor
-  /// (`StateProvider(..., name: 'counter')`) or by the code generator. Unnamed
-  /// providers fall back to the runtime type — noisier, but never blank.
+  /// (`NotifierProvider(..., name: 'counter')`) or by the code generator.
+  /// Unnamed providers fall back to the runtime type — noisier, but never blank.
   String _typeOf(ProviderObserverContext context) => context.provider.name ?? context.provider.runtimeType.toString();
+
+  /// The live Notifier behind the provider, or null for a plain `Provider`.
+  ///
+  /// This is what [StateInspector.inspect] needs: the object whose fields it
+  /// reads. A bloc IS that object, so `DebugBlocObserver` just passes the bloc.
+  /// Riverpod splits the two — the *provider* is a const declaration holding
+  /// nothing, and the *notifier* is where a `signIns` counter or a cache would
+  /// live. So `inspect<Session>` wants the Session, not the provider.
+  ///
+  /// The observer context only exposes the provider (its element is private), so
+  /// the notifier is read back out of the container. That's safe here: the
+  /// provider is already initialised by the time an observer fires, so this
+  /// can't trigger a build or recurse.
+  ///
+  /// Null for a `Provider`/`FutureProvider` — those have no notifier, and their
+  /// value is already the state. Nothing to inspect beyond it.
+  Object? _notifierOf(ProviderObserverContext context) {
+    // `.notifier` lives on Riverpod's internal $ClassProvider, which isn't
+    // exported — so there's no public type to test against, and this asks
+    // dynamically instead. A provider without one (a plain Provider, a
+    // FutureProvider) throws NoSuchMethodError and gets null, which is correct:
+    // its value already IS the state, and there are no other fields to read.
+    try {
+      // Dynamic all the way down: `.notifier` returns a Refreshable, which isn't
+      // exported either, so there's nothing to cast to.
+      final dynamic container = context.container;
+      return container.read((context.provider as dynamic).notifier) as Object?;
+    } catch (_) {
+      // Also covers a provider mid-failure, whose notifier can't be read. Not
+      // worth taking the observer down for — the state and the error are
+      // recorded either way.
+      return null;
+    }
+  }
 
   @override
   void didAddProvider(ProviderObserverContext context, Object? value) {
@@ -51,10 +85,7 @@ base class DebugRiverpodObserver extends ProviderObserver {
       _idOf(context),
       type: _typeOf(context),
       state: value,
-      // No `instance:` — the useful object for a provider is its *value*, which
-      // is already the state. Passing the provider itself would let
-      // StateInspector.inspect<T> read fields off a const declaration that holds
-      // none of the interesting data.
+      instance: _notifierOf(context),
     );
     next?.didAddProvider(context, value);
   }
@@ -66,6 +97,7 @@ base class DebugRiverpodObserver extends ProviderObserver {
       type: _typeOf(context),
       from: previousValue,
       to: newValue,
+      instance: _notifierOf(context),
       // Riverpod 3 attributes a change to the mutation that caused it, when
       // there is one — the closest thing it has to bloc's event, and worth
       // showing for exactly the same reason.
