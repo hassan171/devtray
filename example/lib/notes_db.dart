@@ -140,9 +140,83 @@ class NotesDb {
       {...values, 'id': id},
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    revision.value++;
   }
 
-  static Future<void> deleteRow(int id) async => db.delete(_table, where: 'id = ?', whereArgs: [id]);
+  static Future<void> deleteRow(int id) async {
+    await db.delete(_table, where: 'id = ?', whereArgs: [id]);
+    revision.value++;
+  }
+
+  // ---------------------------------------------------------------------------
+  // The app-facing side.
+  //
+  // Everything above is what the *Storage page* needs (rows as maps, keyed by
+  // primary key). Everything below is what the *app* needs (a Note object, and
+  // a way to know when to re-read). Same table, two readers — which is the
+  // honest shape: a debug tool looks at the store your app already has, it
+  // doesn't ask you to restructure around it.
+  // ---------------------------------------------------------------------------
+
+  /// Bumped on every write, including the ones made from the Storage page.
+  ///
+  /// SQLite has no change stream, so this is the app's own. It's what makes
+  /// editing a note *in the overlay* show up on the Notes list behind it —
+  /// which is the single most convincing thing this example can demonstrate.
+  static final ValueNotifier<int> revision = ValueNotifier(0);
+
+  static Future<List<Note>> notes() async {
+    // Pinned first, then newest — the order the list actually wants.
+    final rows = await db.query(_table, orderBy: 'pinned DESC, id DESC');
+    return rows.map(Note.fromRow).toList();
+  }
+
+  static Future<Note?> note(int id) async {
+    final rows = await db.query(_table, where: 'id = ?', whereArgs: [id], limit: 1);
+    return rows.isEmpty ? null : Note.fromRow(rows.first);
+  }
+
+  static Future<int> insert({required String title, required String body}) async {
+    final id = await db.insert(_table, {'title': title, 'body': body, 'pinned': 0});
+    revision.value++;
+    return id;
+  }
+
+  static Future<void> setPinned(int id, bool pinned) async {
+    await db.update(_table, {'pinned': pinned ? 1 : 0}, where: 'id = ?', whereArgs: [id]);
+    revision.value++;
+  }
+
+  /// Puts a deleted note back, id and all — the undo behind the delete snackbar.
+  static Future<void> restore(Note note) async {
+    await db.insert(_table, note.toRow(), conflictAlgorithm: ConflictAlgorithm.replace);
+    revision.value++;
+  }
+}
+
+/// A note, as the app thinks of it.
+///
+/// The Storage page never sees this type — it reads the same rows as maps. The
+/// app gets a real model; the debug tool gets the raw truth. Neither is made to
+/// use the other's shape.
+class Note {
+  final int id;
+  final String title;
+  final String body;
+  final bool pinned;
+
+  const Note({required this.id, required this.title, required this.body, required this.pinned});
+
+  factory Note.fromRow(Map<String, Object?> row) => Note(
+        id: row['id']! as int,
+        title: row['title'] as String? ?? '',
+        body: row['body'] as String? ?? '',
+        // SQLite has no bool — it's a 0/1 INTEGER. This is exactly the thing no
+        // schema can tell a generic reader, and why NotesDbAdapter exists.
+        pinned: (row['pinned'] as int? ?? 0) == 1,
+      );
+
+  Map<String, Object?> toRow() => {'id': id, 'title': title, 'body': body, 'pinned': pinned ? 1 : 0};
 }
 
 /// Exposes the `notes` table to the Storage page.

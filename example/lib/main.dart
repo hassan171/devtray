@@ -6,36 +6,27 @@ import 'package:debug_overlay/debug_overlay.dart';
 // two or three.
 import 'package:debug_overlay_bloc/debug_overlay_bloc.dart';
 import 'package:debug_overlay_device/debug_overlay_device.dart';
-import 'package:debug_overlay_dio/debug_overlay_dio.dart';
 import 'package:debug_overlay_hive/debug_overlay_hive.dart';
 import 'package:debug_overlay_html/debug_overlay_html.dart';
-import 'package:debug_overlay_http/debug_overlay_http.dart';
 import 'package:debug_overlay_prefs/debug_overlay_prefs.dart';
 import 'package:debug_overlay_riverpod/debug_overlay_riverpod.dart';
 import 'package:debug_overlay_sqflite/debug_overlay_sqflite.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_services.dart';
+import 'app_theme.dart';
 import 'counter_cubit.dart';
 import 'notes_db.dart';
+import 'screens/notes_screen.dart';
+import 'screens/profile_screen.dart';
+import 'screens/users_screen.dart';
+import 'screens/debug_screen.dart';
 import 'session_provider.dart';
 import 'users_box.dart';
-
-/// Drives the overlay from our own triggers (the AppBar button below), on top
-/// of the draggable launcher.
-final debug = DebugOverlayController();
-
-final dio = Dio()..interceptors.add(DebugDioInterceptor());
-
-/// Live cubits, so the Blocs page has something to watch.
-final counter = CounterCubit();
-final todos = TodoBloc();
-final httpClient = DebugHttpClient(http.Client());
 
 /// Seeds one pref of each type, so the Storage page has something to edit.
 Future<void> _seedPref() async {
@@ -158,8 +149,13 @@ void main() {
     app: ProviderScope(
       observers: [const DebugRiverpodObserver()],
       child: MaterialApp(
-        title: 'debug_overlay example',
-        theme: ThemeData(colorSchemeSeed: Colors.blue),
+        title: 'Notes — debug_overlay example',
+        // The app's own identity, deliberately unlike the overlay's blue/grey:
+        // a screenshot should never leave you wondering where the host app ends
+        // and the debug tool begins. Both modes, so the overlay's own dark
+        // theme has something honest to sit on.
+        theme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
         home: const _Bootstrap(),
       ),
     ),
@@ -255,114 +251,68 @@ class _BootstrapState extends State<_Bootstrap> {
   }
 }
 
-class HomeScreen extends StatelessWidget {
+/// A small, believable notes app — which is the only honest way to demonstrate
+/// a tool that watches an app.
+///
+/// The old version of this screen was twenty buttons in a column: "GET via
+/// dio", "Trigger a 404", "Write some logs". They filled the overlay's pages,
+/// but they taught the wrong thing — that you drive a debug tool by hand. You
+/// don't. You use your app, and the tool fills up on its own.
+///
+/// So the triggers are gone, and the same features now come out of ordinary
+/// use:
+///
+///  * **Network** — pull-to-refresh on Users fetches from the API.
+///  * **Storage** — every note you write is a SQLite row; every user fetched is
+///    a Hive record. Edit one from the Storage page and the app updates behind
+///    the overlay, because it's the same store.
+///  * **State** — the Riverpod session and the bloc todo list, on Profile.
+///  * **Logs** — the app logs what it does, as an app does.
+///
+/// The one thing this costs: a few overlay features have no natural trigger in
+/// a notes app — an uncaught async error, a 500, a cubit that throws. Rather
+/// than bolt a "Debug" tab back on and undo the point, they're reachable from
+/// the Profile tab's developer section, where a real app would keep them.
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int _tab = 0;
+
+  static const _titles = ['Notes', 'Users', 'Profile', 'Debug'];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('debug_overlay example'),
-        actions: [IconButton(onPressed: debug.toggle, icon: const Icon(Icons.bug_report_outlined))],
+        title: Text(_titles[_tab]),
+        actions: [
+          IconButton(
+            tooltip: 'Open the debug overlay',
+            onPressed: debug.toggle,
+            icon: const Icon(Icons.bug_report_outlined),
+          ),
+        ],
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          spacing: 12,
-          children: [
-            const Text('Fire some requests, then open the overlay.'),
-            // Goes through the same dio the overlay watches, so it lands on the
-            // Network page AND fills the Hive box behind the Users tab.
-            //
-            // /users only has 10 real records, so they're fanned out to make a
-            // list long enough to actually scroll.
-            Wrap(
-              spacing: 8,
-              children: [
-                for (final n in [10, 100, 1000])
-                  FilledButton.tonalIcon(
-                    onPressed: () => fetchAndStoreUsers(dio, count: n),
-                    icon: const Icon(Icons.download, size: 16),
-                    label: Text('$n users → Hive'),
-                  ),
-              ],
-            ),
-            FilledButton(onPressed: () => dio.get<dynamic>('https://jsonplaceholder.typicode.com/todos/1'), child: const Text('GET via dio')),
-            FilledButton(
-              onPressed: () => dio.post<dynamic>('https://jsonplaceholder.typicode.com/posts', data: {'title': 'hello', 'body': 'from dio', 'userId': 1}),
-              child: const Text('POST via dio'),
-            ),
-            FilledButton(onPressed: () => httpClient.get(Uri.parse('https://jsonplaceholder.typicode.com/users/2')), child: const Text('GET via package:http')),
-            FilledButton(
-              // Fails — check the red row and its Error tab.
-              onPressed: () =>
-                  dio.get<dynamic>('https://jsonplaceholder.typicode.com/nope-404').catchError((_) => Response<dynamic>(requestOptions: RequestOptions())),
-              child: const Text('Trigger a 404'),
-            ),
-            const Divider(height: 24),
-            // Drive the cubits — watch them on the Blocs page. The Cubit's
-            // transitions have no event; the Bloc's carry the one that caused
-            // them.
-            Wrap(
-              spacing: 8,
-              children: [
-                OutlinedButton(onPressed: counter.increment, child: const Text('counter++')),
-                OutlinedButton(onPressed: counter.decrement, child: const Text('counter--')),
-                OutlinedButton(onPressed: counter.boom, child: const Text('cubit error')),
-                // Changes a field WITHOUT emitting. The page only rebuilds on
-                // emits, so this only appears after "Re-read fields" in the
-                // detail pane — which is exactly why that button exists.
-                OutlinedButton(onPressed: counter.touch, child: const Text('touch (no emit)')),
-                OutlinedButton(onPressed: () => todos.add(TodoAdded('todo ${DateTime.now().second}')), child: const Text('add todo (Bloc)')),
-                OutlinedButton(onPressed: () => todos.add(const TodoCleared()), child: const Text('clear todos')),
-                // A Riverpod provider, driven from the same row as the cubits —
-                // and landing on the same State page. Nothing had to choose
-                // between the two libraries.
-                Consumer(
-                  builder: (context, ref, _) => OutlinedButton(
-                    onPressed: () => ref.read(sessionProvider.notifier).signIn('ada'),
-                    child: const Text('sign in (Riverpod)'),
-                  ),
-                ),
-                Consumer(
-                  builder: (context, ref, _) => OutlinedButton(
-                    onPressed: () => ref.read(sessionProvider.notifier).signOut(),
-                    child: const Text('sign out'),
-                  ),
-                ),
-              ],
-            ),
-            const Divider(height: 24),
-            FilledButton(
-              onPressed: () {
-                // All four land in the Logs page.
-                debugPrint('debugPrint — captured by the debugPrint hook');
-                print('print — captured by the Zone'); // ignore: avoid_print
-                LogStore.instance.log('Tagged, levelled log', level: LogLevel.warning, tag: 'example');
-                // `dart:developer`'s log() is `external` — it goes straight to the
-                // VM service, so there is NO hook that could capture it. This
-                // `log` is the package's drop-in: same signature, still reaches
-                // DevTools, and also records into the store. The only change a
-                // real app makes is its import.
-                log('developer.log — bridged, not captured', level: 900, name: 'example');
-              },
-              child: const Text('Write some logs'),
-            ),
-            FilledButton(
-              // Uncaught async — caught by the Zone, badges the launcher.
-              onPressed: () => Future<void>.error(StateError('Something went wrong in a Future')),
-              child: const Text('Throw an uncaught error'),
-            ),
-            FilledButton(
-              // A 5xx also lands on the Errors page and badges the launcher.
-              // The 404 button above does not — see the bell menu on the
-              // Network page to change that.
-              onPressed: () => dio.get<dynamic>('https://httpbin.org/status/500').catchError((_) => Response<dynamic>(requestOptions: RequestOptions())),
-              child: const Text('Trigger a 500 (badges the launcher)'),
-            ),
-            OutlinedButton(onPressed: () => debug.showLauncher.value = !debug.showLauncher.value, child: const Text('Toggle the floating button')),
-          ],
-        ),
+      body: IndexedStack(
+        // IndexedStack, not a swap: each tab keeps its scroll position and its
+        // state across switches, the way a real app's tabs do.
+        index: _tab,
+        children: const [NotesScreen(), UsersScreen(), ProfileScreen(), DebugScreen()],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tab,
+        onDestinationSelected: (i) => setState(() => _tab = i),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.note_outlined), selectedIcon: Icon(Icons.note), label: 'Notes'),
+          NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: 'Users'),
+          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Profile'),
+          NavigationDestination(icon: Icon(Icons.bug_report_outlined), selectedIcon: Icon(Icons.bug_report), label: 'Debug'),
+        ],
       ),
     );
   }
