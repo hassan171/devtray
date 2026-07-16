@@ -23,19 +23,29 @@ a transport-agnostic store, so dio and http still feed the same page.
    | `PluginDeviceInfoProvider` | `debug_overlay_device` |
    | `HtmlPreviewDialog` | `debug_overlay_html` |
 
-2. **`persistMockRules` now defaults to `false`**, and needs a storage backend.
+2. **`runDebugApp(persistMockRules:)` is gone.** Setting a storage backend is the opt-in.
 
-   Mock rules are session-only unless you wire one up — and they'll stop surviving hot
+   Mock rules are session-only until you install one — and they'll stop surviving hot
    restart silently, which is exactly when you're iterating on an error state. To restore
    the old behaviour:
 
    ```dart
    // + debug_overlay_prefs
    MockStore.instance.storage = SharedPreferencesMockRuleStorage();
-   runDebugApp(app: const MyApp(), persistMockRules: true);
    ```
 
-3. **The Network page's HTML preview button is hidden unless you supply a previewer.**
+   The flag was a second switch that could only ever disagree with the first: `storage`
+   defaults to in-memory, which is always empty at startup, so restoring from it was already
+   a no-op.
+
+3. **`NetworkDebugPage(enableMocking:)` is gone.** `MockStore.instance.disable()` is the one
+   switch — the page reads it and drops the whole mocking UI along with the interception.
+
+   Two switches meant they could disagree, and the dangerous direction was silent: hiding the
+   UI while a rule added from code went on faking traffic, with nothing on screen to reveal
+   it. That state is now unrepresentable.
+
+4. **The Network page's HTML preview button is hidden unless you supply a previewer.**
 
    The core can't render HTML any more, so a button would open nothing:
 

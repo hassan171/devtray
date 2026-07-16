@@ -11,7 +11,7 @@ import 'components/log_row.dart';
 import 'log_store.dart';
 
 /// Captured logs **and** errors in one stream — `debugPrint`, `print` (under
-/// [DebugOverlayCapture.runApp]), [LogStore.log], plus every framework/uncaught
+/// [runDebugApp]), [LogStore.log], plus every framework/uncaught
 /// error and forwarded network failure ([LogStore.report]).
 ///
 /// One store, one entry type: errors are [LogEntry]s with [LogEntry.isError]

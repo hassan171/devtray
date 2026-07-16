@@ -13,8 +13,10 @@
 ///
 /// ```dart
 /// MockStore.instance.storage = SharedPreferencesMockRuleStorage();
-/// runDebugApp(app: MyApp(), persistMockRules: true);
 /// ```
+///
+/// That's the whole opt-in — setting a backend *is* the switch. `MockStore`
+/// defaults to in-memory storage, which is always empty at startup.
 ///
 /// Both are opt-in for the same reason: the core can't depend on
 /// `shared_preferences`, or every app would carry it for a debug tool. Only the

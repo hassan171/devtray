@@ -3,8 +3,8 @@
 An in-app debugging overlay for Flutter: a draggable floating button that opens a tabbed
 tools panel over your running app.
 
-Four built-in pages — **Network**, **Logs**, **Errors**, **Device** — and every other tab is
-one you add.
+Seven built-in pages — **Network** (with mocking), **Logs** (errors folded in), **State**,
+**Storage**, **Visual**, **Device** and **Export** — and every other tab is one you add.
 
 You decide **whether** it exists, **when** it opens, and **how** it's presented.
 
@@ -78,25 +78,56 @@ It takes every option `DebugOverlay` does — `presentation`, `theme`, `controll
 `showLauncher`, the launcher's corner/size/icon. See
 [Controlling when and how it opens](#controlling-when-and-how-it-opens).
 
-### If you can't hand over `runApp`
+### Already have a bootstrap?
 
-Add-to-app, a custom bootstrap, or a test may not let you. Then do it by hand — this is what
-`runDebugApp` expands to:
+`runDebugApp` takes a `setup` callback, run **inside** the capture Zone and awaited before the
+first frame — so your Firebase init, your dotenv load, and anything they log or throw are all
+captured:
 
 ```dart
-void main() => DebugOverlayCapture.runApp(          // the capture Zone
-  () => runApp(
-    DebugOverlay(pages: const [...], child: const MyApp()),   // the UI
+void main() => runDebugApp(
+  app: const MyApp(),
+  enabled: kDebugMode,
+  setup: () async {
+    await Firebase.initializeApp();
+    await MyDotEnv.init();
+  },
+  pages: const [...],
+);
+```
+
+If your app widget can only be built *after* that (it reads something the bootstrap produced),
+pass `appBuilder:` instead of `app:` — it's called once `setup` finishes.
+
+### If you can't hand over `runApp`
+
+Add-to-app, or a host that owns `main`. Then wire the two halves yourself:
+
+```dart
+void main() => runZonedGuarded(
+  () {
+    WidgetsFlutterBinding.ensureInitialized();   // must be INSIDE the Zone
+    captureErrors();                             // framework + platform errors
+    captureDebugPrint();                         // debugPrint
+
+    runApp(DebugOverlay(pages: const [...], child: const MyApp()));
+  },
+  (error, stack) => LogStore.instance.report(error, stackTrace: stack, source: ErrorSource.uncaught),
+  zoneSpecification: ZoneSpecification(
+    print: (self, parent, zone, line) {          // bare print()
+      LogStore.instance.log(line);
+      parent.print(zone, line);
+    },
   ),
 );
 ```
 
-They're separate because the Zone has to be installed *around* `runApp`, and `DebugOverlay`
-is a widget that only exists inside it — a widget can't wrap its own `runApp` call.
+They're separate because the Zone has to be installed *around* `runApp`, and `DebugOverlay` is
+a widget that only exists inside it — a widget can't wrap its own `runApp` call.
 
-If you can't own `runApp` at all, call `DebugOverlayCapture.installHooks()` anywhere during
-startup instead. You'll still capture `debugPrint` and framework errors; you'll miss bare
-`print()` and uncaught async errors, which genuinely require the Zone.
+If you can't own `runApp` at all, call `captureErrors()` and `captureDebugPrint()` anywhere
+during startup. You'll still get `debugPrint` and framework errors; you'll miss bare `print()`
+and uncaught async errors, which genuinely require the Zone.
 
 ---
 
@@ -191,8 +222,8 @@ pages: const [NetworkDebugPage()],
 ```
 
 Nothing else to wire up: the dio and http adapters already consult the rules. To drop mocking
-from the UI entirely, pass `NetworkDebugPage(enableMocking: false)` — that hides the Mocks
-button, the "Mock this request" action, and the interception banner.
+entirely, call `MockStore.instance.disable()` — that stops the interception *and* takes the
+whole UI with it. See [Don't want mocking at all?](#dont-want-mocking-at-all).
 
 ### The workflow that matters
 
@@ -262,11 +293,12 @@ dependencies:
 
 ```dart
 MockStore.instance.storage = SharedPreferencesMockRuleStorage();
-runDebugApp(app: const MyApp(), persistMockRules: true);
 ```
 
-It's opt-in because persistence means a real storage backend, and the core doesn't depend on
-`shared_preferences` — no app should carry that for a debug tool it may not use.
+That's the whole opt-in — setting a backend *is* the switch, so there's no flag to keep in
+sync with it. It's opt-in at all because persistence means a real storage package, and the
+core doesn't depend on `shared_preferences` — no app should carry that for a debug tool it may
+not use.
 
 Only the rules are stored (a small JSON blob); no logs, no request bodies, so none of the PII
 concerns that make persisting the *data* a bad idea. Swap the backend by implementing
@@ -275,29 +307,20 @@ concerns that make persisting the *data* a bad idea. Swap the backend by impleme
 
 ### Don't want mocking at all?
 
-`NetworkDebugPage(enableMocking: false)` hides the whole UI (the Mocks button, "Mock this
-request", the banner) — but that is **not enough** on its own:
-
-- The adapters consult `MockStore` regardless of the UI, so a rule added **from code** would
-  still fake traffic with nothing on screen to reveal it.
-
-So opt out on both levels:
+One line, and it's the real one:
 
 ```dart
-MockStore.instance.disable();   // stop the adapters intercepting, for real
-
-runDebugApp(
-  const MyApp(),
-  pages: const [
-    NetworkDebugPage(enableMocking: false),   // hide the button + banner
-    LogsDebugPage(),
-  ],
-);
+MockStore.instance.disable();
 ```
 
-`NetworkDebugPage(enableMocking: false)` is **UI only**. `MockStore.instance.disable()` is
-what actually stops interception — it beats offline mode, every rule, and skips restoring
-persisted rules on the next launch.
+That stops the adapters intercepting — it beats offline mode, every rule, and skips restoring
+persisted rules on the next launch. The Network page reads it too, so the Mocks button, "Mock
+this request" and the interception warning all disappear with it.
+
+There's deliberately no separate flag for the UI. There used to be, and it was a trap: hiding
+the affordances while the adapters went on consulting `MockStore` meant a rule added **from
+code** could fake traffic with nothing on screen to reveal it. One switch, so the two can't
+disagree.
 
 ---
 
@@ -450,13 +473,13 @@ whole filtered view copyable as plain text for a bug report.
 
 | | `debugPrint` | framework errors | bare `print()` | uncaught async errors | `dart:developer` `log()` |
 |---|---|---|---|---|---|
-| `runDebugApp(...)` / `DebugOverlayCapture.runApp(...)` | ✅ | ✅ | ✅ | ✅ | ❌ — see below |
-| `DebugOverlayCapture.installHooks()` | ✅ | ✅ | ❌ | ❌ | ❌ — see below |
+| `runDebugApp(...)` | ✅ | ✅ | ✅ | ✅ | ❌ — see below |
+| `captureErrors()` + `captureDebugPrint()` | ✅ | ✅ | ❌ | ❌ | ❌ — see below |
 
 Bare `print()` and uncaught async errors can only be intercepted from inside a custom `Zone`,
-which means owning the `runApp` call. If you'd rather not, call `installHooks()` anywhere
-during startup and accept the two gaps. Nothing is ever swallowed — logs still print and
-errors still reach the console and the red error screen.
+which means owning the `runApp` call. If you'd rather not, call `captureErrors()` and
+`captureDebugPrint()` anywhere during startup and accept the two gaps. Nothing is ever
+swallowed — logs still print and errors still reach the console and the red error screen.
 
 Each capture channel is a separate switch on `runDebugApp`, all on by default —
 `captureFlutterErrors`, `captureDebugPrints`, `captureZonePrints`, `captureUncaughtErrors`.

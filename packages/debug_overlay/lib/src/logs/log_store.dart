@@ -128,7 +128,7 @@ class LogEntry {
 /// error store.
 ///
 /// Capture is opt-in via [captureDebugPrint] / [captureErrors] (or the broader
-/// `DebugOverlayCapture.installAll`), but you can always log or report directly:
+/// [runDebugApp]), but you can always log or report directly:
 ///
 /// ```dart
 /// LogStore.instance.log('User signed in', level: LogLevel.info, tag: 'auth');
@@ -268,7 +268,7 @@ DebugPrintCallback? _originalDebugPrint;
 /// Routes [debugPrint] into [LogStore] — it keeps printing to the console too.
 ///
 /// Bare `print()` cannot be intercepted this way; it needs a custom Zone. Use
-/// `DebugOverlayCapture.installAll` (which wraps your app in one) if you want
+/// [runDebugApp] (which installs one for you) if you want
 /// those captured as well.
 void captureDebugPrint() {
   if (_originalDebugPrint != null) return;
@@ -294,7 +294,7 @@ bool _errorsCaptured = false;
 ///
 /// This catches [FlutterError.onError] and [PlatformDispatcher.onError].
 /// Uncaught errors in async code outside the platform dispatcher need a Zone —
-/// use `DebugOverlayCapture.installAll` for that.
+/// use [runDebugApp], which installs the Zone for you.
 void captureErrors() {
   if (_errorsCaptured) return;
   _errorsCaptured = true;

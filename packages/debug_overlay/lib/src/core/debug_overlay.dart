@@ -81,7 +81,7 @@ class DebugOverlay extends StatefulWidget {
   final IconData launcherIcon;
 
   /// Show a red count badge on the launcher when errors have been captured but
-  /// not yet reviewed. Requires [captureErrors] (or [DebugOverlayCapture]) to
+  /// not yet reviewed. Requires [captureErrors] (which [runDebugApp] installs) to
   /// be installed, and is ignored when [launcherBuilder] replaces the button.
   final bool showErrorBadge;
 

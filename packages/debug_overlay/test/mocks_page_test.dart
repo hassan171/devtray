@@ -205,12 +205,13 @@ void main() {
   });
 
   group('opting out of mocking entirely', () {
-    testWidgets('enableMocking: false hides the "Mock this request" button', (tester) async {
+    testWidgets('a disabled store hides the "Mock this request" button', (tester) async {
+      mocks.disable();
       final logs = NetworkLogStore.instance;
       final entry = logs.add(method: 'GET', uri: Uri.parse('https://api.test/orders'))!;
       logs.complete(entry.id, status: NetworkLogStatus.success, statusCode: 200);
 
-      await tester.pumpWidget(_hostPage(const NetworkDebugPage(enableMocking: false)));
+      await tester.pumpWidget(_hostPage(const NetworkDebugPage()));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('/orders'));
@@ -223,10 +224,13 @@ void main() {
       expect(find.byTooltip('Copy as cURL'), findsOneWidget);
     });
 
-    testWidgets('enableMocking: false hides the interception banner', (tester) async {
+    testWidgets('a disabled store hides the interception banner', (tester) async {
       mocks.add(const MockRule(id: 'r', urlPattern: '/orders'));
+      // disable() parks the rules too, so nothing is intercepting and there is
+      // nothing to warn about.
+      mocks.disable();
 
-      await tester.pumpWidget(_hostPage(const NetworkDebugPage(enableMocking: false)));
+      await tester.pumpWidget(_hostPage(const NetworkDebugPage()));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('mock rule active'), findsNothing);
@@ -296,11 +300,30 @@ void main() {
       expect(find.text('/orders'), findsOneWidget);
     });
 
-    testWidgets('enableMocking: false hides the Mocks button', (tester) async {
-      await tester.pumpWidget(_hostPage(const NetworkDebugPage(enableMocking: false)));
+    testWidgets('a disabled store hides the Mocks button', (tester) async {
+      mocks.disable();
+      await tester.pumpWidget(_hostPage(const NetworkDebugPage()));
       await tester.pumpAndSettle();
 
       expect(find.byTooltip('Mocks'), findsNothing);
+    });
+
+    testWidgets('there is no way to hide the UI while rules still intercept', (tester) async {
+      // The reason mocking is one switch and not two. There used to be a
+      // separate `enableMocking: false` for the UI, so you could hide every
+      // affordance while a code-added rule went on faking traffic — with nothing
+      // on screen to reveal it. That state is now unrepresentable: the only
+      // switch is the store, and turning it off stops the interception itself.
+      mocks.add(const MockRule(id: 'r', urlPattern: '/orders'));
+      mocks.disable();
+
+      await tester.pumpWidget(_hostPage(const NetworkDebugPage()));
+      await tester.pumpAndSettle();
+
+      // No UI...
+      expect(find.byTooltip('Mocks'), findsNothing);
+      // ...precisely because nothing is being faked.
+      expect(mocks.isIntercepting, isFalse);
     });
   });
 

@@ -24,9 +24,10 @@ class NetworkDetailPane extends StatefulWidget {
   final NetworkLogEntry entry;
   final VoidCallback onBack;
 
-  /// Shows the "Mock this request" action. Off when the Network tab has
-  /// `enableMocking: false` — otherwise the button would create a rule the user
-  /// has no way to reach (the Mocks button is hidden too).
+  /// Shows the "Mock this request" action.
+  ///
+  /// The page passes `!MockStore.isDisabled` — with the store off, this would
+  /// create a rule that can't intercept and that no UI can reach.
   final bool enableMocking;
 
   /// Renders an HTML response body. Null hides the preview button — the core has

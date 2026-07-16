@@ -58,11 +58,11 @@ class MockStore {
   /// Kills mocking outright: no rule matches, offline mode is ignored, and the
   /// adapters stop consulting this store at all.
   ///
-  /// Use it when you don't want the feature — e.g. the Network tab runs with
-  /// `enableMocking: false`, so there'd be no UI to notice or undo a stray rule.
-  /// Hiding the UI alone is not enough: the adapters apply rules regardless of
-  /// what's on screen, so a rule added from code would still fake traffic with
-  /// nothing to reveal it.
+  /// **This is the only switch.** The Network page reads [isDisabled] and drops
+  /// the Mocks button, "Mock this request" and the interception warning along
+  /// with it — so there's no way to end up with the UI hidden while a rule added
+  /// from code goes on faking traffic, which is what a separate UI-only flag
+  /// used to allow.
   ///
   /// ```dart
   /// MockStore.instance.disable();   // before the first request
