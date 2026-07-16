@@ -1,6 +1,30 @@
 # Splitting `debug_overlay` into a core + integration packages
 
-Status: **proposed** — nothing has moved yet.
+Status: **done.** The core has no dependencies beyond Flutter, and there are nine
+packages. 245 tests pass, the same behaviour as before plus two new guards.
+
+What actually shipped, against what was planned:
+
+* **Nine packages, not seven.** `HiveStorage` and `SqfliteStorage` were promoted
+  out of the example too — they imported only `debug_overlay` and their own
+  library, so they were already packages in everything but name.
+* **The test split was an improvement, not a tax.** The mock-rule logic never
+  needed a real HTTP client; it only had one because the tests lived next to the
+  adapters. Core's `mocking_test` now runs 18 tests with no client at all.
+* **`status classification` moved to `_dio`**, though this plan filed it under
+  logic — it tests dio's `onResponse` against `validateStatus`. Its own comment
+  said "no mocking involved here", which was the tell.
+* **`state_test` moved wholesale to `_bloc`**, rather than splitting: all 35 of
+  its tests drive through `Bloc.observer`, and none touch `StateInspector`
+  directly. That briefly left `StateDebugPage` untested in the core — the one
+  thing the migration made worse — so `state_page_test.dart` now covers it with
+  **no state library at all**, pushing straight into the inspector's public API.
+  That's a better test than the one it replaces: it proves the claim the whole
+  architecture rests on, rather than assuming it.
+
+The rest of this document is the original plan, kept for the reasoning.
+
+---
 
 ## Why
 
