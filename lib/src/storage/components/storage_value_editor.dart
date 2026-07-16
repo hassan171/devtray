@@ -3,7 +3,45 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../core/debug_overlay_theme.dart';
+import '../../core/debug_text_styles.dart';
 import 'storage_list_editor.dart';
+
+/// The colour a value's type is spoken in.
+///
+/// Type isn't trivia on this page — it's the safety story. A store like
+/// SharedPreferences has a setter per type and throws on the next *read* if the
+/// wrong one was written, so "what type is this?" is the question the row has to
+/// answer before you touch it. Colour makes each type recognisable at a glance
+/// rather than something you read.
+Color storageTypeColor(Object? v, DebugOverlayTheme t) => switch (v) {
+      null => t.textMuted,
+      bool() => t.warning,
+      int() || double() => t.accent,
+      String() => t.success,
+      List() || Map() => t.textMuted,
+      _ => t.textMuted,
+    };
+
+/// A pill naming the value's type — the control you get is chosen from it, and
+/// it's what your edit will be written back as.
+class StorageTypeBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const StorageTypeBadge({super.key, required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Text(label, style: DebugTextStyles.label(color: color, fontSize: 8)),
+    );
+  }
+}
 
 /// One key/value row. Renders the right control for the value's **existing**
 /// type, and writes back that same type.
@@ -131,6 +169,69 @@ class _StorageValueEditorState extends State<StorageValueEditor> {
     widget.onWrite(parsed.value);
   }
 
+  /// Deleting a key is irreversible — there's no undo, and the store is the
+  /// app's real state, not a scratch buffer. An edit is recoverable (you retype
+  /// it); a delete of a key you didn't recognise isn't. So it asks first.
+  Future<void> _confirmDelete() async {
+    final t = DebugOverlayTheme.of(context);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => DebugOverlayThemeScope(
+        // Pushed on the app's Navigator, outside the overlay's subtree — the
+        // theme has to be carried across.
+        theme: t,
+        child: AlertDialog(
+          backgroundColor: t.background,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: BorderSide(color: t.border),
+          ),
+          title: Text('Delete key?', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: t.text)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Name the key: on a long store you may be several rows from where
+              // you thought you were.
+              Text(widget.storageKey, style: DebugTextStyles.debugMono(color: t.text, fontSize: 12)),
+              const SizedBox(height: 8),
+              Text(
+                'This removes it from the store. There is no undo.',
+                style: TextStyle(fontSize: 11, color: t.textMuted, height: 1.4),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text('Cancel', style: TextStyle(fontSize: 12, color: t.textMuted)),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              // Danger colour, from the overlay's theme — a bare FilledButton
+              // would take the host app's primary colour and read as benign.
+              style: FilledButton.styleFrom(
+                backgroundColor: t.error,
+                foregroundColor: t.background,
+                minimumSize: const Size(0, 36),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+              ),
+              child: Text('Delete', style: DebugTextStyles.label(color: t.background, fontSize: 10)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed ?? false) widget.onDelete();
+  }
+
+  static OutlineInputBorder _border(Color c, [double w = 1]) => OutlineInputBorder(
+        borderRadius: BorderRadius.circular(6),
+        borderSide: BorderSide(color: c, width: w),
+      );
+
   @override
   Widget build(BuildContext context) {
     final t = DebugOverlayTheme.of(context);
@@ -152,28 +253,31 @@ class _StorageValueEditorState extends State<StorageValueEditor> {
           Row(
             children: [
               Expanded(
+                // A key is an identifier — data, not prose.
                 child: Text(
                   widget.storageKey,
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: t.text),
+                  overflow: TextOverflow.ellipsis,
+                  style: DebugTextStyles.debugMono(color: t.text, fontSize: 12, fontWeight: FontWeight.w500),
                 ),
               ),
-              Text(_typeLabel(widget.value), style: TextStyle(fontSize: 10, color: t.textMuted)),
+              const SizedBox(width: 6),
+              StorageTypeBadge(label: _typeLabel(widget.value), color: storageTypeColor(widget.value, t)),
               if (widget.canEdit) ...[
-                const SizedBox(width: 4),
+                const SizedBox(width: 2),
                 if (needsEditButton)
                   IconButton(
                     tooltip: _editing ? 'Save' : 'Edit',
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                    icon: Icon(_editing ? Icons.check : Icons.edit, size: 14, color: _editing ? t.success : t.textMuted),
+                    constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                    icon: Icon(_editing ? Icons.check : Icons.edit_outlined, size: 14, color: _editing ? t.success : t.textMuted),
                     onPressed: () => _editing ? _save() : setState(() => _editing = true),
                   ),
                 IconButton(
                   tooltip: 'Delete',
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                  constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
                   icon: Icon(Icons.delete_outline, size: 14, color: t.error),
-                  onPressed: widget.onDelete,
+                  onPressed: _confirmDelete,
                 ),
               ],
             ],
@@ -181,14 +285,25 @@ class _StorageValueEditorState extends State<StorageValueEditor> {
           if (isBool)
             Row(
               children: [
-                Switch(
-                  value: widget.value! as bool,
-                  onChanged: widget.canEdit ? (v) => widget.onWrite(v) : null,
-                  activeThumbColor: t.accent,
+                Transform.scale(
+                  scale: 0.75,
+                  child: Switch(
+                    value: widget.value! as bool,
+                    onChanged: widget.canEdit ? (v) => widget.onWrite(v) : null,
+                    activeThumbColor: t.accent,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
                 ),
+                const SizedBox(width: 6),
                 Text(
                   '${widget.value}',
-                  style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: t.text),
+                  style: DebugTextStyles.debugMono(
+                    // The literal the store holds — green when true, muted when
+                    // false, so a screenful of flags reads at a glance.
+                    color: widget.value == true ? t.success : t.textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             )
@@ -207,21 +322,41 @@ class _StorageValueEditorState extends State<StorageValueEditor> {
               autofocus: true,
               // A structured value is pretty-printed JSON — give it room.
               maxLines: widget.value is Map ? 10 : 1,
-              style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: t.text),
+              cursorColor: t.accent,
+              cursorWidth: 1.5,
+              // You type JSON in here. The bare `monospace` alias only resolves
+              // on Android/Linux and fell back to a proportional font elsewhere,
+              // wrecking the indentation of what you were editing.
+              style: DebugTextStyles.debugMono(color: t.text, fontSize: 12, height: 1.45),
               decoration: InputDecoration(
                 isDense: true,
+                filled: true,
+                fillColor: t.surface,
                 errorText: _error,
-                contentPadding: const EdgeInsets.all(8),
-                border: OutlineInputBorder(borderSide: BorderSide(color: t.border)),
-                enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: t.border)),
-                focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: t.accent)),
+                errorStyle: TextStyle(fontSize: 10, color: t.error),
+                contentPadding: const EdgeInsets.all(10),
+                border: _border(t.border),
+                enabledBorder: _border(t.border.withValues(alpha: 0.8)),
+                focusedBorder: _border(t.accent, 1.5),
+                errorBorder: _border(t.error),
+                focusedErrorBorder: _border(t.error, 1.5),
               ),
               onSubmitted: (_) => _save(),
             )
           else
-            SelectableText(
-              _asText(widget.value).isEmpty ? '<empty>' : _asText(widget.value),
-              style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: t.text),
+            Builder(
+              builder: (context) {
+                final text = _asText(widget.value);
+                final isEmpty = text.isEmpty;
+                return SelectableText(
+                  isEmpty ? 'empty' : text,
+                  style: DebugTextStyles.debugMono(
+                    color: isEmpty ? t.textMuted : t.text,
+                    fontSize: 12,
+                    height: 1.45,
+                  ),
+                );
+              },
             ),
         ],
       ),

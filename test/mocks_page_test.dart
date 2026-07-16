@@ -74,9 +74,75 @@ void main() {
     });
   });
 
-  group('MockInterceptionBanner — the "did I fake this?" guard', () {
+  group('the "did I fake this?" guard on the Network page', () {
+    // The warning lives in the Network toolbar's Mocks button, not in a banner.
+    // A banner was a sibling in the page's Column, so showing it shoved every
+    // request row down the moment a mock was toggled. What must stay true: while
+    // anything is intercepting, the Network page says so — and says how loudly.
+
+
+    testWidgets('silent when nothing is intercepting', (tester) async {
+      await tester.pumpWidget(_hostPage(const NetworkDebugPage()));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip(RegExp('Tap to manage'), skipOffstage: false), findsNothing);
+      expect(find.byTooltip('Mocks'), findsOneWidget, reason: 'still reachable, just not warning');
+    });
+
+    testWidgets('warns on the Network page when a rule is active', (tester) async {
+      mocks.add(const MockRule(id: 'r', urlPattern: '/orders'));
+
+      await tester.pumpWidget(_hostPage(const NetworkDebugPage()));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip(RegExp('1 mock rule active'), skipOffstage: false), findsOneWidget);
+    });
+
+    testWidgets('warns on the Network page when offline mode is on', (tester) async {
+      mocks.offline.value = true;
+
+      await tester.pumpWidget(_hostPage(const NetworkDebugPage()));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip(RegExp('every request is being failed'), skipOffstage: false), findsOneWidget);
+    });
+
+    testWidgets('the warning does not move the request list', (tester) async {
+      // The whole point of moving it into the toolbar. Toggling interception
+      // must not shift a single row.
+      final logs = NetworkLogStore.instance;
+      final e = logs.add(method: 'GET', uri: Uri.parse('https://api.test/users'))!;
+      logs.complete(e.id, status: NetworkLogStatus.success, statusCode: 200);
+
+      await tester.pumpWidget(_hostPage(const NetworkDebugPage()));
+      await tester.pumpAndSettle();
+      final before = tester.getTopLeft(find.text('/users'));
+
+      mocks.add(const MockRule(id: 'r', urlPattern: '/orders'));
+      await tester.pumpAndSettle();
+
+      expect(tester.getTopLeft(find.text('/users')), before, reason: 'interception must not shift the list');
+    });
+
+    testWidgets('the Mocks button is the same size armed or not', (tester) async {
+      await tester.pumpWidget(_hostPage(const NetworkDebugPage()));
+      await tester.pumpAndSettle();
+      final idle = tester.getSize(find.byTooltip('Mocks'));
+
+      mocks.offline.value = true; // the widest possible state
+      await tester.pumpAndSettle();
+      final armed = tester.getSize(find.byTooltip(RegExp('failed'), skipOffstage: false));
+
+      expect(armed, idle, reason: 'a resizing button would nudge the toolbar');
+    });
+  });
+
+  group('MockInterceptionBanner — still available for host layouts', () {
+    // No longer used by the built-in pages, but exported, so a host can put the
+    // warning wherever their own chrome has room for it.
+
     testWidgets('hidden when nothing is intercepting', (tester) async {
-      await tester.pumpWidget(_host(const MocksView()));
+      await tester.pumpWidget(_host(const MockInterceptionBanner()));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('active'), findsNothing);
@@ -86,7 +152,7 @@ void main() {
     testWidgets('warns when a rule is active', (tester) async {
       mocks.add(const MockRule(id: 'r', urlPattern: '/orders'));
 
-      await tester.pumpWidget(_host(const MocksView()));
+      await tester.pumpWidget(_host(const MockInterceptionBanner()));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('1 mock rule active'), findsOneWidget);
@@ -95,7 +161,7 @@ void main() {
     testWidgets('warns when offline mode is on', (tester) async {
       mocks.offline.value = true;
 
-      await tester.pumpWidget(_host(const MocksView()));
+      await tester.pumpWidget(_host(const MockInterceptionBanner()));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Offline mode is ON'), findsOneWidget);
@@ -106,7 +172,7 @@ void main() {
         ..offline.value = true
         ..add(const MockRule(id: 'r', urlPattern: '/orders'));
 
-      await tester.pumpWidget(_host(const MocksView()));
+      await tester.pumpWidget(_host(const MockInterceptionBanner()));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Turn off'));
@@ -114,15 +180,6 @@ void main() {
 
       expect(mocks.isIntercepting, isFalse);
       expect(mocks.rules.value, hasLength(1), reason: 'parked, not deleted');
-    });
-
-    testWidgets('also appears on the Network page', (tester) async {
-      mocks.add(const MockRule(id: 'r', urlPattern: '/orders'));
-
-      await tester.pumpWidget(_hostPage(const NetworkDebugPage()));
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('1 mock rule active'), findsOneWidget);
     });
   });
 
@@ -224,7 +281,9 @@ void main() {
       expect(find.text('/orders'), findsOneWidget);
 
       // Tap the toolbar Mocks button → the mocking UI takes over the tab.
-      await tester.tap(find.byTooltip('Mocks'));
+      // A rule is seeded above, so the button is in its armed state and its
+      // tooltip is the warning rather than plain 'Mocks'.
+      await tester.tap(find.byTooltip(RegExp('Tap to manage'), skipOffstage: false));
       await tester.pumpAndSettle();
 
       expect(find.text('/rules-list'), findsOneWidget, reason: 'mock rule listed');
@@ -278,7 +337,7 @@ void main() {
       await tester.pumpWidget(_host(const MocksView()));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Add'));
+      await tester.tap(find.text('New rule'));
       await tester.pumpAndSettle();
 
       await tester.enterText(find.widgetWithText(TextField, '/orders'), '/x');
@@ -296,7 +355,7 @@ void main() {
       await tester.pumpWidget(_host(const MocksView()));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Add'));
+      await tester.tap(find.text('New rule'));
       await tester.pumpAndSettle();
 
       await tester.enterText(find.widgetWithText(TextField, '/orders'), '/x');
@@ -313,7 +372,7 @@ void main() {
       await tester.pumpWidget(_host(const MocksView()));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Add'));
+      await tester.tap(find.text('New rule'));
       await tester.pumpAndSettle();
 
       await tester.enterText(find.widgetWithText(TextField, '/orders'), '/checkout');

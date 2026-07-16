@@ -6,8 +6,8 @@ import '../filter/debug_filter.dart';
 import '../filter/debug_filter_builder.dart';
 import '../widgets/copyable_section.dart';
 import '../widgets/debug_search_bar.dart';
+import 'components/log_detail_dialog.dart';
 import 'components/log_row.dart';
-import 'error_log_detail.dart';
 import 'log_store.dart';
 
 /// Captured logs **and** errors in one stream — `debugPrint`, `print` (under
@@ -17,8 +17,10 @@ import 'log_store.dart';
 /// One store, one entry type: errors are [LogEntry]s with [LogEntry.isError]
 /// set, so `Source = network` (or `Level = ERR`) in the advanced filter isolates
 /// an errors-only view. Search the text or build a JQL-style filter over level /
-/// source / tag / message / time. Expand an error row to see its full report
-/// (request, response, stack) inline.
+/// source / tag / message / time. Tap any row for its full detail — for an
+/// error, the whole report (request, response, stack).
+///
+/// Rendered as a console: one line per entry, newest at the bottom.
 class LogsDebugPage extends DebugPage {
   const LogsDebugPage();
 
@@ -45,7 +47,6 @@ class _LogsView extends StatefulWidget {
 
 class _LogsViewState extends State<_LogsView> {
   String _search = '';
-  int? _expandedId;
 
   /// Advanced conditions, AND-ed on top of the search. Kept in state so they
   /// survive rebuilds while the page is open.
@@ -99,14 +100,15 @@ class _LogsViewState extends State<_LogsView> {
               total: filtered.length,
               onChanged: (v) => setState(() => _search = v),
               actions: [
-                CopyButton(tooltip: 'Copy all', icon: Icons.copy_all, size: 18, text: _asPlainText(filtered)),
+                // Copies the *filtered* view, so a narrowed-down stream is what
+                // lands in the bug report.
+                CopyButton(tooltip: 'Copy all', icon: Icons.copy_all, size: 16, text: _asPlainText(filtered)),
                 IconButton(
-                  tooltip: 'Clear',
-                  icon: Icon(Icons.delete_outline, color: t.error),
-                  onPressed: () {
-                    store.clear();
-                    setState(() => _expandedId = null);
-                  },
+                  tooltip: 'Clear all logs',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  icon: Icon(Icons.delete_outline, size: 16, color: t.error),
+                  onPressed: store.clear,
                 ),
               ],
             ),
@@ -121,24 +123,25 @@ class _LogsViewState extends State<_LogsView> {
             const SizedBox(height: 8),
             Expanded(
               child: filtered.isEmpty
-                  ? Center(
-                      child: Text(entries.isEmpty ? 'No logs yet' : 'No matches', style: TextStyle(color: t.textMuted)),
-                    )
-                  : ListView.separated(
-                      itemCount: filtered.length,
-                      itemBuilder: (context, i) {
-                        final e = filtered[i];
-                        final expanded = e.id == _expandedId;
-                        void onTap() => setState(() => _expandedId = expanded ? null : e.id);
-
-                        // An error row expands into the full report; a plain log
-                        // line uses the existing inline expansion.
-                        if (e.isError) {
-                          return _ErrorLogRow(entry: e, isExpanded: expanded, onTap: onTap);
-                        }
-                        return LogRow(entry: e, isExpanded: expanded, onTap: onTap);
-                      },
-                      separatorBuilder: (context, i) => SizedBox(height: 8),
+                  ? _LogsEmptyState(searching: entries.isNotEmpty || _conditions.isNotEmpty)
+                  : Container(
+                      color: t.surface,
+                      child: ListView.builder(
+                        // Reads like a console: newest at the bottom, new lines
+                        // pushing older ones up, and the view pinned to the latest
+                        // rather than stranding you at the top of a stale list.
+                        //
+                        // `reverse` rather than reversing the data: the store is
+                        // already newest-first, so index 0 is the newest — which
+                        // `reverse: true` renders at the bottom. Flipping the list
+                        // itself would mean re-sorting on every single rebuild.
+                        reverse: true,
+                        itemCount: filtered.length,
+                        itemBuilder: (context, i) {
+                          final e = filtered[i];
+                          return LogRow(entry: e, onTap: () => LogDetailDialog.show(context, e));
+                        },
+                      ),
                     ),
             ),
           ],
@@ -148,78 +151,45 @@ class _LogsViewState extends State<_LogsView> {
   }
 }
 
-/// An error-level log row that expands into its full report.
-class _ErrorLogRow extends StatelessWidget {
-  final LogEntry entry;
-  final bool isExpanded;
-  final VoidCallback onTap;
+/// Shown when the stream has nothing to show.
+///
+/// An empty console says nothing about whether it's working or broken. When
+/// nothing has been captured at all, the usual cause is that the capture hooks
+/// were never installed — so say that, rather than leaving "No logs yet" in a
+/// void.
+class _LogsEmptyState extends StatelessWidget {
+  /// True when entries exist but the search/filter excluded them all — a very
+  /// different situation from having captured nothing.
+  final bool searching;
 
-  const _ErrorLogRow({required this.entry, required this.isExpanded, required this.onTap});
+  const _LogsEmptyState({required this.searching});
 
   @override
   Widget build(BuildContext context) {
     final t = DebugOverlayTheme.of(context);
 
-    // GestureDetector, not InkWell — no Material ripple/splash on tap.
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        constraints: const BoxConstraints(minHeight: 40),
-        alignment: Alignment.centerLeft,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: t.error.withValues(alpha: 0.5), width: 0.5),
-        ),
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  formatLogTime(entry.time),
-                  style: TextStyle(fontSize: 10, fontFamily: 'monospace', color: t.textMuted),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  width: 32,
-                  padding: const EdgeInsets.symmetric(vertical: 1),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(color: t.error, borderRadius: BorderRadius.circular(3)),
-                  child: const Text(
-                    'ERR',
-                    style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Icon(entry.source == ErrorSource.network ? Icons.cloud_off : Icons.error_outline, size: 14, color: t.error),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        entry.title,
-                        maxLines: isExpanded ? null : 2,
-                        overflow: isExpanded ? null : TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: t.text),
-                      ),
-                      Text(
-                        '${errorSourceLabel(entry.source!)}${entry.errorContext == null ? '' : ' · ${entry.errorContext}'}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 10, color: t.textMuted),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(isExpanded ? Icons.expand_less : Icons.expand_more, size: 16, color: t.textMuted),
-              ],
+            Icon(searching ? Icons.search_off : Icons.article_outlined, size: 28, color: t.textMuted.withValues(alpha: 0.5)),
+            const SizedBox(height: 10),
+            Text(
+              searching ? 'No matching lines' : 'No logs captured',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: t.text),
             ),
-            if (isExpanded) ...[const SizedBox(height: 8), ErrorDetailSections(entry: entry)],
+            const SizedBox(height: 4),
+            Text(
+              searching
+                  ? 'Nothing matches this search or filter.'
+                  : 'debugPrint, print and uncaught errors land here once\n'
+                        'capture is installed — start the app with runDebugApp(),\n'
+                        'or bridge your own logger into LogStore.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: t.textMuted, height: 1.5),
+            ),
           ],
         ),
       ),

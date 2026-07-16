@@ -15,6 +15,7 @@ class User {
 
   const User({required this.id, required this.name, required this.username, required this.email, required this.city});
 
+  /// From the API's shape — `city` is nested under `address`.
   factory User.fromJson(Map<String, dynamic> json) => User(
     id: json['id'] as int,
     name: json['name'] as String,
@@ -24,6 +25,22 @@ class User {
   );
 
   Map<String, dynamic> toMap() => {'id': id, 'name': name, 'username': username, 'email': email, 'city': city};
+
+  /// The mirror of [toMap] — rebuilds a user from the flat map the Storage page
+  /// edits. Not [fromJson]: that takes the API's *nested* shape, which isn't
+  /// what's in the box.
+  ///
+  /// [id] comes from the caller (the box key) rather than the map, so renaming
+  /// `"id"` in the editor can't orphan the record. Every field is required and
+  /// cast here, so a bad edit fails with a clear error instead of putting a
+  /// half-built User in the box.
+  factory User.fromMap(int id, Map<String, Object?> map) => User(
+    id: id,
+    name: map['name']! as String,
+    username: map['username']! as String,
+    email: map['email']! as String,
+    city: map['city']! as String,
+  );
 
   User copyWith({String? name, String? username, String? email, String? city}) =>
       User(id: id, name: name ?? this.name, username: username ?? this.username, email: email ?? this.email, city: city ?? this.city);
@@ -135,19 +152,11 @@ class UsersBoxAdapter extends DebugStorageAdapter {
     }
 
     // Rebuild through the model rather than trusting the map — a missing or
-    // wrong-typed field fails here, not later when something reads the box.
+    // wrong-typed field fails here, not later when something reads the box. The
+    // id comes from the key, so renaming it in the editor can't orphan the
+    // record.
     final map = value.map((k, v) => MapEntry(k.toString(), v));
-    final user = User(
-      // The id is the key. Ignore whatever the map claims, so renaming it in the
-      // editor can't orphan the record.
-      id: int.parse(key),
-      name: map['name']! as String,
-      username: map['username']! as String,
-      email: map['email']! as String,
-      city: map['city']! as String,
-    );
-
-    await usersBox.put(key, user);
+    await usersBox.put(key, User.fromMap(int.parse(key), map));
   }
 
   @override

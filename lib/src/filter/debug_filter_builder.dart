@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/debug_overlay_theme.dart';
+import '../core/debug_text_styles.dart';
 import 'debug_filter.dart';
 
 /// A JQL-style condition builder — a row of `field op value ✕` pills, AND-ed,
@@ -38,18 +39,17 @@ class DebugFilterBuilder<T> extends StatelessWidget {
         children: [
           for (var i = 0; i < conditions.length; i++) ...[
             if (i > 0)
+              // Conditions are AND-ed. Quiet, because it's a fixed truth about
+              // every pair — not something to read on each pass.
               Container(
                 height: 34,
                 width: 34,
                 alignment: Alignment.center,
-                child: Text(
-                  'AND',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: t.textMuted),
-                ),
+                child: Text('and', style: TextStyle(fontSize: 10, color: t.textMuted.withValues(alpha: 0.7))),
               ),
             _ConditionPill<T>(condition: conditions[i], fieldKeys: keys, fields: fields, onChanged: onChanged, onRemove: () => onRemove(i)),
           ],
-          _AddConditionButton(onTap: onAdd),
+          _AddConditionButton(onTap: onAdd, isFirst: conditions.isEmpty),
         ],
       ),
     );
@@ -58,7 +58,13 @@ class DebugFilterBuilder<T> extends StatelessWidget {
 
 class _AddConditionButton extends StatelessWidget {
   final VoidCallback onTap;
-  const _AddConditionButton({required this.onTap});
+
+  /// True when no conditions exist yet — the button is then the *only* thing on
+  /// the row, so it recedes rather than sitting there as a loud outlined pill
+  /// above an unfiltered list.
+  final bool isFirst;
+
+  const _AddConditionButton({required this.onTap, required this.isFirst});
 
   @override
   Widget build(BuildContext context) {
@@ -66,22 +72,23 @@ class _AddConditionButton extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(8),
       child: Container(
-        height: 34,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
-          border: Border.all(color: t.accent),
-          borderRadius: BorderRadius.circular(16),
+          color: isFirst ? Colors.transparent : t.accent.withValues(alpha: 0.10),
+          border: Border.all(color: isFirst ? t.border.withValues(alpha: 0.8) : Colors.transparent),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.add, size: 16, color: t.accent),
+            Icon(Icons.add, size: 14, color: isFirst ? t.textMuted : t.accent),
             const SizedBox(width: 4),
             Text(
               'Add filter',
-              style: TextStyle(fontSize: 12, color: t.accent, fontWeight: FontWeight.w500),
+              style: TextStyle(fontSize: 11, color: isFirst ? t.textMuted : t.accent, fontWeight: FontWeight.w500),
             ),
           ],
         ),
@@ -104,51 +111,70 @@ class _ConditionPill<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = DebugOverlayTheme.of(context);
 
-    return Container(
-      height: 34,
-      decoration: BoxDecoration(
-        color: t.surface.withValues(alpha: 0.6),
-        border: Border.all(color: t.border),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      padding: const EdgeInsets.only(left: 8, right: 4),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _DropdownBox<String>(
-            value: condition.field.isEmpty ? null : condition.field,
-            hint: 'field',
-            items: fieldKeys,
-            labelOf: (k) => k,
-            onChanged: (k) {
-              condition.field = k ?? '';
-              condition.value = ''; // reset — suggestions differ per field
-              onChanged();
-            },
+    // A pill is `mainAxisSize.min` inside a Wrap, so it takes its intrinsic
+    // width — and a Wrap can't shrink a child that asks for too much. Two
+    // dropdowns plus a value field exceed a phone's width, which overflowed the
+    // Row. Capping against the real constraints lets the value field give way
+    // instead (see _ValueField), so the pill always fits.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: constraints.maxWidth),
+          child: Container(
+            height: 32,
+            decoration: BoxDecoration(
+              // An active condition is *changing what you see*, so it reads as
+              // armed rather than as another piece of neutral chrome.
+              color: t.accent.withValues(alpha: 0.08),
+              border: Border.all(color: t.accent.withValues(alpha: 0.35)),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: const EdgeInsets.only(left: 8, right: 2),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _DropdownBox<String>(
+                  value: condition.field.isEmpty ? null : condition.field,
+                  hint: 'field',
+                  items: fieldKeys,
+                  labelOf: (k) => k,
+                  onChanged: (k) {
+                    condition.field = k ?? '';
+                    condition.value = ''; // reset — suggestions differ per field
+                    onChanged();
+                  },
+                ),
+                const SizedBox(width: 4),
+                _DropdownBox<FilterOp>(
+                  value: condition.op,
+                  hint: 'op',
+                  items: FilterOp.values,
+                  labelOf: (o) => o.label,
+                  onChanged: (o) {
+                    condition.op = o ?? FilterOp.equals;
+                    onChanged();
+                  },
+                ),
+                const SizedBox(width: 4),
+                // Flexible, so the value is what yields when space runs out —
+                // the field and op dropdowns are short and fixed, and losing
+                // *which field* you filtered on would be worse.
+                Flexible(
+                  child: _ValueInput<T>(condition: condition, fields: fields, onChanged: onChanged),
+                ),
+                IconButton(
+                  tooltip: 'Remove',
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                  icon: Icon(Icons.close, size: 14, color: t.textMuted),
+                  onPressed: onRemove,
+                ),
+              ],
+            ),
           ),
-          const SizedBox(width: 4),
-          _DropdownBox<FilterOp>(
-            value: condition.op,
-            hint: 'op',
-            items: FilterOp.values,
-            labelOf: (o) => o.label,
-            onChanged: (o) {
-              condition.op = o ?? FilterOp.equals;
-              onChanged();
-            },
-          ),
-          const SizedBox(width: 4),
-          _ValueInput<T>(condition: condition, fields: fields, onChanged: onChanged),
-          IconButton(
-            tooltip: 'Remove',
-            padding: EdgeInsets.zero,
-            visualDensity: VisualDensity.compact,
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            icon: Icon(Icons.close, size: 14, color: t.textMuted),
-            onPressed: onRemove,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -227,14 +253,17 @@ class _ValueFieldState extends State<_ValueField> {
   Widget build(BuildContext context) {
     final t = DebugOverlayTheme.of(context);
 
-    // TextFields want infinite width; cap it so the pill stays compact and the
-    // Wrap can break to a new line.
-    return SizedBox(
-      height: 34,
-      width: 130,
+    // A TextField wants infinite width, so it needs a cap or the pill would
+    // stretch forever. A *max* rather than a fixed width: the enclosing
+    // Flexible shrinks this below 130 on a narrow screen instead of overflowing.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 130, minWidth: 60, maxHeight: 32, minHeight: 32),
       child: TextField(
         controller: _controller,
-        style: TextStyle(fontSize: 12, color: t.text),
+        cursorColor: t.accent,
+        cursorWidth: 1.5,
+        // A filter value is matched against captured data — mono, like the data.
+        style: DebugTextStyles.debugMono(color: t.text, fontSize: 12),
         decoration: InputDecoration(
           hintText: widget.hint,
           hintStyle: TextStyle(fontSize: 12, color: t.textMuted),

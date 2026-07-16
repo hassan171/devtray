@@ -27,6 +27,8 @@ export 'src/core/debug_overlay_controller.dart';
 export 'src/core/debug_overlay_kill_switch.dart';
 export 'src/core/debug_overlay_theme.dart';
 export 'src/core/debug_page.dart';
+// Typography — so a custom page's data reads like the built-in pages' data.
+export 'src/core/debug_text_styles.dart';
 export 'src/core/debug_tools_screen.dart';
 export 'src/core/run_debug_app.dart';
 
@@ -45,6 +47,7 @@ export 'src/network/network_log_store.dart';
 
 // Logs page
 export 'src/logs/log_bridge.dart';
+export 'src/logs/components/log_detail_dialog.dart';
 export 'src/logs/log_store.dart';
 export 'src/logs/logs_debug_page.dart';
 

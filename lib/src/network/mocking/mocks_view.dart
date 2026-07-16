@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/debug_overlay_theme.dart';
+import '../../core/debug_text_styles.dart';
 import 'components/mock_rule_editor.dart';
 import 'mock_rule.dart';
 import 'mock_store.dart';
@@ -29,29 +30,60 @@ class MocksView extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const MockInterceptionBanner(),
+            // No interception banner here on purpose. You're standing on the
+            // page that owns the switches — the armed tint on them already says
+            // what the banner would, and inserting a block above them shoved
+            // the whole list down every time you toggled one. The warning that
+            // matters is on the Network page, where the faking isn't visible.
             _MasterSwitches(theme: t),
             Divider(color: t.border),
             Row(
               children: [
-                Expanded(
-                  child: Text(
-                    'Rules (${rules.length})',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: t.text),
-                  ),
+                Text('Rules', style: DebugTextStyles.label(color: t.textMuted, fontSize: 11)),
+                const SizedBox(width: 6),
+                Text(
+                  '${rules.length}',
+                  style: DebugTextStyles.debugMono(color: t.textMuted, fontSize: 11, fontWeight: FontWeight.w600),
                 ),
+                const Spacer(),
                 if (rules.isNotEmpty)
                   TextButton(
                     onPressed: store.clear,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(0, 32),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
                     child: Text('Clear all', style: TextStyle(fontSize: 12, color: t.error)),
                   ),
-                TextButton.icon(
-                  icon: Icon(Icons.add, size: 16, color: t.accent),
-                  label: Text('Add', style: TextStyle(fontSize: 12, color: t.accent)),
-                  onPressed: () => MockRuleEditor.show(context),
+                const SizedBox(width: 4),
+                // Adding a rule is the primary action here, so it's the only
+                // filled control on the screen.
+                Material(
+                  color: t.accent.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(6),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: () => MockRuleEditor.show(context),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.add, size: 14, color: t.accent),
+                          const SizedBox(width: 4),
+                          // "New rule", not "Add rule" — the editor's own submit
+                          // button is "Add rule", and two controls with the same
+                          // label doing different things is a trap.
+                          Text('New rule', style: DebugTextStyles.label(color: t.accent, fontSize: 10)),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
+            const SizedBox(height: 4),
             Expanded(
               child: rules.isEmpty
                   ? _EmptyState(theme: t)
@@ -94,30 +126,138 @@ class MockInterceptionBanner extends StatelessWidget {
         return Container(
           width: double.infinity,
           margin: const EdgeInsets.only(top: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: t.warning.withValues(alpha: 0.15),
-            border: Border.all(color: t.warning),
+            color: t.warning.withValues(alpha: 0.12),
+            border: Border.all(color: t.warning.withValues(alpha: 0.6)),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: IntrinsicHeight(
+            child: Row(
+              children: [
+                // A solid warning spine. This banner is the only thing standing
+                // between you and an afternoon spent debugging a response you
+                // faked yourself — it should read as a live alarm, not a hint.
+                Container(width: 3, color: t.warning),
+                const SizedBox(width: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Icon(Icons.warning_amber_rounded, size: 16, color: t.warning),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      message,
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: t.text, height: 1.35),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                // The escape hatch. Filled rather than a bare TextButton — when
+                // the banner is up, turning it off is the one thing you're most
+                // likely to want.
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                  child: Material(
+                    color: t.warning.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(4),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(4),
+                      onTap: () {
+                        store.offline.value = false;
+                        store.rulesEnabled.value = false;
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                        child: Text('Turn off', style: DebugTextStyles.label(color: t.warning, fontSize: 10)),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// One master switch: title, explanation, and a compact toggle.
+///
+/// Hand-built rather than a [SwitchListTile] so the toggle can be scaled down
+/// and the row can carry an "armed" tint when it's on — a stock tile gives no
+/// way to say "this one is currently changing your app's behaviour".
+class _MasterSwitch extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final Color activeColor;
+  final DebugOverlayTheme theme;
+
+  const _MasterSwitch({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+    required this.activeColor,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        // The whole row toggles — a 20px switch is a poor target on its own.
+        onTap: () => onChanged(!value),
+        borderRadius: BorderRadius.circular(6),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            // Tinted only while armed, so an active override is visible without
+            // reading the switch position.
+            color: value ? activeColor.withValues(alpha: 0.08) : null,
             borderRadius: BorderRadius.circular(6),
           ),
           child: Row(
             children: [
-              Icon(Icons.warning_amber, size: 16, color: t.warning),
-              const SizedBox(width: 8),
               Expanded(
-                child: Text(message, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: t.text)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: value ? activeColor : theme.text,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(subtitle, style: TextStyle(fontSize: 10, color: theme.textMuted, height: 1.35)),
+                  ],
+                ),
               ),
-              TextButton(
-                onPressed: () {
-                  store.offline.value = false;
-                  store.rulesEnabled.value = false;
-                },
-                child: Text('Turn off', style: TextStyle(fontSize: 11, color: t.warning)),
+              const SizedBox(width: 8),
+              Transform.scale(
+                scale: 0.75,
+                child: Switch(
+                  value: value,
+                  onChanged: onChanged,
+                  activeThumbColor: activeColor,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
               ),
             ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
@@ -134,32 +274,25 @@ class _MasterSwitches extends StatelessWidget {
       children: [
         ValueListenableBuilder<bool>(
           valueListenable: store.offline,
-          builder: (context, offline, _) => SwitchListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
+          builder: (context, offline, _) => _MasterSwitch(
+            theme: theme,
             value: offline,
             onChanged: (v) => store.offline.value = v,
-            activeThumbColor: theme.warning,
-            title: Text('Simulate offline', style: TextStyle(fontSize: 13, color: theme.text)),
-            subtitle: Text(
-              'Fail every request, as if the network were unreachable. Overrides all rules.',
-              style: TextStyle(fontSize: 11, color: theme.textMuted),
-            ),
+            // Warning, not accent: this one fails every request in the app.
+            activeColor: theme.warning,
+            title: 'Simulate offline',
+            subtitle: 'Fail every request, as if the network were unreachable. Overrides all rules.',
           ),
         ),
         ValueListenableBuilder<bool>(
           valueListenable: store.rulesEnabled,
-          builder: (context, enabled, _) => SwitchListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
+          builder: (context, enabled, _) => _MasterSwitch(
+            theme: theme,
             value: enabled,
             onChanged: (v) => store.rulesEnabled.value = v,
-            activeThumbColor: theme.accent,
-            title: Text('Apply rules', style: TextStyle(fontSize: 13, color: theme.text)),
-            subtitle: Text(
-              'Park every rule at once without deleting them.',
-              style: TextStyle(fontSize: 11, color: theme.textMuted),
-            ),
+            activeColor: theme.accent,
+            title: 'Apply rules',
+            subtitle: 'Park every rule at once without deleting them.',
           ),
         ),
       ],
@@ -167,6 +300,31 @@ class _MasterSwitches extends StatelessWidget {
   }
 }
 
+/// A small square marker, e.g. the `regex` flag on a rule.
+class _MiniTag extends StatelessWidget {
+  final String text;
+  final Color color;
+  const _MiniTag({required this.text, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Text(text, style: DebugTextStyles.label(color: color, fontSize: 8)),
+    );
+  }
+}
+
+/// One rule in the list.
+///
+/// Mirrors the request row's language on purpose — a spine carrying the action's
+/// colour, mono for the pattern (it's matched against URLs, so it *is* data),
+/// and the outcome summary in that same colour. A rule that forces a 500 should
+/// look as alarming as the 500 it produces.
 class _RuleRow extends StatelessWidget {
   final MockRule rule;
   final DebugOverlayTheme theme;
@@ -182,61 +340,86 @@ class _RuleRow extends StatelessWidget {
       MockAction.delayOnly => theme.warning,
     };
 
-    return Opacity(
-      opacity: rule.enabled ? 1 : 0.45,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: theme.border, width: 0.5)),
-        ),
+    // A disabled rule is inert, so it recedes — but only the *description*
+    // fades. Blanket-dimming the row would dim the switch and the delete button
+    // too, making live controls look inert and un-tappable.
+    final contentOpacity = rule.enabled ? 1.0 : 0.5;
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: theme.border.withValues(alpha: 0.6), width: 0.5)),
+      ),
+      child: IntrinsicHeight(
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Switch(
-              value: rule.enabled,
-              onChanged: (_) => store.toggle(rule.id),
-              activeThumbColor: theme.accent,
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      if (rule.method != null) ...[
-                        Text(
-                          rule.method!,
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: theme.textMuted),
-                        ),
-                        const SizedBox(width: 6),
-                      ],
-                      Flexible(
-                        child: Text(
-                          rule.urlPattern,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: theme.text),
-                        ),
-                      ),
-                      if (rule.isRegex) ...[
-                        const SizedBox(width: 6),
-                        Text('regex', style: TextStyle(fontSize: 9, color: theme.accent)),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(rule.summary, style: TextStyle(fontSize: 11, color: color)),
-                ],
+            // Only an *enabled* rule is doing anything, so only an enabled rule
+            // gets a live spine.
+            Container(width: 2, color: rule.enabled ? color : theme.border),
+            const SizedBox(width: 8),
+            // Compact: a full-size Switch is ~60px and would outweigh the rule
+            // it toggles.
+            Transform.scale(
+              scale: 0.75,
+              child: Switch(
+                value: rule.enabled,
+                onChanged: (_) => store.toggle(rule.id),
+                activeThumbColor: theme.accent,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
             ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Opacity(
+                opacity: contentOpacity,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        if (rule.method != null) ...[
+                          _MiniTag(text: rule.method!, color: theme.textMuted),
+                          const SizedBox(width: 4),
+                        ],
+                        Flexible(
+                          child: Text(
+                            rule.urlPattern,
+                            overflow: TextOverflow.ellipsis,
+                            style: DebugTextStyles.debugMono(color: theme.text, fontSize: 12, height: 1.3),
+                          ),
+                        ),
+                        if (rule.isRegex) ...[
+                          const SizedBox(width: 4),
+                          _MiniTag(text: 'RE', color: theme.accent),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      rule.summary,
+                      style: DebugTextStyles.debugMono(color: color, fontSize: 11, fontWeight: FontWeight.w600, height: 1.3),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
             IconButton(
               tooltip: 'Edit',
-              icon: Icon(Icons.edit, size: 16, color: theme.textMuted),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              icon: Icon(Icons.edit_outlined, size: 15, color: theme.textMuted),
               onPressed: () => MockRuleEditor.show(context, existing: rule),
             ),
             IconButton(
               tooltip: 'Delete',
-              icon: Icon(Icons.delete_outline, size: 16, color: theme.error),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              icon: Icon(Icons.delete_outline, size: 15, color: theme.error),
               onPressed: () => store.remove(rule.id),
             ),
+            const SizedBox(width: 2),
           ],
         ),
       ),
@@ -256,16 +439,19 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.alt_route, size: 32, color: theme.textMuted),
-            const SizedBox(height: 8),
-            Text('No mock rules', style: TextStyle(color: theme.textMuted)),
+            Icon(Icons.alt_route, size: 28, color: theme.textMuted.withValues(alpha: 0.5)),
+            const SizedBox(height: 10),
+            Text(
+              'No mock rules',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.text),
+            ),
             const SizedBox(height: 4),
             Text(
-              'Tip: open a request on the Network page and use "Mock this" — '
-              'the rule is prefilled with its real response, so you edit rather '
-              'than write JSON from scratch.',
+              'Open a request on the Network page and hit "Mock this request" —\n'
+              'the rule arrives prefilled with its real URL, status and body,\n'
+              'so you edit rather than write JSON from scratch.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: theme.textMuted),
+              style: TextStyle(fontSize: 11, color: theme.textMuted, height: 1.5),
             ),
           ],
         ),

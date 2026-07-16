@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/debug_overlay_theme.dart';
+import '../core/debug_text_styles.dart';
 
 /// A titled, monospaced, selectable block of text with a copy button.
 class CopyableSection extends StatelessWidget {
@@ -16,29 +17,50 @@ class CopyableSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = DebugOverlayTheme.of(context);
+    final isEmpty = body.isEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         Row(
           children: [
             Expanded(
+              // Uppercased by the *style*, not by rewriting the string:
+              // `toUpperCase()` would change the widget's actual text, which
+              // breaks anything searching for the title and makes screen readers
+              // spell it out letter by letter.
               child: Text(
                 title,
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: titleColor ?? t.text),
+                style: DebugTextStyles.label(color: titleColor ?? t.textMuted, fontSize: 10),
               ),
             ),
             CopyButton(text: body, tooltip: 'Copy'),
           ],
         ),
+        const SizedBox(height: 2),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: t.surface, borderRadius: BorderRadius.circular(6)),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: t.surface,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: t.border.withValues(alpha: 0.6)),
+          ),
           child: SelectableText(
-            body.isEmpty ? '-' : body,
-            style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: t.text),
+            isEmpty ? 'empty' : body,
+            // This is the densest data in the tool — a payload dump. It was
+            // asking for the bare `monospace` alias, which only resolves on
+            // Android/Linux and silently fell back to a *proportional* font
+            // everywhere else, wrecking the indentation of pretty-printed JSON.
+            // The bundled family renders the same on every platform.
+            style: DebugTextStyles.debugMono(
+              color: isEmpty ? t.textMuted : t.text,
+              fontSize: 12,
+              // Payloads are read line by line — a little leading makes nested
+              // JSON scannable instead of a wall.
+              height: 1.45,
+            ),
           ),
         ),
       ],

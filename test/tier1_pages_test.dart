@@ -216,7 +216,7 @@ void main() {
     testWidgets('shows an empty state', (tester) async {
       await tester.pumpWidget(_host(const LogsDebugPage()));
       await tester.pumpAndSettle();
-      expect(find.text('No logs yet'), findsOneWidget);
+      expect(find.text('No logs captured'), findsOneWidget);
     });
   });
 
@@ -243,7 +243,7 @@ void main() {
     testWidgets('shows the empty state when nothing has been captured', (tester) async {
       await tester.pumpWidget(_host(const LogsDebugPage()));
       await tester.pumpAndSettle();
-      expect(find.text('No logs yet'), findsOneWidget);
+      expect(find.text('No logs captured'), findsOneWidget);
     });
   });
 

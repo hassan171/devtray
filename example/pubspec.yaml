@@ -18,6 +18,12 @@ dependencies:
   bloc: ^9.0.0
   hive_ce: ^2.10.0
   hive_ce_flutter: ^2.2.0
+  # A relational store, to prove DebugStorageAdapter isn't secretly key/value
+  # shaped. sqflite covers Android/iOS/macOS; sqflite_common_ffi adds the desktop
+  # platforms it doesn't (Windows/Linux), so the example runs everywhere.
+  sqflite: ^2.4.0
+  sqflite_common_ffi: ^2.3.3
+  path: ^1.9.0
 
 dev_dependencies:
   flutter_test:

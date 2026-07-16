@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/debug_overlay_theme.dart';
+import '../../core/debug_text_styles.dart';
 
 /// Edits a `List<String>` as chips — tap one to rename it, ✕ to remove it, `+`
 /// to add.
@@ -129,7 +130,7 @@ class _StorageListEditorState extends State<StorageListEditor> {
             _AddChip(theme: t, onTap: () => _startEdit(-1)),
 
           if (widget.values.isEmpty && _editingIndex == null && !widget.canEdit)
-            Text('<empty>', style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: t.textMuted)),
+            Text('empty', style: DebugTextStyles.debugMono(color: t.textMuted, fontSize: 12)),
         ],
       ),
     );
@@ -168,7 +169,7 @@ class _ValueChip extends StatelessWidget {
           children: [
             Text(
               label,
-              style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: theme.text),
+              style: DebugTextStyles.debugMono(color: theme.text, fontSize: 12),
             ),
             if (canEdit)
               IconButton(
@@ -240,7 +241,7 @@ class _ChipField extends StatelessWidget {
           controller: controller,
           focusNode: focusNode,
           autofocus: true,
-          style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: theme.text),
+          style: DebugTextStyles.debugMono(color: theme.text, fontSize: 12),
           decoration: InputDecoration(
             isDense: true,
             hintText: 'value',

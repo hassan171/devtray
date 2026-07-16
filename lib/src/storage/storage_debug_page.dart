@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/debug_overlay_theme.dart';
 import '../core/debug_page.dart';
+import '../core/debug_text_styles.dart';
 import '../widgets/debug_search_bar.dart';
 import 'components/storage_value_editor.dart';
 import 'debug_storage_adapter.dart';
@@ -172,47 +173,76 @@ class _StoreList extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text('Stores', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: theme.text)),
+            Text('Stores', style: DebugTextStyles.label(color: theme.text, fontSize: 12)),
             const Spacer(),
             IconButton(
               tooltip: 'Refresh',
-              icon: Icon(Icons.refresh, size: 18, color: theme.text),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              icon: Icon(Icons.refresh, size: 16, color: theme.textMuted),
               onPressed: onRefresh,
             ),
           ],
         ),
-        Divider(color: theme.border),
+        const SizedBox(height: 4),
+        Divider(color: theme.border, height: 1),
         Expanded(
           child: ListView.builder(
             itemCount: sections.length,
             itemBuilder: (context, i) {
               final s = sections[i];
-              return InkWell(
-                onTap: () => onOpen(s.adapter.name),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
-                  decoration: BoxDecoration(border: Border(bottom: BorderSide(color: theme.border, width: 0.5))),
-                  child: Row(
-                    children: [
-                      Icon(Icons.folder_outlined, size: 18, color: theme.accent),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          s.adapter.name,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.text),
+              final failed = s.error != null;
+
+              return Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => onOpen(s.adapter.name),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+                    decoration: BoxDecoration(
+                      border: Border(bottom: BorderSide(color: theme.border.withValues(alpha: 0.6), width: 0.5)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          failed ? Icons.error_outline : Icons.folder_outlined,
+                          size: 16,
+                          color: failed ? theme.error : theme.accent,
                         ),
-                      ),
-                      if (!s.adapter.writable) ...[
-                        Text('read-only', style: TextStyle(fontSize: 10, color: theme.textMuted)),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                s.adapter.name,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.text),
+                              ),
+                              // An adapter that threw says so here rather than
+                              // just showing a bare icon — the other stores keep
+                              // working, so the failure needs naming.
+                              if (failed)
+                                Text(
+                                  'Could not read',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(fontSize: 10, color: theme.error),
+                                ),
+                            ],
+                          ),
+                        ),
+                        if (!s.adapter.writable) ...[
+                          _MiniTag(text: 'read-only', color: theme.textMuted),
+                          const SizedBox(width: 6),
+                        ],
+                        if (!failed)
+                          Text(
+                            '${s.values.length}',
+                            style: DebugTextStyles.debugMono(color: theme.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
+                          ),
+                        Icon(Icons.chevron_right, size: 16, color: theme.textMuted),
                       ],
-                      if (s.error != null)
-                        Icon(Icons.error_outline, size: 16, color: theme.error)
-                      else
-                        Text('${s.values.length}', style: TextStyle(fontSize: 12, color: theme.textMuted)),
-                      Icon(Icons.chevron_right, size: 18, color: theme.textMuted),
-                    ],
+                    ),
                   ),
                 ),
               );
@@ -269,28 +299,30 @@ class _StoreDetail extends StatelessWidget {
       children: [
         Row(
           children: [
-            if (onBack != null)
+            if (onBack != null) ...[
               IconButton(
                 tooltip: 'Back to stores',
-                icon: Icon(Icons.arrow_back, size: 18, color: theme.text),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                icon: Icon(Icons.arrow_back, size: 16, color: theme.textMuted),
                 onPressed: onBack,
               ),
+              const SizedBox(width: 6),
+            ],
             Flexible(
               child: Text(
                 section.adapter.name,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: theme.text),
+                style: DebugTextStyles.label(color: theme.text, fontSize: 12),
               ),
             ),
-            const SizedBox(width: 8),
-            Text('${section.values.length}', style: TextStyle(fontSize: 11, color: theme.textMuted)),
             if (!section.adapter.writable) ...[
               const SizedBox(width: 8),
-              Text('read-only', style: TextStyle(fontSize: 10, color: theme.textMuted)),
+              _MiniTag(text: 'read-only', color: theme.textMuted),
             ],
           ],
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         DebugSearchBar(
           hintText: 'Search keys',
           total: keys.length,
@@ -298,7 +330,9 @@ class _StoreDetail extends StatelessWidget {
           actions: [
             IconButton(
               tooltip: 'Refresh',
-              icon: Icon(Icons.refresh, size: 18, color: theme.text),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              icon: Icon(Icons.refresh, size: 16, color: theme.textMuted),
               onPressed: onRefresh,
             ),
           ],
@@ -306,9 +340,22 @@ class _StoreDetail extends StatelessWidget {
         const SizedBox(height: 4),
         Expanded(
           child: section.error != null
-              ? _Message('Could not read: ${section.error}', theme: theme, isError: true)
+              ? _StorageMessage(
+                  icon: Icons.error_outline,
+                  title: 'Could not read this store',
+                  // The adapter's own message — it's the only thing that says
+                  // *why*, and it's usually the actual bug.
+                  detail: section.error!,
+                  theme: theme,
+                  isError: true,
+                )
               : keys.isEmpty
-                  ? _Message(search.isEmpty ? 'Empty' : 'No matching keys', theme: theme)
+                  ? _StorageMessage(
+                      icon: search.isEmpty ? Icons.inbox_outlined : Icons.search_off,
+                      title: search.isEmpty ? 'This store is empty' : 'No matching keys',
+                      detail: search.isEmpty ? 'Nothing has been written to it yet.' : 'Nothing matches "$search".',
+                      theme: theme,
+                    )
                   : ListView.builder(
                       controller: scroll,
                       itemCount: keys.length,
@@ -332,18 +379,72 @@ class _StoreDetail extends StatelessWidget {
   }
 }
 
-class _Message extends StatelessWidget {
+/// A small square marker — the read-only flag on a store.
+class _MiniTag extends StatelessWidget {
   final String text;
-  final DebugOverlayTheme theme;
-  final bool isError;
+  final Color color;
 
-  const _Message(this.text, {required this.theme, this.isError = false});
+  const _MiniTag({required this.text, required this.color});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Text(text, style: TextStyle(fontSize: 11, color: isError ? theme.error : theme.textMuted)),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Text(text, style: DebugTextStyles.label(color: color, fontSize: 8)),
+    );
+  }
+}
+
+/// The empty / failed state for a store.
+///
+/// Centred and explained rather than a bare line of grey text in the corner: an
+/// empty store and a store that *failed to read* look identical if all you print
+/// is a word, and those are very different problems.
+class _StorageMessage extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String detail;
+  final DebugOverlayTheme theme;
+  final bool isError;
+
+  const _StorageMessage({
+    required this.icon,
+    required this.title,
+    required this.detail,
+    required this.theme,
+    this.isError = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tint = isError ? theme.error : theme.textMuted;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 28, color: tint.withValues(alpha: 0.6)),
+            const SizedBox(height: 10),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: isError ? theme.error : theme.text),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              detail,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: theme.textMuted, height: 1.5),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

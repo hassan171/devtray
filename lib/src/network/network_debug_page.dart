@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/debug_overlay_theme.dart';
 import '../core/debug_page.dart';
+import '../core/debug_text_styles.dart';
 import 'components/network_detail_pane.dart';
 import 'components/network_log_row.dart';
 import 'components/network_search_bar.dart';
@@ -97,13 +98,17 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
             children: [
               IconButton(
                 tooltip: 'Back to requests',
-                icon: Icon(Icons.arrow_back, size: 18, color: t.text),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                icon: Icon(Icons.arrow_back, size: 16, color: t.textMuted),
                 onPressed: () => setState(() => _showMocks = false),
               ),
-              Text('Mocks', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: t.text)),
+              const SizedBox(width: 6),
+              Text('Mocks', style: DebugTextStyles.label(color: t.text, fontSize: 12)),
             ],
           ),
-          Divider(color: t.border),
+          const SizedBox(height: 4),
+          Divider(color: t.border, height: 1),
           const Expanded(child: MocksView()),
         ],
       );
@@ -130,12 +135,12 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
 
             final list = Column(
               children: [
-                // Warns when mocks are intercepting, so a faked response can't
-                // be mistaken for real server behaviour.
-                if (widget.enableMocking) ...[
-                  const MockInterceptionBanner(),
-                  const SizedBox(height: 8),
-                ],
+                // The interception warning lives *inside* the toolbar rather
+                // than in a banner above it. A banner is a sibling in this
+                // Column, so showing it shoved every row down the moment you
+                // toggled a mock. The toolbar is always laid out, so folding the
+                // warning into it costs no space and moves nothing — see
+                // [NetworkSearchBar].
                 NetworkSearchBar(
                   total: filtered.length,
                   onChanged: (v) => setState(() => _search = v),
@@ -148,10 +153,10 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
                 const SizedBox(height: 8),
                 Expanded(
                   child: filtered.isEmpty
-                      ? Center(
-                          child: Text(entries.isEmpty ? 'No requests yet' : 'No matches', style: TextStyle(color: t.textMuted)),
-                        )
+                      ? _NetworkEmptyState(searching: entries.isNotEmpty)
                       : ListView.builder(
+                          // The list is the hot path — a chatty app fills it fast,
+                          // and builder + itemExtent keeps scrolling flat.
                           itemCount: filtered.length,
                           itemBuilder: (context, i) => NetworkLogRow(
                             entry: filtered[i],
@@ -175,9 +180,7 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
                 Expanded(
                   flex: 60,
                   child: selected == null
-                      ? Center(
-                          child: Text('Select a request to see details', style: TextStyle(color: t.textMuted)),
-                        )
+                      ? _DetailPlaceholder()
                       : NetworkDetailPane(entry: selected, enableMocking: widget.enableMocking, onBack: () => setState(() => _selectedId = null)),
                 ),
               ],
@@ -185,6 +188,82 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
           },
         );
       },
+    );
+  }
+}
+
+/// Shown when the list has nothing to show.
+///
+/// An empty tool is the first thing a new user sees, and "No requests yet"
+/// centred in a void doesn't say whether the tool is working, broken, or
+/// waiting. So it names the state and — when nothing has been captured at all —
+/// says what has to happen next, since the usual cause is an adapter that was
+/// never installed.
+class _NetworkEmptyState extends StatelessWidget {
+  /// True when entries exist but the filter excluded them all — a very
+  /// different situation from having captured nothing.
+  final bool searching;
+
+  const _NetworkEmptyState({required this.searching});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = DebugOverlayTheme.of(context);
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              searching ? Icons.search_off : Icons.swap_vert,
+              size: 28,
+              color: t.textMuted.withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              searching ? 'No matching requests' : 'No requests captured',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: t.text),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              searching
+                  ? 'Nothing matches this filter.'
+                  : 'Traffic shows up here once an adapter is installed —\n'
+                      'add DebugDioInterceptor() or wrap your client\n'
+                      'in DebugHttpClient().',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: t.textMuted, height: 1.5),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The right-hand pane before a request is picked. Only ever seen on wide
+/// layouts, where the list alone would leave half the screen blank.
+class _DetailPlaceholder extends StatelessWidget {
+  const _DetailPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = DebugOverlayTheme.of(context);
+
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.multiple_stop, size: 24, color: t.textMuted.withValues(alpha: 0.4)),
+          const SizedBox(height: 8),
+          Text(
+            'Select a request',
+            style: TextStyle(fontSize: 12, color: t.textMuted),
+          ),
+        ],
+      ),
     );
   }
 }

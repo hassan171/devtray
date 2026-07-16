@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/debug_overlay_theme.dart';
+import '../../core/debug_text_styles.dart';
 import '../../widgets/copyable_section.dart';
 import '../../widgets/debug_tab_bar.dart';
 import '../../widgets/html_preview_dialog.dart';
@@ -88,32 +89,48 @@ class _NetworkDetailPaneState extends State<NetworkDetailPane> with TickerProvid
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            MethodBadge(method: e.method),
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: MethodBadge(method: e.method),
+            ),
             const SizedBox(width: 8),
             Expanded(
+              // The URL is the request's identity and the thing you copy out of
+              // here — mono, and selectable so a path can be lifted verbatim.
               child: SelectableText(
                 e.uri.toString(),
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: t.text),
+                style: DebugTextStyles.debugMono(color: t.text, fontSize: 13, fontWeight: FontWeight.w500, height: 1.35),
                 maxLines: 2,
               ),
             ),
+            const SizedBox(width: 4),
             IconButton(
               tooltip: 'Close',
-              icon: Icon(Icons.close, size: 18, color: t.text),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              icon: Icon(Icons.close, size: 18, color: t.textMuted),
               onPressed: widget.onBack,
             ),
           ],
         ),
-        Divider(color: t.border),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
               child: Wrap(
-                spacing: 16,
+                spacing: 14,
                 runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  InfoChip(label: 'Status', value: e.statusCode?.toString() ?? (e.status == NetworkLogStatus.pending ? 'pending' : '-')),
+                  // The outcome is why you opened this pane — give it the badge
+                  // treatment (colour + glyph) instead of hiding the code in a
+                  // row of neutral label:value pairs.
+                  if (e.status == NetworkLogStatus.pending)
+                    InfoChip(label: 'Status', value: 'pending')
+                  else
+                    StatusBadge(code: e.statusCode, failed: e.status == NetworkLogStatus.failed),
                   InfoChip(label: 'Duration', value: formatDuration(e.duration)),
                   InfoChip(label: 'Started', value: formatTime(e.startedAt)),
                 ],
@@ -121,24 +138,26 @@ class _NetworkDetailPaneState extends State<NetworkDetailPane> with TickerProvid
             ),
             // isHtmlResponse sniffs the body, so it can only be true when there
             // is one — no empty-body case to guard against here.
-            if (e.isHtmlResponse) ...[
+            if (e.isHtmlResponse)
               IconButton(
                 tooltip: 'Preview HTML',
-                icon: Icon(Icons.preview, size: 16, color: t.text),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                icon: Icon(Icons.preview, size: 16, color: t.textMuted),
                 onPressed: () => HtmlPreviewDialog.show(context, e.responseBodyString!),
               ),
-              const SizedBox(width: 8),
-            ],
-            if (widget.enableMocking) ...[
+            if (widget.enableMocking)
               IconButton(
                 tooltip: 'Mock this request',
-                icon: Icon(Icons.alt_route, size: 16, color: t.text),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                // The one action that changes behaviour rather than just reading
+                // — accent-coloured so it isn't mistaken for another copy button.
+                icon: Icon(Icons.alt_route, size: 16, color: t.accent),
                 // Seeds the rule from this request's real response, so you edit
                 // rather than author JSON from scratch.
                 onPressed: () => MockRuleEditor.showForEntry(context, e),
               ),
-              const SizedBox(width: 8),
-            ],
             CopyButton(
               tooltip: 'Copy as cURL',
               icon: Icons.code,
@@ -147,7 +166,8 @@ class _NetworkDetailPaneState extends State<NetworkDetailPane> with TickerProvid
             ),
           ],
         ),
-        Divider(color: t.border),
+        const SizedBox(height: 4),
+        Divider(color: t.border, height: 1),
         DebugTabBar(controller: controller, padding: EdgeInsets.zero, tabs: [for (final tab in tabs) DebugTab(tab.name)]),
         Expanded(
           child: TabBarView(

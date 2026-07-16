@@ -8,6 +8,9 @@ import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'counter_cubit.dart';
+import 'hive_storage.dart';
+import 'notes_db.dart';
+import 'sqflite_storage.dart';
 import 'users_box.dart';
 import 'users_debug_page.dart';
 
@@ -34,15 +37,63 @@ Future<void> _seedPref() async {
   await pref.setStringList('recent_tags', ['flutter', 'dart']);
 }
 
-/// Opens the Hive box. Awaited by [_Bootstrap] rather than in `main`, because
-/// Hive needs the binding — and `runDebugApp` deliberately creates that *inside*
-/// its capture Zone (a binding created outside it would leak errors past the
-/// Zone's handler). So we let the app start, then open the box on the first
-/// frame.
-Future<void> _openHive() async {
+/// Opens the local stores. Awaited by [_Bootstrap] rather than in `main`,
+/// because they need the binding — and `runDebugApp` deliberately creates that
+/// *inside* its capture Zone (a binding created outside it would leak errors
+/// past the Zone's handler). So we let the app start, then open them on the
+/// first frame.
+/// Every store the Storage page shows.
+///
+/// Mutable and passed **by reference**, because SQLite discovery is async (it
+/// has to ask the database what tables exist) while `pages:` is built
+/// synchronously in `main`. The page holds this exact list, [_openStores] fills
+/// the rest in before the first frame, and by the time the page can be opened
+/// it's complete.
+final List<DebugStorageAdapter> storageAdapters = [
+  const SharedPreferencesStorageAdapter(),
+  // The Hive boxes and the SQLite tables are appended by [_openStores] — both
+  // need an open handle, which doesn't exist yet at this point.
+];
+
+Future<void> _openStores() async {
   await Hive.initFlutter();
   Hive.registerAdapter(UserAdapter());
-  await Hive.openBox<User>(usersBoxName);
+
+  // Hive can't be discovered the way SQLite can — no box list, no schema, no
+  // reflection — so the app declares each box as it opens it, at the one moment
+  // it knows both the name and the type. Both boxes below are registered purely
+  // by swapping `Hive.openBox` for `HiveStorage.openBox`; the box comes back
+  // unchanged, so it stays a drop-in.
+
+  // A TYPED box. Dart can't turn a User into named fields on its own, so this is
+  // the one thing the wrapper can't infer: how to go to a map and back. Both
+  // live on the model, next to each other — see User.toMap/User.fromMap.
+  await HiveStorage.openBox<User>(
+    usersBoxName,
+    label: 'Users (Hive)',
+    toMap: (u) => u.toMap(),
+    fromMap: (key, map) => User.fromMap(int.parse(key), map),
+  );
+
+  // A box of PRIMITIVES needs nothing else at all — the values are already
+  // showable and editable.
+  final prefBox = await HiveStorage.openBox<String>('ui_prefs');
+  if (prefBox.isEmpty) {
+    await prefBox.putAll({
+      'theme': 'dark',
+      'density': 'compact',
+      'last_route': '/home',
+    });
+  }
+
+  // A relational store alongside the map-shaped ones — see NotesDbAdapter.
+  await NotesDb.init();
+
+  // ...and the same database again, discovered rather than hand-written: one
+  // store per table, straight from `sqlite_master`. See SqfliteStorage.
+  storageAdapters
+    ..addAll(HiveStorage.boxes)
+    ..addAll(await SqfliteStorage.tables(NotesDb.db));
 }
 
 void main() {
@@ -91,10 +142,26 @@ void main() {
       // for its full report); the advanced filter's `Source`/`Level` fields
       // reproduce an errors-only view. Search + quick chips still on top.
       const LogsDebugPage(),
-      // Two stores side by side: SharedPreferences (built in) and a TYPED,
-      // hand-written Hive adapter — which is exactly why DebugStorageAdapter is
-      // an interface rather than a bundled Hive implementation.
-      StorageDebugPage(adapters: [const SharedPreferencesStorageAdapter(), UsersBoxAdapter()]),
+      // Stores of genuinely different shapes — a plain key/value one, a typed
+      // object box, and SQL tables — so the store list has something to choose
+      // between, and DebugStorageAdapter has something to prove.
+      //
+      // Every store hooks up without a hand-written adapter, each in the way its
+      // library allows:
+      //  * **Discovered** — `SqfliteStorage.tables(db)`. SQLite describes
+      //    itself, so handing over the Database is enough: every table shows up.
+      //  * **Wrapped** — `HiveStorage.openBox(...)`. Hive describes nothing, so
+      //    the app declares each box as it opens it. Free for primitives; a
+      //    typed box supplies `toMap`/`fromMap`, the one thing Dart can't infer.
+      //
+      // Write an adapter by hand (see NotesDbAdapter) when only *you* know what
+      // the data means — `pinned` is 0/1, `status` is one of four strings. No
+      // schema says that, so no generic reader can enforce it.
+      //
+      // Passed by reference, NOT spread: both routes are async and fill this
+      // list during bootstrap, while `pages:` is built now. Spreading would copy
+      // it while it's still empty and none of those stores would ever appear.
+      StorageDebugPage(adapters: storageAdapters),
       // A custom page — the Storage page can browse the Hive box generically,
       // but when you know what the data is, a purpose-built view beats a dump.
       const UsersDebugPage(),
@@ -137,7 +204,7 @@ class _Bootstrap extends StatefulWidget {
 }
 
 class _BootstrapState extends State<_Bootstrap> {
-  late final Future<void> _ready = _openHive();
+  late final Future<void> _ready = _openStores();
 
   @override
   Widget build(BuildContext context) {
@@ -145,7 +212,7 @@ class _BootstrapState extends State<_Bootstrap> {
       future: _ready,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return Scaffold(body: Center(child: Text('Hive failed to open:\n${snapshot.error}')));
+          return Scaffold(body: Center(child: Text('A store failed to open:\n${snapshot.error}')));
         }
         if (snapshot.connectionState != ConnectionState.done) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));

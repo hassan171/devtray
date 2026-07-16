@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../core/debug_overlay_theme.dart';
+import '../core/debug_text_styles.dart';
 
 /// Search field + count + trailing actions. Shared by the Logs, Errors and
 /// Network pages so they all filter the same way.
+///
+/// Drawn as one grouped surface — field, count and actions inside a single
+/// frame — rather than a stock `TextField` flanked by loose `IconButton`s.
+/// Drawing them as one object is what separates a tool from a form.
 class DebugSearchBar extends StatelessWidget {
   final String hintText;
   final int total;
@@ -24,28 +29,51 @@ class DebugSearchBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = DebugOverlayTheme.of(context);
 
-    return Row(
-      children: [
-        Expanded(
-          child: TextField(
-            style: TextStyle(color: t.text, fontSize: 13),
-            decoration: InputDecoration(
-              hintText: hintText,
-              hintStyle: TextStyle(color: t.textMuted, fontSize: 13),
-              isDense: true,
-              prefixIcon: Icon(Icons.search, size: 18, color: t.textMuted),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: t.border)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: t.border)),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: t.accent)),
-              contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+    return Container(
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: t.border.withValues(alpha: 0.8)),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 8),
+          Icon(Icons.search, size: 16, color: t.textMuted),
+          const SizedBox(width: 6),
+          Expanded(
+            child: TextField(
+              // The query is matched against captured output — mono keeps it
+              // honest with the lines it's filtering.
+              style: DebugTextStyles.debugMono(color: t.text, fontSize: 13),
+              cursorColor: t.accent,
+              cursorWidth: 1.5,
+              decoration: InputDecoration(
+                hintText: hintText,
+                hintStyle: TextStyle(color: t.textMuted, fontSize: 13),
+                isDense: true,
+                // The container is the frame — the field shouldn't draw a second.
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+              ),
+              onChanged: onChanged,
             ),
-            onChanged: onChanged,
           ),
-        ),
-        const SizedBox(width: 8),
-        Text('$total', style: TextStyle(color: t.textMuted, fontSize: 12)),
-        ...actions,
-      ],
+          // A live readout of the filter, so it sits with the field rather than
+          // floating among the actions.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Text(
+              '$total',
+              style: DebugTextStyles.debugMono(color: t.textMuted, fontSize: 11, fontWeight: FontWeight.w600),
+            ),
+          ),
+          if (actions.isNotEmpty) Container(width: 1, height: 20, color: t.border.withValues(alpha: 0.8)),
+          ...actions,
+          const SizedBox(width: 2),
+        ],
+      ),
     );
   }
 }

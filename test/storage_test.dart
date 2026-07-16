@@ -546,6 +546,9 @@ void main() {
 
       await tester.tap(find.byTooltip('Delete').hitTestable().first);
       await tester.pumpAndSettle();
+      // Deleting asks first now.
+      await tester.tap(find.text('Delete').last);
+      await tester.pumpAndSettle();
 
       expect(adapter.deletes, hasLength(1));
       expect(offset(), before);
@@ -574,7 +577,7 @@ void main() {
   });
 
   group('deleting', () {
-    testWidgets('removes the key', (tester) async {
+    testWidgets('removes the key — after confirming', (tester) async {
       final adapter = _FakeAdapter({'api_url': 'x'});
 
       await tester.pumpWidget(_host([adapter]));
@@ -583,9 +586,46 @@ void main() {
       await tester.tap(find.byTooltip('Delete'));
       await tester.pumpAndSettle();
 
+      // Nothing is written until the confirmation is answered.
+      expect(adapter.deletes, isEmpty, reason: 'must not delete before confirming');
+
+      await tester.tap(find.text('Delete').last);
+      await tester.pumpAndSettle();
+
       expect(adapter.deletes, ['api_url']);
       expect(find.text('api_url'), findsNothing);
-      expect(find.text('Empty'), findsOneWidget);
+      expect(find.text('This store is empty'), findsOneWidget);
+    });
+
+    testWidgets('cancelling leaves the key alone', (tester) async {
+      // The reason the confirmation exists: a delete is irreversible, so backing
+      // out of one must be a complete no-op.
+      final adapter = _FakeAdapter({'api_url': 'x'});
+
+      await tester.pumpWidget(_host([adapter]));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Delete'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(adapter.deletes, isEmpty);
+      expect(find.text('api_url'), findsOneWidget);
+    });
+
+    testWidgets('the confirmation names the key being deleted', (tester) async {
+      // On a long store you may be several rows from where you think you are.
+      final adapter = _FakeAdapter({'api_url': 'x', 'token': 'y'});
+
+      await tester.pumpWidget(_host([adapter]));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Delete').last);
+      await tester.pumpAndSettle();
+
+      expect(find.descendant(of: find.byType(AlertDialog), matching: find.text('token')), findsOneWidget);
     });
   });
 }
