@@ -49,6 +49,34 @@ them. Same for `_dio` and `_http`.
 The **pages** all live in the core; only the adapters move. `NetworkDebugPage` reads from a
 transport-agnostic store, so dio and http feed the same page.
 
+## Installing before it's on pub.dev
+
+Not published yet — until it is, depend on it from git. The integration packages declare a
+hosted `devtray: ^0.1.0` that can't resolve yet, so the core needs an override:
+
+```yaml
+dependencies:
+  devtray:
+    git:
+      url: https://github.com/hassan171/devtray.git
+      path: packages/devtray
+  devtray_dio:
+    git:
+      url: https://github.com/hassan171/devtray.git
+      path: packages/devtray_dio
+
+# Delete this block once devtray is on pub.dev.
+dependency_overrides:
+  devtray:
+    git:
+      url: https://github.com/hassan171/devtray.git
+      path: packages/devtray
+```
+
+The override is what makes the integrations resolve against the git core instead of the
+hosted one that doesn't exist yet. Without it, pub fails with *"every version of
+`devtray_dio` from git depends on `devtray` from hosted … version solving failed"*.
+
 ## Example
 
 A multi-tab notes app wired to every integration:

@@ -62,7 +62,24 @@ import 'package:flutter/material.dart';
 /// reads a value the bootstrap produced), pass [appBuilder] instead of [app] —
 /// it is called after [setup] completes.
 void runDebugApp({
+  /// The app widget. Built at the call site, so it is constructed *before*
+  /// [setup] runs — if it reads anything [setup] initialises, use [appBuilder]
+  /// instead or it will throw here, before this function is even entered.
   Widget? app,
+
+  /// The app widget, built after [setup] completes.
+  ///
+  /// Use this whenever the widget tree touches something the bootstrap sets up
+  /// — `dotenv`, Firebase, a prefs singleton:
+  ///
+  /// ```dart
+  /// appBuilder: () => DevicePreview(
+  ///   enabled: MyEnv.devicePreview(),   // reads dotenv, loaded in setup
+  ///   builder: (_) => const MyApp(),
+  /// ),
+  /// ```
+  ///
+  /// Pass exactly one of [app] or [appBuilder].
   Widget Function()? appBuilder,
   Future<void> Function()? setup,
   bool enabled = true,
