@@ -15,6 +15,8 @@ environment:
 # See MIGRATION_PLAN.md for why, and for what moved where.
 workspace:
   - packages/debug_overlay
+  - packages/debug_overlay_dio
+  - packages/debug_overlay_http
   - example
 
 dev_dependencies:

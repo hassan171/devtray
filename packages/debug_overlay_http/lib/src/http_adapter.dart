@@ -1,12 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:debug_overlay/debug_overlay.dart';
 import 'package:http/http.dart' as http;
 
-import '../curl_builder.dart';
-import '../mocking/mock_interceptor.dart';
-import '../mocking/mock_store.dart';
-import '../network_log_store.dart';
 
 /// A `package:http` client wrapper that captures every request into
 /// [NetworkLogStore], and applies any mock rules from [MockStore] (delay / fake

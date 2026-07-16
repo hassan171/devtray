@@ -1,9 +1,5 @@
+import 'package:debug_overlay/debug_overlay.dart';
 import 'package:dio/dio.dart';
-
-import '../curl_builder.dart';
-import '../mocking/mock_interceptor.dart';
-import '../mocking/mock_store.dart';
-import '../network_log_store.dart';
 
 const String _logIdKey = '__debug_overlay_netlog_id';
 

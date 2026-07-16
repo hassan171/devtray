@@ -33,8 +33,6 @@ export 'src/core/debug_tools_screen.dart';
 export 'src/core/run_debug_app.dart';
 
 // Network page
-export 'src/network/adapters/dio_adapter.dart';
-export 'src/network/adapters/http_adapter.dart';
 export 'src/network/curl_builder.dart';
 // The shape of an HTML previewer. The renderer itself lives in
 // debug_overlay_html — see DebugHtmlPreviewer for why it isn't in here.
