@@ -1,0 +1,28 @@
+name: devtray_sqflite
+description: "SQLite support for devtray's Storage page — hand it a Database and every table shows up, discovered from the schema."
+version: 0.1.0
+repository: https://github.com/hassan171/devtray/tree/main/packages/devtray_sqflite
+issue_tracker: https://github.com/hassan171/devtray/issues
+
+
+environment:
+  sdk: ">=3.12.0 <4.0.0"
+
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  devtray: ^0.1.0
+  sqflite: ^2.4.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  # A DEV dependency, deliberately. sqflite ships native implementations for
+  # Android/iOS/macOS only; the FFI package supplies Windows and Linux. The tests
+  # need it (they run on the desktop), but a consumer shouldn't be made to carry
+  # the desktop FFI stack — an app targeting phones never needs it. Apps that DO
+  # target desktop add it themselves; see the example.
+  sqflite_common_ffi: ^2.3.3

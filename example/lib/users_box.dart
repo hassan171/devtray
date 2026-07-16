@@ -1,4 +1,4 @@
-import 'package:debug_overlay/debug_overlay.dart';
+import 'package:devtray/devtray.dart';
 import 'package:dio/dio.dart';
 import 'package:hive_ce/hive.dart';
 

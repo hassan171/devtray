@@ -1,9 +1,9 @@
-# Splitting `debug_overlay` into a core + integration packages
+# Splitting `devtray` into a core + integration packages
 
 Status: **done.** The core has no dependencies beyond Flutter, and there are ten
 packages. 261 tests pass, the same behaviour as before plus new guards.
 
-`debug_overlay_riverpod` is the proof the split was worth it: a second
+`devtray_riverpod` is the proof the split was worth it: a second
 state-management binding, added afterwards, needed **zero changes to the core**.
 Its tests also demonstrate bloc and Riverpod feeding the same page at once —
 which is the payoff of keeping `StateDebugPage` in the core rather than shipping
@@ -12,7 +12,7 @@ one per library.
 What actually shipped, against what was planned:
 
 * **Nine packages, not seven.** `HiveStorage` and `SqfliteStorage` were promoted
-  out of the example too — they imported only `debug_overlay` and their own
+  out of the example too — they imported only `devtray` and their own
   library, so they were already packages in everything but name.
 * **The test split was an improvement, not a tax.** The mock-rule logic never
   needed a real HTTP client; it only had one because the tests lived next to the
@@ -34,7 +34,7 @@ The rest of this document is the original plan, kept for the reasoning.
 
 ## Why
 
-`debug_overlay` has 7 runtime dependencies, and every one exists to serve a
+`devtray` has 7 runtime dependencies, and every one exists to serve a
 single integration:
 
 | Dependency | Exists for | Wanted by |
@@ -57,7 +57,7 @@ upgrade.
 The architecture is already split; only the packaging isn't.
 
 **Every dependency is confined to exactly one leaf file**, and **nothing in the
-core imports those files** — only the barrel (`lib/debug_overlay.dart`)
+core imports those files** — only the barrel (`lib/devtray.dart`)
 re-exports them. Verified:
 
 ```
@@ -80,15 +80,15 @@ A **pub workspace** (requires Dart 3.6+; we're on Flutter 3.44 ✓). One root
 pubspec listing members, one shared lockfile, one `pub get`. No melos.
 
 ```
-debug_overlay/                    ← workspace root (pubspec: workspace: [...])
+devtray/                    ← workspace root (pubspec: workspace: [...])
   packages/
-    debug_overlay/                ← core. ZERO runtime deps (+ the bundled font)
-    debug_overlay_dio/            → dio
-    debug_overlay_http/           → http
-    debug_overlay_bloc/           → bloc
-    debug_overlay_prefs/          → shared_preferences
-    debug_overlay_device/         → device_info_plus, package_info_plus
-    debug_overlay_html/           → flutter_html
+    devtray/                ← core. ZERO runtime deps (+ the bundled font)
+    devtray_dio/            → dio
+    devtray_http/           → http
+    devtray_bloc/           → bloc
+    devtray_prefs/          → shared_preferences
+    devtray_device/         → device_info_plus, package_info_plus
+    devtray_html/           → flutter_html
   example/                        ← depends on all seven
 ```
 
@@ -119,7 +119,7 @@ class NetworkDebugPage extends DebugPage {
   final DebugHtmlPreviewer? onPreviewHtml;
 }
 
-// host app, with debug_overlay_html installed
+// host app, with devtray_html installed
 NetworkDebugPage(onPreviewHtml: HtmlPreviewDialog.show)
 ```
 
@@ -144,7 +144,7 @@ default **false**.
 // core — rules live for the session
 runDebugApp(app: MyApp());
 
-// + debug_overlay_prefs — rules survive hot restart
+// + devtray_prefs — rules survive hot restart
 MockStore.instance.storage = SharedPreferencesMockRuleStorage();
 runDebugApp(app: MyApp());
 ```
@@ -159,7 +159,7 @@ Only 4 of 13 test files touch a moving dependency:
 
 | File | Uses | Goes to |
 |---|---|---|
-| `state_test.dart` | bloc | `debug_overlay_bloc/test/` |
+| `state_test.dart` | bloc | `devtray_bloc/test/` |
 | `kill_switch_test.dart` | dio | split: kill-switch logic stays in core (fake adapter); the dio assertions move |
 | `mocking_test.dart` | **dio + http** | split per package (below) |
 | `storage_test.dart` etc. | — | stay in core |
@@ -172,7 +172,7 @@ Only 4 of 13 test files touch a moving dependency:
   switch) stays in core, tested against a **fake adapter**. That's where the
   logic lives, and it needs no real HTTP client.
 - The **interception** tests move to their own package: "a dio request hits a
-  rule" → `debug_overlay_dio/test/`, likewise for http.
+  rule" → `devtray_dio/test/`, likewise for http.
 
 This is better than it sounds: it forces the core's mocking tests to stop
 depending on a real HTTP client to test rule *matching*.
@@ -180,7 +180,7 @@ depending on a real HTTP client to test rule *matching*.
 ## Sequence
 
 1. Scaffold the workspace: root `pubspec.yaml` with `workspace:`, move core into
-   `packages/debug_overlay/`. Verify all 209 tests still pass — nothing else has
+   `packages/devtray/`. Verify all 209 tests still pass — nothing else has
    changed yet.
 2. Invert the two knots **in core, before moving anything**:
    - add `NetworkDebugPage.onPreviewHtml`, stop calling `HtmlPreviewDialog`;
@@ -202,18 +202,18 @@ depending on a real HTTP client to test rule *matching*.
 1. **Adapters move to separate packages.** `DebugDioInterceptor`,
    `DebugHttpClient`, `DebugBlocObserver`, `SharedPreferencesStorageAdapter`,
    `SharedPreferencesMockRuleStorage`, `PluginDeviceInfoProvider` and
-   `HtmlPreviewDialog` are no longer exported by `debug_overlay`. Add the
-   matching `debug_overlay_*` dependency and import it.
+   `HtmlPreviewDialog` are no longer exported by `devtray`. Add the
+   matching `devtray_*` dependency and import it.
 2. **`persistMockRules` now defaults to `false`.** Mock rules are session-only
-   unless you install `debug_overlay_prefs` and set `MockStore.instance.storage`.
+   unless you install `devtray_prefs` and set `MockStore.instance.storage`.
 3. **The Network page's HTML preview button is hidden by default.** Pass
    `NetworkDebugPage(onPreviewHtml: HtmlPreviewDialog.show)` from
-   `debug_overlay_html` to restore it.
+   `devtray_html` to restore it.
 
 ## Notes / risks
 
 - **No external consumers.** `spot_line`/nawa no longer depends on
-  `debug_overlay` (the integration was reverted), so this migration is purely
+  `devtray` (the integration was reverted), so this migration is purely
   internal: package + example + tests. Nothing downstream to coordinate.
 - **Version lockstep.** Seven packages means every core change that touches a
   shared interface (`DebugStorageAdapter`, `MockRuleStorage`,

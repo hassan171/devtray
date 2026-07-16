@@ -1,8 +1,8 @@
 import 'dart:io';
 
-import 'package:debug_overlay/debug_overlay.dart';
-import 'package:debug_overlay_example/users_box.dart';
-import 'package:debug_overlay_example/users_debug_page.dart';
+import 'package:devtray/devtray.dart';
+import 'package:devtray_example/users_box.dart';
+import 'package:devtray_example/users_debug_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
@@ -25,7 +25,7 @@ void main() {
   late Directory dir;
 
   setUp(() async {
-    dir = await Directory.systemTemp.createTemp('debug_overlay_users_page_test');
+    dir = await Directory.systemTemp.createTemp('devtray_users_page_test');
     Hive.init(dir.path);
     if (!Hive.isAdapterRegistered(1)) Hive.registerAdapter(UserAdapter());
     await Hive.openBox<User>(usersBoxName);

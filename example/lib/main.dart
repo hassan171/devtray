@@ -1,16 +1,16 @@
 import 'package:bloc/bloc.dart';
-import 'package:debug_overlay/debug_overlay.dart';
+import 'package:devtray/devtray.dart';
 // One import per integration. The core knows nothing about any of these — each
 // lives in its own package, so an app only compiles the ones it actually uses.
 // This example takes the lot because it demonstrates the lot; a real app takes
 // two or three.
-import 'package:debug_overlay_bloc/debug_overlay_bloc.dart';
-import 'package:debug_overlay_device/debug_overlay_device.dart';
-import 'package:debug_overlay_hive/debug_overlay_hive.dart';
-import 'package:debug_overlay_html/debug_overlay_html.dart';
-import 'package:debug_overlay_prefs/debug_overlay_prefs.dart';
-import 'package:debug_overlay_riverpod/debug_overlay_riverpod.dart';
-import 'package:debug_overlay_sqflite/debug_overlay_sqflite.dart';
+import 'package:devtray_bloc/devtray_bloc.dart';
+import 'package:devtray_device/devtray_device.dart';
+import 'package:devtray_hive/devtray_hive.dart';
+import 'package:devtray_html/devtray_html.dart';
+import 'package:devtray_prefs/devtray_prefs.dart';
+import 'package:devtray_riverpod/devtray_riverpod.dart';
+import 'package:devtray_sqflite/devtray_sqflite.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -149,7 +149,7 @@ void main() {
     app: ProviderScope(
       observers: [const DebugRiverpodObserver()],
       child: MaterialApp(
-        title: 'Notes — debug_overlay example',
+        title: 'Notes — devtray example',
         // The app's own identity, deliberately unlike the overlay's blue/grey:
         // a screenshot should never leave you wondering where the host app ends
         // and the debug tool begins. Both modes, so the overlay's own dark
@@ -164,7 +164,7 @@ void main() {
     pages: [
       // `onPreviewHtml` is what turns the HTML preview button on. The core has
       // no HTML renderer — it doesn't depend on flutter_html — so without a
-      // previewer the button isn't drawn at all. debug_overlay_html supplies one.
+      // previewer the button isn't drawn at all. devtray_html supplies one.
       const NetworkDebugPage(onPreviewHtml: HtmlPreviewDialog.show),
       // Combined logs + errors. Errors fold in as error-level rows (expand one
       // for its full report); the advanced filter's `Source`/`Level` fields

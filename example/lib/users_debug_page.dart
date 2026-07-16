@@ -1,4 +1,4 @@
-import 'package:debug_overlay/debug_overlay.dart';
+import 'package:devtray/devtray.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 
@@ -29,7 +29,7 @@ class _UsersView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = DebugOverlayTheme.of(context);
+    final t = DevtrayTheme.of(context);
 
     // Hive's own listenable — no manual refresh needed.
     return ValueListenableBuilder<Box<User>>(

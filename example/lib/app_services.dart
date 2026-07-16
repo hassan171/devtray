@@ -1,6 +1,6 @@
-import 'package:debug_overlay/debug_overlay.dart';
-import 'package:debug_overlay_dio/debug_overlay_dio.dart';
-import 'package:debug_overlay_http/debug_overlay_http.dart';
+import 'package:devtray/devtray.dart';
+import 'package:devtray_dio/devtray_dio.dart';
+import 'package:devtray_http/devtray_http.dart';
 import 'package:dio/dio.dart';
 import 'package:http/http.dart' as http;
 
@@ -18,7 +18,7 @@ import 'counter_cubit.dart';
 
 /// Drives the overlay from our own trigger (the AppBar bug button), on top of
 /// the draggable launcher.
-final debug = DebugOverlayController();
+final debug = DevtrayController();
 
 /// The one interceptor is all the Network page needs — every request made
 /// through this client shows up, including the ones the app makes on its own.

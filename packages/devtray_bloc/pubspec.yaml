@@ -1,0 +1,22 @@
+name: devtray_bloc
+description: "bloc adapter for devtray — feeds the overlay's State page from bloc and cubit."
+version: 0.1.0
+repository: https://github.com/hassan171/devtray/tree/main/packages/devtray_bloc
+issue_tracker: https://github.com/hassan171/devtray/issues
+
+
+environment:
+  sdk: ">=3.12.0 <4.0.0"
+
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  devtray: ^0.1.0
+  bloc: ^9.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0

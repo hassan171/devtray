@@ -1,5 +1,5 @@
 import 'package:bloc/bloc.dart';
-import 'package:debug_overlay/debug_overlay.dart';
+import 'package:devtray/devtray.dart';
 
 /// A plain cubit — no events, just emits.
 ///
@@ -72,7 +72,7 @@ class TodoCleared extends TodoEvent {
 /// The other way to expose non-state fields: implement [DebugInspectable].
 ///
 /// Lives next to the fields it exposes, so it can't drift out of sync — at the
-/// cost of a debug_overlay import in the class. (A [StateInspector.inspect]
+/// cost of a devtray import in the class. (A [StateInspector.inspect]
 /// registration would override this, so you can still change what's shown from
 /// the outside.)
 class TodoBloc extends Bloc<TodoEvent, List<String>> implements DebugInspectable {

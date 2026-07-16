@@ -1,5 +1,5 @@
-name: debug_overlay_workspace
-description: "Workspace root for debug_overlay and its integration packages. Not published."
+name: devtray_workspace
+description: "Workspace root for devtray and its integration packages. Not published."
 publish_to: "none"
 version: 0.0.0
 
@@ -14,17 +14,18 @@ environment:
 #
 # See MIGRATION_PLAN.md for why, and for what moved where.
 workspace:
-  - packages/debug_overlay
-  - packages/debug_overlay_dio
-  - packages/debug_overlay_http
-  - packages/debug_overlay_bloc
-  - packages/debug_overlay_riverpod
-  - packages/debug_overlay_prefs
-  - packages/debug_overlay_device
-  - packages/debug_overlay_html
-  - packages/debug_overlay_hive
-  - packages/debug_overlay_sqflite
+  - packages/devtray
+  - packages/devtray_dio
+  - packages/devtray_http
+  - packages/devtray_bloc
+  - packages/devtray_riverpod
+  - packages/devtray_prefs
+  - packages/devtray_device
+  - packages/devtray_html
+  - packages/devtray_hive
+  - packages/devtray_sqflite
   - example
 
 dev_dependencies:
   flutter_lints: ^6.0.0
+

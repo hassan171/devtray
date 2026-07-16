@@ -1,4 +1,4 @@
-# debug_overlay_example
+# devtray_example
 
 A new Flutter project.
 

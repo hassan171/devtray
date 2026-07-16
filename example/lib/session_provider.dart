@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// A Riverpod provider, living alongside the example's bloc cubits on purpose.
 ///
 /// The State page shows **both** — it reads from `StateInspector`, which knows
-/// about neither library. `debug_overlay_bloc` and `debug_overlay_riverpod` are
+/// about neither library. `devtray_bloc` and `devtray_riverpod` are
 /// each ~50 lines of glue pushing into the same API, and installing both is what
 /// an app mid-migration actually needs.
 ///

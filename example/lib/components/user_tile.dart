@@ -1,4 +1,4 @@
-import 'package:debug_overlay/debug_overlay.dart';
+import 'package:devtray/devtray.dart';
 import 'package:flutter/material.dart';
 
 import '../users_box.dart';
@@ -11,7 +11,7 @@ import '../users_box.dart';
 /// own input, so a malformed user is unrepresentable.
 class UserTile extends StatefulWidget {
   final User user;
-  final DebugOverlayTheme theme;
+  final DevtrayTheme theme;
 
   const UserTile({super.key, required this.user, required this.theme});
 
@@ -155,7 +155,7 @@ class _UserTileState extends State<UserTile> {
 class _Field extends StatelessWidget {
   final String label;
   final TextEditingController controller;
-  final DebugOverlayTheme theme;
+  final DevtrayTheme theme;
   final VoidCallback? onSubmitted;
 
   const _Field({

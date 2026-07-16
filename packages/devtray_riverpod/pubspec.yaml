@@ -1,0 +1,29 @@
+name: devtray_riverpod
+description: "Riverpod adapter for devtray — feeds the overlay's State page from providers."
+version: 0.1.0
+repository: https://github.com/hassan171/devtray/tree/main/packages/devtray_riverpod
+issue_tracker: https://github.com/hassan171/devtray/issues
+
+
+environment:
+  sdk: ">=3.12.0 <4.0.0"
+
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  devtray: ^0.1.0
+  flutter_riverpod: ^3.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  # DEV-only, for one test: that bloc and Riverpod can feed the same page at
+  # once. Neither the core nor devtray_bloc can prove that (the core has
+  # no state library; _bloc has no riverpod), so it's proven here. Nothing in
+  # lib/ touches these.
+  bloc: ^9.0.0
+  devtray_bloc:
+    path: ../devtray_bloc

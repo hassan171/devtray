@@ -1,7 +1,7 @@
 // Proves the SQLite adapter actually round-trips through DebugStorageAdapter —
 // a relational store is the interface's hardest case, so it's worth checking
 // against a real database rather than assuming.
-import 'package:debug_overlay_example/notes_db.dart';
+import 'package:devtray_example/notes_db.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 

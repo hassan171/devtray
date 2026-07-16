@@ -1,4 +1,4 @@
-import 'package:debug_overlay/debug_overlay.dart';
+import 'package:devtray/devtray.dart';
 import 'package:flutter/material.dart';
 
 import '../notes_db.dart';

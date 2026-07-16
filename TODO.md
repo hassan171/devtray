@@ -1,4 +1,4 @@
-# debug_overlay — roadmap
+# devtray — roadmap
 
 Candidate features, with enough design detail to argue about. Each one lists what it does,
 how it'd be built, what it costs, and the **open questions** that need a decision before
@@ -132,7 +132,7 @@ forces it from inside the app (DevTools drives the engine directly). A switch th
 does nothing is worse than no switch. Use DevTools for that one.
 
 The **overrides** half (text scale, locale, forced brightness) was deliberately *not* built —
-it needs `DebugOverlay` to inject a `MediaQuery`/`Localizations` above the host app's tree,
+it needs `Devtray` to inject a `MediaQuery`/`Localizations` above the host app's tree,
 which is a structural change to a widget that currently touches nothing about the app it
 wraps. Still open; see the original notes below.
 
@@ -170,7 +170,7 @@ The debug flags are globals: set them, then `WidgetsBinding.instance.reassembleA
 to force a repaint. Trivial.
 
 The **overrides** (text scale, locale, brightness) are harder: they need to wrap the host
-app's tree, which means `DebugOverlay` would have to inject a `MediaQuery`/`Localizations`
+app's tree, which means `Devtray` would have to inject a `MediaQuery`/`Localizations`
 above `widget.child`. That's a real change to the overlay's structure — currently it deliberately
 touches nothing about the app it wraps.
 
@@ -251,7 +251,7 @@ Self-capturing, zero integration cost, answers "is this screen janking" without 
 
 ### Design sketch
 A `PerformanceStore` in the same mold as the others — ring buffer of `FrameTiming`s, fed by a
-timings callback registered in `DebugOverlayCapture.installHooks()`. Page renders a
+timings callback registered in `DevtrayCapture.installHooks()`. Page renders a
 `CustomPainter` sparkline.
 
 ### Cost
@@ -378,7 +378,7 @@ transition log. Essentially the Logs page with a different source.
 Medium.
 
 ### Open questions
-- **This couples the package to `bloc`.** It should be a separate `debug_overlay_bloc` add-on
+- **This couples the package to `bloc`.** It should be a separate `devtray_bloc` add-on
   package so the core stays framework-agnostic — which means setting up a second package and
   a melos/workspace setup. Is that overhead worth it?
 - A generic alternative: a `DebugPage` that renders any `ValueListenable`/`Stream` the app
@@ -391,7 +391,7 @@ Medium.
 Things that apply to several of the above and should be decided once:
 
 - ~~**Redaction.**~~ Resolved: **not doing it.** See §3.
-- ~~**Release safety.**~~ ✅ **Done — `DebugOverlayKillSwitch`.** Defaults to `kDebugMode`, so a
+- ~~**Release safety.**~~ ✅ **Done — `DevtrayKillSwitch`.** Defaults to `kDebugMode`, so a
   release build captures nothing out of the box. When off: every store is a no-op, mocks never
   intercept (beats an active rule *and* offline mode), and whatever was already captured is
   cleared. `runDebugApp(enabled:)` drives it, so the UI and the capture can't drift apart.
