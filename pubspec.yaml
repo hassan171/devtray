@@ -12,7 +12,7 @@ environment:
 # dependencies; each integration package owns exactly one — so an app that uses
 # `http` and Riverpod never compiles dio or bloc.
 #
-# See MIGRATION_PLAN.md for why, and for what moved where.
+# See the README for what moved where.
 workspace:
   - packages/devtray
   - packages/devtray_dio

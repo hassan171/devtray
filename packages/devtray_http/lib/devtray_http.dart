@@ -12,7 +12,7 @@
 /// shows up on the overlay's Network page, and mock rules intercept it.
 ///
 /// This lives outside the core so an app that doesn't use `package:http` never
-/// compiles it — see MIGRATION_PLAN.md.
+/// compiles it.
 library;
 
 export 'src/http_adapter.dart';

@@ -11,7 +11,7 @@
 /// page, and mock rules intercept it.
 ///
 /// This lives outside the core so an app that doesn't use dio never compiles it
-/// — see MIGRATION_PLAN.md.
+/// — that is the point of the split.
 library;
 
 export 'src/dio_adapter.dart';
