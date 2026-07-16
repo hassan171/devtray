@@ -85,5 +85,6 @@ export 'src/storage/storage_debug_page.dart';
 
 // Reusable widgets — for building your own pages in the same visual language.
 export 'src/widgets/copyable_section.dart';
+export 'src/widgets/debug_copy_button.dart';
 export 'src/widgets/debug_search_bar.dart';
 export 'src/widgets/debug_tab_bar.dart';

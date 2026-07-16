@@ -25,7 +25,6 @@ import 'counter_cubit.dart';
 import 'notes_db.dart';
 import 'session_provider.dart';
 import 'users_box.dart';
-import 'users_debug_page.dart';
 
 /// Drives the overlay from our own triggers (the AppBar button below), on top
 /// of the draggable launcher.
@@ -197,7 +196,7 @@ void main() {
       StorageDebugPage(adapters: storageAdapters),
       // A custom page — the Storage page can browse the Hive box generically,
       // but when you know what the data is, a purpose-built view beats a dump.
-      const UsersDebugPage(),
+      // const UsersDebugPage(),
       // Live state + the change history behind it, for any state library.
       const StateDebugPage(),
       VisualDebugPage(),

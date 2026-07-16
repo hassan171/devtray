@@ -275,6 +275,31 @@ void main() {
       expect(find.text('First'), findsOneWidget);
       expect(find.text('Second'), findsOneWidget);
     });
+
+    testWidgets('Copy all confirms the press, even where the clipboard cannot answer', (tester) async {
+      // There is no clipboard handler under flutter_test, so a Clipboard.setData
+      // that is awaited before confirming never resolves — and the button sits
+      // there pressed but silent. Same on any embedder whose clipboard is slow
+      // or missing. The confirmation is driven by the press for that reason;
+      // this test is what pins it down.
+      await tester.pumpWidget(_host(const DeviceDebugPage(
+        provider: StaticDeviceInfoProvider([
+          DeviceInfoSection('Environment', {'Flavor': 'dev'}),
+        ]),
+      )));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Copy all'), findsOneWidget);
+
+      await tester.tap(find.text('Copy all'));
+      await tester.pump();
+
+      expect(find.text('Copied'), findsOneWidget);
+
+      // ...and it goes back, so the next copy is still offered.
+      await tester.pump(const Duration(milliseconds: 1300));
+      expect(find.text('Copy all'), findsOneWidget);
+    });
   });
 
   group('launcher error badge', () {

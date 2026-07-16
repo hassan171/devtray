@@ -1,10 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../core/debug_overlay_theme.dart';
 import '../core/debug_page.dart';
+import '../core/debug_text_styles.dart';
+import '../widgets/debug_copy_button.dart';
 import 'device_info_provider.dart';
 
 /// Device, OS, app and screen facts — the first thing anyone asks for in a bug
@@ -73,9 +72,7 @@ class _DeviceViewState extends State<_DeviceView> {
           return Center(child: CircularProgressIndicator(color: t.accent));
         }
         if (snapshot.hasError) {
-          return Center(
-            child: Text('Could not load device info:\n${snapshot.error}', textAlign: TextAlign.center, style: TextStyle(color: t.error)),
-          );
+          return _LoadFailed(error: snapshot.error!);
         }
 
         final sections = [...?snapshot.data, _screenSection(context)];
@@ -86,11 +83,17 @@ class _DeviceViewState extends State<_DeviceView> {
             Row(
               children: [
                 Expanded(
-                  child: Text('Device info', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: t.text)),
+                  child: Text(
+                    'Device info',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: t.text),
+                  ),
                 ),
-                _CopyAllButton(text: _asPlainText(sections)),
+                // The whole page as one block — this page exists to be pasted
+                // into a bug report.
+                DebugCopyButton(text: () => _asPlainText(sections)),
               ],
             ),
+            const SizedBox(height: 4),
             Expanded(
               child: ListView(
                 children: [
@@ -106,50 +109,54 @@ class _DeviceViewState extends State<_DeviceView> {
   }
 }
 
-/// Labelled copy button — swaps its own label to "Copied" for a moment rather
-/// than raising a toast over the data you're trying to read.
-class _CopyAllButton extends StatefulWidget {
-  final String text;
-  const _CopyAllButton({required this.text});
-
-  @override
-  State<_CopyAllButton> createState() => _CopyAllButtonState();
-}
-
-class _CopyAllButtonState extends State<_CopyAllButton> {
-  bool _copied = false;
-  Timer? _resetTimer;
-
-  @override
-  void dispose() {
-    _resetTimer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _copy() async {
-    await Clipboard.setData(ClipboardData(text: widget.text));
-    if (!mounted) return;
-
-    setState(() => _copied = true);
-    _resetTimer?.cancel();
-    _resetTimer = Timer(const Duration(milliseconds: 1200), () {
-      if (mounted) setState(() => _copied = false);
-    });
-  }
+/// The provider threw. Say which one and why — a bare red string leaves you
+/// guessing whether the page or your own provider is broken.
+class _LoadFailed extends StatelessWidget {
+  final Object error;
+  const _LoadFailed({required this.error});
 
   @override
   Widget build(BuildContext context) {
     final t = DebugOverlayTheme.of(context);
-    final color = _copied ? t.success : t.accent;
-
-    return TextButton.icon(
-      onPressed: _copy,
-      icon: Icon(_copied ? Icons.check : Icons.copy, size: 14, color: color),
-      label: Text(_copied ? 'Copied' : 'Copy all', style: TextStyle(fontSize: 12, color: color)),
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline_rounded, size: 28, color: t.error),
+            const SizedBox(height: 8),
+            Text(
+              'Could not load device info',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: t.text),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'The DeviceInfoProvider threw:',
+              style: TextStyle(fontSize: 11, color: t.textMuted),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: t.error.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: t.error.withValues(alpha: 0.4)),
+              ),
+              child: SelectableText(
+                '$error',
+                style: DebugTextStyles.debugMono(color: t.error, fontSize: 11, height: 1.4),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
 
+/// One section as a `key: value` table.
 class _InfoTable extends StatelessWidget {
   final DeviceInfoSection section;
   const _InfoTable({required this.section});
@@ -162,28 +169,51 @@ class _InfoTable extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 12),
-        Text(section.title, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: t.accent)),
-        const SizedBox(height: 4),
+        // Section title as a ruled header — the same one the State page uses, so
+        // sections read alike across the overlay.
+        Row(
+          children: [
+            Text(section.title, style: DebugTextStyles.label(color: t.textMuted, fontSize: 10)),
+            const SizedBox(width: 6),
+            Expanded(child: Container(height: 1, color: t.border.withValues(alpha: 0.6))),
+          ],
+        ),
+        const SizedBox(height: 6),
         Container(
           width: double.infinity,
-          decoration: BoxDecoration(color: t.surface, borderRadius: BorderRadius.circular(6)),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: t.surface,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: t.border.withValues(alpha: 0.6)),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           child: Column(
             children: [
               for (final e in section.values.entries)
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SizedBox(
-                        width: 140,
-                        child: Text(e.key, style: TextStyle(fontSize: 11, color: t.textMuted)),
+                      // A max, not a fixed width. At 140 fixed, 'Locale' wasted
+                      // a third of a 375px row before its value even started —
+                      // and a longer key from a custom provider had nowhere to
+                      // go. Now short keys give their space back to the value.
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 140),
+                        child: Text(
+                          e.key,
+                          style: TextStyle(fontSize: 11, color: t.textMuted, height: 1.4),
+                        ),
                       ),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: SelectableText(
                           e.value,
-                          style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: t.text),
+                          // Mono: these are machine values — versions, ratios,
+                          // pixel counts — and they're read as data, often
+                          // compared between two devices.
+                          style: DebugTextStyles.debugMono(color: t.text, fontSize: 11, height: 1.4),
                         ),
                       ),
                     ],

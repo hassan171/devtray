@@ -427,7 +427,10 @@ void main() {
       await tester.pumpWidget(_host());
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Did you install an observer'), findsOneWidget);
+      // The empty state carries the setup, because a blank page with no
+      // observer installed is nearly always a setup problem.
+      expect(find.text('No state sources yet'), findsOneWidget);
+      expect(find.textContaining('Bloc.observer = DebugBlocObserver()'), findsOneWidget);
     });
 
     testWidgets('lists cubits with their live state', (tester) async {
@@ -479,14 +482,10 @@ void main() {
       expect(find.text('Current state'), findsOneWidget);
       expect(find.text('Changes'), findsOneWidget);
 
-      // The change history is collapsed by default — its tiles (and the event
-      // that caused each) only show once the section is expanded.
-      expect(find.text('Increment'), findsNothing);
-      await tester.tap(find.text('Changes'));
-      // Fixed pumps, not pumpAndSettle: tapping the header's InkWell starts a
-      // Material splash animation that pumpAndSettle would wait on forever.
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
+      // The history is shown, not hidden behind a chevron. "What changed just
+      // before it broke" is the question this page exists to answer, so the
+      // answer shouldn't cost a tap — and the event that caused each change is
+      // part of it.
       expect(find.text('Increment'), findsOneWidget);
     });
 
@@ -500,6 +499,26 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byType(TextField).first, 'cubit');
+      await tester.pumpAndSettle();
+
+      expect(find.text('CounterCubit'), findsOneWidget);
+      expect(find.text('CounterBloc'), findsNothing);
+    });
+
+    testWidgets('search also matches the live state, not just the type', (tester) async {
+      final cubit = CounterCubit();
+      final bloc = CounterBloc();
+      addTearDown(cubit.close);
+      addTearDown(bloc.close);
+      cubit.increment();
+      cubit.increment();
+
+      await tester.pumpWidget(_host());
+      await tester.pumpAndSettle();
+
+      // The state is half of what's on the row — a query that can't reach it
+      // looks broken. '2' is the cubit's state and appears in no type name.
+      await tester.enterText(find.byType(TextField).first, '2');
       await tester.pumpAndSettle();
 
       expect(find.text('CounterCubit'), findsOneWidget);

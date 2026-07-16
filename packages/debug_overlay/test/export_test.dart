@@ -124,10 +124,40 @@ void main() {
 
       expect(find.textContaining('## Network'), findsOneWidget);
 
-      await tester.tap(find.widgetWithText(FilterChip, 'Network'));
+      // By text, not by widget type: the toggle is an implementation detail
+      // (it has been a FilterChip and is now a hand-built chip), but "the thing
+      // labelled Network" is what the user taps either way.
+      await tester.tap(find.text('Network'));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('## Network'), findsNothing);
+    });
+
+    testWidgets('deselecting everything says so, rather than counting a header', (tester) async {
+      _seedStores();
+
+      await tester.pumpWidget(_host(const ExportDebugPage()));
+      await tester.pumpAndSettle();
+
+      for (final section in ['Device', 'Errors', 'Network', 'Logs']) {
+        await tester.tap(find.text(section));
+        await tester.pumpAndSettle();
+      }
+
+      // The builder still emits a report header with nothing selected, so a raw
+      // character count would advertise content that isn't there.
+      expect(find.text('Nothing selected'), findsOneWidget);
+      expect(find.textContaining('characters'), findsNothing);
+    });
+
+    testWidgets('the page warns that nothing is redacted', (tester) async {
+      await tester.pumpWidget(_host(const ExportDebugPage()));
+      await tester.pumpAndSettle();
+
+      // The report carries auth tokens and bodies verbatim, on purpose (see
+      // 'captures headers and bodies verbatim' above). That has to be said
+      // where the send decision is made — it was previously only in dartdoc.
+      expect(find.textContaining('Nothing is redacted'), findsOneWidget);
     });
 
     testWidgets('no Share button unless an onShare hook is given', (tester) async {
