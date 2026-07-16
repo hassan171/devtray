@@ -12,11 +12,29 @@ You decide **whether** it exists, **when** it opens, and **how** it's presented.
 
 ## Install
 
+The core has **no dependencies** beyond Flutter itself. Every integration — dio, http,
+bloc, `shared_preferences`, device info, HTML preview — is a separate package, so you only
+compile the ones you use:
+
 ```yaml
 dependencies:
-  debug_overlay:
-    path: ../debug_overlay   # or a git ref
+  debug_overlay: ^0.1.0          # the overlay, the pages, the stores
+
+  # Add only what you need:
+  debug_overlay_dio: ^0.1.0      # DebugDioInterceptor
+  debug_overlay_http: ^0.1.0     # DebugHttpClient
+  debug_overlay_bloc: ^0.1.0     # DebugBlocObserver → the State page
+  debug_overlay_prefs: ^0.1.0    # SharedPreferences adapter + mock persistence
+  debug_overlay_device: ^0.1.0   # real device/OS/app facts
+  debug_overlay_html: ^0.1.0     # preview HTML response bodies
 ```
+
+A Riverpod app that uses `package:http` takes `debug_overlay` and
+`debug_overlay_http` — and never compiles dio or bloc.
+
+The **pages** all live in the core: it's only the adapters that move. `NetworkDebugPage`
+reads from a transport-agnostic store, so dio and http feed the same page; `StateDebugPage`
+reads from a library-agnostic inspector, so bloc is just one way to fill it.
 
 ## Quick start
 
@@ -24,11 +42,13 @@ Swap `runApp` for `runDebugApp` and list the pages you want. That's the whole se
 
 ```dart
 import 'package:debug_overlay/debug_overlay.dart';
+import 'package:debug_overlay_dio/debug_overlay_dio.dart';
+import 'package:debug_overlay_device/debug_overlay_device.dart';
 
 final dio = Dio()..interceptors.add(DebugDioInterceptor());
 
 void main() => runDebugApp(
-  const MyApp(),
+  app: const MyApp(),
   enabled: kDebugMode,
   pages: const [
     NetworkDebugPage(),
@@ -125,8 +145,26 @@ NetworkLogStore.instance.attachExtra(entry.id, 'Proxy JS', generatedJs);
 ```
 
 **Per request you get:** method, URL, status, duration, request/response headers and bodies
-(pretty-printed JSON), query params, error message, **copy-as-cURL**, and an **HTML preview**
-for HTML responses. Multipart bodies are snapshotted and rendered as `-F` flags in the cURL.
+(pretty-printed JSON), query params, error message, and **copy-as-cURL**. Multipart bodies
+are snapshotted and rendered as `-F` flags in the cURL.
+
+### Previewing an HTML response
+
+A server-rendered error page or an SSO redirect is easier to read rendered than as markup.
+Rendering HTML needs a real parser, though, and that's a dependency most apps shouldn't carry
+for one button — so it's opt-in:
+
+```yaml
+dependencies:
+  debug_overlay_html: ^0.1.0
+```
+
+```dart
+NetworkDebugPage(onPreviewHtml: HtmlPreviewDialog.show)
+```
+
+Without a previewer the button isn't drawn. `onPreviewHtml` is just a
+`void Function(BuildContext, String)`, so you can pass your own renderer instead.
 
 ---
 
@@ -205,13 +243,27 @@ MockStore.instance.add(MockRule(
 
 ### Persistence
 
-Mock rules **survive a hot restart** — otherwise you'd re-add "force /orders to 500" every
-time, which is exactly when you're iterating on an error state. Only the rules are stored (a
-small JSON blob in `shared_preferences`); no logs, no request bodies, so none of the PII
-concerns that make persisting the *data* a bad idea.
+Rules are **session-only by default** — they're gone on a hot restart. Two lines make them
+survive, and they're worth adding if you use mocks at all: otherwise you re-add "force
+/orders to 500" every time, which is exactly when you're iterating on an error state.
 
-Turn it off with `runDebugApp(persistMockRules: false)`, or swap the backend by implementing
-`MockRuleStorage` and setting `MockStore.instance.storage`.
+```yaml
+dependencies:
+  debug_overlay_prefs: ^0.1.0
+```
+
+```dart
+MockStore.instance.storage = SharedPreferencesMockRuleStorage();
+runDebugApp(app: const MyApp(), persistMockRules: true);
+```
+
+It's opt-in because persistence means a real storage backend, and the core doesn't depend on
+`shared_preferences` — no app should carry that for a debug tool it may not use.
+
+Only the rules are stored (a small JSON blob); no logs, no request bodies, so none of the PII
+concerns that make persisting the *data* a bad idea. Swap the backend by implementing
+`MockRuleStorage` and setting `MockStore.instance.storage` — that's the same seam
+`debug_overlay_prefs` uses.
 
 ### Don't want mocking at all?
 
@@ -611,7 +663,8 @@ class LogsPage extends DebugPage {
 ```
 
 To make your page look native to the overlay, reuse its widgets — all exported:
-`CopyableSection`, `CopyButton`, `DebugTabBar`, `HtmlPreviewDialog`, and
+`CopyableSection`, `CopyButton`, `DebugTabBar`, `DebugSearchBar`,
+`DebugTextStyles.debugMono(...)` for anything machine-produced, and
 `DebugOverlayTheme.of(context)` for colors.
 
 ---
