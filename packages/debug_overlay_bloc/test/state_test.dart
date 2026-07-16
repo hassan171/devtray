@@ -1,5 +1,6 @@
 import 'package:bloc/bloc.dart';
 import 'package:debug_overlay/debug_overlay.dart';
+import 'package:debug_overlay_bloc/debug_overlay_bloc.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

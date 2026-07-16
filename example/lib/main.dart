@@ -1,5 +1,14 @@
 import 'package:bloc/bloc.dart';
 import 'package:debug_overlay/debug_overlay.dart';
+// One import per integration. The core knows nothing about dio, http, bloc,
+// shared_preferences, device_info_plus or flutter_html — each lives in its own
+// package, so an app only compiles the ones it actually uses.
+import 'package:debug_overlay_bloc/debug_overlay_bloc.dart';
+import 'package:debug_overlay_device/debug_overlay_device.dart';
+import 'package:debug_overlay_dio/debug_overlay_dio.dart';
+import 'package:debug_overlay_html/debug_overlay_html.dart';
+import 'package:debug_overlay_http/debug_overlay_http.dart';
+import 'package:debug_overlay_prefs/debug_overlay_prefs.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -137,7 +146,10 @@ void main() {
     enabled: kDebugMode,
     controller: debug,
     pages: [
-      const NetworkDebugPage(),
+      // `onPreviewHtml` is what turns the HTML preview button on. The core has
+      // no HTML renderer — it doesn't depend on flutter_html — so without a
+      // previewer the button isn't drawn at all. debug_overlay_html supplies one.
+      const NetworkDebugPage(onPreviewHtml: HtmlPreviewDialog.show),
       // Combined logs + errors. Errors fold in as error-level rows (expand one
       // for its full report); the advanced filter's `Source`/`Level` fields
       // reproduce an errors-only view. Search + quick chips still on top.

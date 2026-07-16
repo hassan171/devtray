@@ -1,6 +1,6 @@
+import 'package:debug_overlay/debug_overlay.dart';
 import 'package:bloc/bloc.dart';
 
-import 'state_inspector.dart';
 
 /// Feeds [StateInspector] from `package:bloc`. Install it once:
 ///

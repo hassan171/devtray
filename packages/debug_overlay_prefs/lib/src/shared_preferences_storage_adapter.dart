@@ -1,6 +1,6 @@
+import 'package:debug_overlay/debug_overlay.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'debug_storage_adapter.dart';
 
 /// Browse and edit `SharedPreferences`. Built in — the package already depends
 /// on it for mock-rule persistence, so this costs nothing extra.

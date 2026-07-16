@@ -1,8 +1,8 @@
+import 'package:debug_overlay/debug_overlay.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
-import 'device_info_provider.dart';
 
 /// Real device, OS and app-version facts, via `device_info_plus` and
 /// `package_info_plus`.

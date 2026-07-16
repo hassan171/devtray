@@ -42,7 +42,6 @@ export 'src/network/mocking/mock_interceptor.dart';
 export 'src/network/mocking/mock_rule.dart';
 export 'src/network/mocking/mock_store.dart';
 export 'src/network/mocking/mocks_view.dart';
-export 'src/network/mocking/shared_preferences_mock_storage.dart';
 export 'src/network/network_debug_page.dart';
 export 'src/network/network_log_store.dart';
 
@@ -64,7 +63,6 @@ export 'src/filter/debug_filter_builder.dart';
 // Device page
 export 'src/device/device_debug_page.dart';
 export 'src/device/device_info_provider.dart';
-export 'src/device/plugin_device_info_provider.dart';
 
 // Visual debug flags page
 export 'src/visual/visual_debug_page.dart';
@@ -74,7 +72,6 @@ export 'src/export/debug_report.dart';
 export 'src/export/export_debug_page.dart';
 
 // State page — live state + change history for any state library.
-export 'src/state/bloc_adapter.dart';
 export 'src/state/debug_inspectable.dart';
 export 'src/state/state_bridge.dart';
 export 'src/state/state_debug_page.dart';
@@ -84,11 +81,9 @@ export 'src/state/state_inspector.dart';
 export 'src/storage/components/storage_list_editor.dart';
 export 'src/storage/components/storage_value_editor.dart';
 export 'src/storage/debug_storage_adapter.dart';
-export 'src/storage/shared_preferences_storage_adapter.dart';
 export 'src/storage/storage_debug_page.dart';
 
 // Reusable widgets — for building your own pages in the same visual language.
 export 'src/widgets/copyable_section.dart';
 export 'src/widgets/debug_search_bar.dart';
 export 'src/widgets/debug_tab_bar.dart';
-export 'src/widgets/html_preview_dialog.dart';

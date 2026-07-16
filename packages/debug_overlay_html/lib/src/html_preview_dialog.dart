@@ -1,7 +1,7 @@
+import 'package:debug_overlay/debug_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
 
-import '../core/debug_overlay_theme.dart';
 
 /// Renders an HTML string in a scrollable dialog — used to preview HTML
 /// responses (server-rendered error pages, SSO redirects, …).

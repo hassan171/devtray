@@ -17,6 +17,10 @@ workspace:
   - packages/debug_overlay
   - packages/debug_overlay_dio
   - packages/debug_overlay_http
+  - packages/debug_overlay_bloc
+  - packages/debug_overlay_prefs
+  - packages/debug_overlay_device
+  - packages/debug_overlay_html
   - example
 
 dev_dependencies:

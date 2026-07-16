@@ -1,6 +1,6 @@
+import 'package:debug_overlay/debug_overlay.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'mock_store.dart';
 
 /// Persists mock rules in `shared_preferences`, so they survive a hot restart
 /// and an app relaunch.
