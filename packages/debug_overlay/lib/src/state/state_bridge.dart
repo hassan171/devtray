@@ -16,27 +16,14 @@
 ///
 /// ## Riverpod
 ///
-/// Riverpod has a `ProviderObserver` — the same shape as bloc's:
+/// Already done — add `debug_overlay_riverpod`:
 ///
 /// ```dart
-/// class DebugRiverpodObserver extends ProviderObserver {
-///   @override
-///   void didUpdateProvider(provider, prev, next, container) {
-///     StateInspector.instance.record(
-///       identityHashCode(provider),
-///       type: provider.name ?? provider.runtimeType.toString(),
-///       from: prev,
-///       to: next,
-///     );
-///   }
-///
-///   @override
-///   void didDisposeProvider(provider, container) =>
-///       StateInspector.instance.recordClose(identityHashCode(provider));
-/// }
-///
-/// // ProviderScope(observers: [DebugRiverpodObserver()], child: ...)
+/// ProviderScope(observers: [DebugRiverpodObserver()], child: const MyApp())
 /// ```
+///
+/// Install it alongside `debug_overlay_bloc` if you're mid-migration; both fill
+/// the same page, and neither knows the other exists.
 ///
 /// ## ValueNotifier / ChangeNotifier
 ///

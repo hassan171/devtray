@@ -21,16 +21,24 @@ dependencies:
   debug_overlay: ^0.1.0          # the overlay, the pages, the stores
 
   # Add only what you need:
-  debug_overlay_dio: ^0.1.0      # DebugDioInterceptor
-  debug_overlay_http: ^0.1.0     # DebugHttpClient
-  debug_overlay_bloc: ^0.1.0     # DebugBlocObserver → the State page
-  debug_overlay_prefs: ^0.1.0    # SharedPreferences adapter + mock persistence
-  debug_overlay_device: ^0.1.0   # real device/OS/app facts
-  debug_overlay_html: ^0.1.0     # preview HTML response bodies
+  debug_overlay_dio: ^0.1.0       # DebugDioInterceptor
+  debug_overlay_http: ^0.1.0      # DebugHttpClient
+  debug_overlay_bloc: ^0.1.0      # DebugBlocObserver     → the State page
+  debug_overlay_riverpod: ^0.1.0  # DebugRiverpodObserver → the State page
+  debug_overlay_prefs: ^0.1.0     # SharedPreferences adapter + mock persistence
+  debug_overlay_hive: ^0.1.0      # browse and edit Hive boxes
+  debug_overlay_sqflite: ^0.1.0   # every SQLite table, discovered from the schema
+  debug_overlay_device: ^0.1.0    # real device/OS/app facts
+  debug_overlay_html: ^0.1.0      # preview HTML response bodies
 ```
 
-A Riverpod app that uses `package:http` takes `debug_overlay` and
-`debug_overlay_http` — and never compiles dio or bloc.
+A Riverpod app that uses `package:http` takes `debug_overlay`,
+`debug_overlay_http` and `debug_overlay_riverpod` — and never compiles dio or
+bloc.
+
+The integrations are **additive**, not alternatives: install `_bloc` and
+`_riverpod` together and both fill the same State page — useful precisely when
+you're migrating between them. Same for `_dio` and `_http`.
 
 The **pages** all live in the core: it's only the adapters that move. `NetworkDebugPage`
 reads from a transport-agnostic store, so dio and http feed the same page; `StateDebugPage`

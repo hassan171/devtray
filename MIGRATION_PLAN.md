@@ -1,7 +1,13 @@
 # Splitting `debug_overlay` into a core + integration packages
 
-Status: **done.** The core has no dependencies beyond Flutter, and there are nine
-packages. 245 tests pass, the same behaviour as before plus two new guards.
+Status: **done.** The core has no dependencies beyond Flutter, and there are ten
+packages. 261 tests pass, the same behaviour as before plus new guards.
+
+`debug_overlay_riverpod` is the proof the split was worth it: a second
+state-management binding, added afterwards, needed **zero changes to the core**.
+Its tests also demonstrate bloc and Riverpod feeding the same page at once —
+which is the payoff of keeping `StateDebugPage` in the core rather than shipping
+one per library.
 
 What actually shipped, against what was planned:
 
