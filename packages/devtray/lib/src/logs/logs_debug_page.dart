@@ -9,6 +9,7 @@ import '../filter/debug_filter.dart';
 import '../filter/debug_filter_builder.dart';
 import '../widgets/copyable_section.dart';
 import '../widgets/debug_search_bar.dart';
+import '../widgets/jump_to_latest_button.dart';
 import 'components/log_detail_dialog.dart';
 import 'components/log_row.dart';
 import 'components/log_session_picker.dart';
@@ -608,7 +609,7 @@ class _LogsViewState extends State<_LogsView> {
                             : Center(
                                 child: ValueListenableBuilder<int>(
                                   valueListenable: _missed,
-                                  builder: (context, missed, _) => _JumpToLatestButton(missed: missed, onTap: _jumpToLatest),
+                                  builder: (context, missed, _) => JumpToLatestButton(missed: missed, onTap: _jumpToLatest),
                                 ),
                               ),
                       ),
@@ -617,53 +618,6 @@ class _LogsViewState extends State<_LogsView> {
                 ),
         ),
       ],
-    );
-  }
-}
-
-/// Returns to the newest entry, and says how much arrived while you were away.
-///
-/// Floats over the list rather than taking a row in the toolbar: it only exists
-/// while you're scrolled up, and a control that appears and disappears in the
-/// header would shift the list under you — the exact problem this feature is
-/// about.
-class _JumpToLatestButton extends StatelessWidget {
-  final int missed;
-  final VoidCallback onTap;
-
-  const _JumpToLatestButton({required this.missed, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final t = DevtrayTheme.of(context);
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: t.accent,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 6, offset: Offset(0, 2))],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.arrow_downward, size: 12, color: t.background),
-              const SizedBox(width: 5),
-              Text(
-                // The count matters: "47 new" and "1 new" are different
-                // decisions about whether to look now.
-                missed > 0 ? '$missed new' : 'Jump to latest',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: t.background),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

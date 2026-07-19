@@ -42,6 +42,8 @@ void main() {
     }
   }
 
+  ScrollController controllerOf(WidgetTester tester) => tester.widget<ListView>(find.byType(ListView)).controller!;
+
   List<String> visible(WidgetTester tester) => tester
       .widgetList<Text>(find.byType(Text))
       .map((t) => (t.data ?? t.textSpan?.toPlainText() ?? '').trim())
@@ -120,6 +122,74 @@ void main() {
     final list = tester.widget<ListView>(find.byType(ListView));
     expect(list.itemExtent, NetworkLogRow.extent);
     expect(list.reverse, isTrue, reason: 'newest at offset 0 keeps open O(viewport)');
+  });
+
+  group('jump to latest', () {
+    testWidgets('is not offered while pinned to the newest request', (tester) async {
+      seed(300);
+      await pumpPage(tester);
+      await tester.pump();
+
+      expect(find.byType(JumpToLatestButton), findsNothing, reason: 'nothing to jump to');
+    });
+
+    testWidgets('appears once scrolled back, and counts what arrived', (tester) async {
+      seed(300);
+      await pumpPage(tester);
+      await tester.pump();
+
+      await tester.drag(find.byType(ListView), const Offset(0, 400));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(JumpToLatestButton), findsOneWidget);
+      // Nothing has arrived yet, so it offers the plain label rather than a count.
+      expect(find.text('Jump to latest'), findsOneWidget);
+
+      for (var i = 0; i < 3; i++) {
+        seed(1, path: 'live');
+      }
+      await tester.pumpAndSettle();
+
+      // "3 new" and "47 new" are different decisions about whether to look now.
+      expect(find.text('3 new'), findsOneWidget);
+    });
+
+    testWidgets('one press returns to the newest and resumes following', (tester) async {
+      seed(300);
+      await pumpPage(tester);
+      await tester.pump();
+
+      await tester.drag(find.byType(ListView), const Offset(0, 400));
+      await tester.pumpAndSettle();
+      seed(1, path: 'live');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(JumpToLatestButton));
+      await tester.pumpAndSettle();
+
+      expect(controllerOf(tester).offset, closeTo(0, 1.0), reason: 'reverse: true — newest is at offset 0');
+      expect(find.byType(JumpToLatestButton), findsNothing, reason: 'following again after ONE press');
+
+      // Following for real: the next request shows with no further interaction.
+      seed(1, path: 'live');
+      await tester.pumpAndSettle();
+      expect(find.textContaining('/live/'), findsWidgets);
+    });
+
+    testWidgets('scrolling back by hand also dismisses it', (tester) async {
+      seed(300);
+      await pumpPage(tester);
+      await tester.pump();
+
+      await tester.drag(find.byType(ListView), const Offset(0, 400));
+      await tester.pumpAndSettle();
+      expect(find.byType(JumpToLatestButton), findsOneWidget);
+
+      await tester.drag(find.byType(ListView), const Offset(0, -400));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(JumpToLatestButton), findsNothing);
+    });
   });
 
   testWidgets('a full buffer renders only the rows on screen', (tester) async {

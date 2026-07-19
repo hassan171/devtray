@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/devtray_theme.dart';
 import '../core/debug_page.dart';
 import '../core/debug_text_styles.dart';
+import '../widgets/jump_to_latest_button.dart';
 import 'components/network_detail_pane.dart';
 import 'html_previewer.dart';
 import 'components/network_log_row.dart';
@@ -103,8 +106,35 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
   /// Null while pinned to the newest request.
   int? _anchorId;
 
+  /// Whether the reader has scrolled away from the newest request.
+  ///
+  /// Mirrors `_anchorId != null`, but as a notifier so the jump-to-latest button
+  /// can appear and disappear without rebuilding the list behind it. Kept in
+  /// step by [_setAnchor] — a plain field can't drive a ValueListenableBuilder,
+  /// which is why the button never showed on the first attempt.
+  final ValueNotifier<bool> _held = ValueNotifier<bool>(false);
+
+  /// Sets or clears the anchor, keeping [_held] and the counters in step.
+  void _setAnchor(int? id) {
+    _anchorId = id;
+    _correctedForCount = 0;
+    _missed.value = 0;
+    _held.value = id != null;
+  }
+
   /// Arrivals already compensated for, so each new row shifts the offset once.
   int _correctedForCount = 0;
+
+  /// Requests that arrived while the reader was scrolled back — the count on
+  /// the jump-to-latest button.
+  ///
+  /// A notifier rather than plain state so the button can appear, update and
+  /// disappear without rebuilding the list behind it.
+  final ValueNotifier<int> _missed = ValueNotifier<int>(0);
+
+  /// True while [_jumpToLatest] is animating, so the scroll events its own
+  /// animation generates don't clear the anchor it is trying to release.
+  bool _jumping = false;
 
   /// How close to the newest entry still counts as "pinned".
   ///
@@ -123,7 +153,28 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
     _scroll
       ..removeListener(_onScroll)
       ..dispose();
+    _missed.dispose();
+    _held.dispose();
     super.dispose();
+  }
+
+  /// Scrolls back to the newest request and resumes following.
+  ///
+  /// Releases the anchor up front rather than waiting for the scroll to arrive:
+  /// requests landing during the animation keep extending the list, so
+  /// inferring "am I at the newest?" from the resulting offset would leave the
+  /// anchor set and the button on screen — needing a second press.
+  void _jumpToLatest() {
+    if (!_scroll.hasClients) return;
+
+    _setAnchor(null);
+    _jumping = true;
+
+    // The newest request is at offset 0 (`reverse: true`). Animated rather than
+    // jumped: a teleport to the end of a busy list is disorienting.
+    _scroll.animateTo(0, duration: const Duration(milliseconds: 200), curve: Curves.easeOut).whenComplete(() {
+      _jumping = false;
+    });
   }
 
   /// Tracks whether the reader has scrolled away from the newest request.
@@ -133,16 +184,18 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
   void _onScroll() {
     if (!_scroll.hasClients) return;
 
+    // A jump-to-latest in flight is an explicit intent to follow again, and must
+    // not be second-guessed by the scroll events its own animation generates.
+    if (_jumping) return;
+
     final atNewest = _scroll.offset <= _followThreshold;
     if (atNewest && _anchorId != null) {
       // Caught up — resume following, nothing to hold.
-      _anchorId = null;
-      _correctedForCount = 0;
+      _setAnchor(null);
     } else if (!atNewest && _anchorId == null) {
       // Mark the high-water line the moment the reader looks away, so
       // "arrived since" is measured from here.
-      _anchorId = _newestVisibleId;
-      _correctedForCount = 0;
+      _setAnchor(_newestVisibleId);
     }
   }
 
@@ -169,6 +222,15 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
       if (e.id <= anchor) break;
       arrived++;
     }
+
+    // Deferred: this runs during build, and firing a notifier inline would mark
+    // a listening widget dirty mid-frame.
+    if (arrived != _missed.value) {
+      scheduleMicrotask(() {
+        if (mounted) _missed.value = arrived;
+      });
+    }
+
     if (arrived <= _correctedForCount) return;
 
     final newRows = arrived - _correctedForCount;
@@ -287,7 +349,10 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
                 Expanded(
                   child: filtered.isEmpty
                       ? _NetworkEmptyState(searching: entries.isNotEmpty)
-                      : ListView.builder(
+                      : Stack(
+                          children: [
+                            Positioned.fill(
+                              child: ListView.builder(
                           controller: _scroll,
                           // The list is the hot path — a chatty app fills it fast.
                           //
@@ -325,6 +390,28 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
                             isSelected: filtered[i].id == _selectedId,
                             onTap: () => setState(() => _selectedId = filtered[i].id),
                           ),
+                              ),
+                            ),
+
+                            // Offered only while the reader has scrolled back —
+                            // pinned to the newest request there is nothing to
+                            // jump to, and nothing being missed.
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: 8,
+                              child: ValueListenableBuilder<bool>(
+                                valueListenable: _held,
+                                builder: (context, held, _) => !held
+                                    ? const SizedBox.shrink()
+                                    : ValueListenableBuilder<int>(
+                                        valueListenable: _missed,
+                                        builder: (context, missed, _) =>
+                                            Center(child: JumpToLatestButton(missed: missed, onTap: _jumpToLatest)),
+                                      ),
+                              ),
+                            ),
+                          ],
                         ),
                 ),
               ],
