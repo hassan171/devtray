@@ -54,12 +54,15 @@ void main() {
       expect(find.text('Jump to latest'), findsOneWidget);
     });
 
-    // NOTE: the "position is held" case is asserted in log_scroll_anchor_test
-    // against the *visible rows*, not the offset. An earlier version of this
-    // test compared offsets, passed, and was wrong — a constant offset in the
-    // old reversed list pointed at different content on every arrival. Offsets
-    // are a property of the geometry; what the reader cares about is which
-    // lines are on screen.
+    // NOTE: "position is held" is asserted in log_scroll_anchor_test and
+    // log_scroll_eviction_test against the *visible rows*, never the offset.
+    //
+    // An earlier version of this test compared offsets, passed, and was wrong:
+    // entries are inserted at index 0, which is the scroll anchor, so a
+    // constant offset points at different content on every arrival. Offsets are
+    // a property of the geometry — and the geometry changed twice while this
+    // was being written. What the reader cares about is which lines are on
+    // screen, so that is what the tests assert.
 
     testWidgets('counts what arrived while scrolled up', (tester) async {
       seed(60);

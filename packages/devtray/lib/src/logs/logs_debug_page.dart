@@ -135,8 +135,8 @@ class _LogsViewState extends State<_LogsView> {
 
   /// Turns following on or off as you scroll.
   ///
-  /// The list renders oldest-first and is not reversed, so the newest entry is
-  /// at offset 0, and scrolling up into history increases the offset.
+  /// The list is `reverse: true`, so offset 0 is the bottom — the newest entry
+  /// — and scrolling up into history increases the offset.
   void _onScroll() {
     if (!_scroll.hasClients) return;
 
@@ -145,8 +145,6 @@ class _LogsViewState extends State<_LogsView> {
     // generates — see [_jumpToLatest].
     if (_jumping) return;
 
-    // `reverse: true`, so offset 0 is the bottom — the newest entry — and
-    // scrolling up into history increases it.
     final atBottom = _scroll.offset <= _followThreshold;
     if (atBottom == _following.value) return;
 
@@ -212,59 +210,53 @@ class _LogsViewState extends State<_LogsView> {
       });
     }
 
-    // Hold the reader's place against INSERTION.
+    // Hold the reader's place against insertion.
     //
-    // `reverse: true` is required for performance — it puts the newest entry at
-    // offset 0 so only visible rows are ever laid out. But the store also
-    // inserts at index 0, which is precisely the scroll anchor, so every
-    // arrival adds content *between* the origin and the reader and slides them
-    // one row further from it.
-    //
+    // The store inserts at index 0, which under `reverse: true` is the scroll
+    // anchor — so every arrival adds a row *between* the origin and a
+    // scrolled-up reader, sliding them one row further from it.
     // findChildIndexCallback keeps element identity across that shift but does
-    // not move the viewport, so the offset is corrected by exactly the extent
-    // the new rows added. Rows are a uniform height (LogRow is always one
-    // line), so this is exact rather than approximate.
+    // not move the viewport, so the offset has to be corrected by the extent of
+    // what arrived.
     if (count > _correctedForCount && _scroll.hasClients) {
       final newRows = count - _correctedForCount;
-      _correctedForCount = count;
 
-      // Measured in ROWS, not in extent.
+      // Measured in ROWS, not in pixels of growth.
       //
-      // The obvious approach — compare maxScrollExtent across the frame and
-      // shift by the growth — silently does nothing here, because once the
-      // buffer is at its cap the content stops growing: one entry in, one
-      // evicted out, extent unchanged. It doesn't grow, it *slides*, and only a
-      // row count sees that.
-      //
-      // Rows are a uniform height (LogRow is deliberately always one line), so
-      // rows × height is exact.
+      // Comparing maxScrollExtent across the frame is the obvious approach and
+      // silently does nothing once the buffer is at its cap: one entry in, one
+      // evicted out, extent unchanged. The content doesn't grow there, it
+      // *slides*, and only a row count sees that. Rows are a uniform height
+      // (LogRow is deliberately always one line), so rows × height is exact.
       final rowExtent = _rowExtent;
       if (rowExtent == null) return;
 
-      final shift = newRows * rowExtent;
-
       // Never fight an in-progress scroll — correcting mid-drag reads as the
       // list refusing to stay where you put it.
-      if (_scroll.position.isScrollingNotifier.value) return;
-
       final position = _scroll.position;
-      final target = (position.pixels + shift).clamp(0.0, position.maxScrollExtent);
+      if (position.isScrollingNotifier.value) return;
+
+      final target = (position.pixels + newRows * rowExtent).clamp(0.0, position.maxScrollExtent);
+
+      // Consumed only once the correction is actually going to happen. Marking
+      // these rows as handled before the guards above would mean a correction
+      // skipped mid-drag is never made up, and the reader drifts by however
+      // many rows arrived while they were moving.
+      _correctedForCount = count;
       if (target == position.pixels) return;
 
       // Corrected DURING this build, not after it.
       //
-      // A post-frame `jumpTo` was the obvious approach and is what caused the
-      // flicker: the frame paints at the stale offset, then snaps. Since this
-      // runs in build — before layout and paint — the offset can be fixed up
-      // front so the frame is simply drawn in the right place and there is no
-      // intermediate state to see.
+      // A post-frame jumpTo is the obvious approach and is what caused a visible
+      // flicker: the frame paints at the stale offset, then snaps. This runs in
+      // build — before layout and paint — so the offset can be fixed up front
+      // and the frame is simply drawn in the right place.
       //
-      // `correctPixels` rather than `jumpTo` because that is precisely what it
-      // is for: adjusting the offset to account for content changes, without
-      // notifying listeners or starting an activity — both of which would be
-      // wrong here, since nothing about the user's scroll position has
-      // conceptually changed. It's the same mechanism Flutter's own
-      // scroll-anchoring uses.
+      // correctPixels rather than jumpTo because that is what it is for:
+      // adjusting the offset to account for a content change, without notifying
+      // listeners or starting a scroll activity. Both would be wrong here —
+      // nothing about the user's position has conceptually changed. Same
+      // mechanism Flutter's own scroll anchoring uses.
       position.correctPixels(target);
     }
   }
@@ -564,37 +556,26 @@ class _LogsViewState extends State<_LogsView> {
                         child: ListView.builder(
                           controller: _scroll,
                           // Reads like a console: newest at the bottom, new lines
-                          // pushing older ones up, and the view pinned to the latest
-                          // rather than stranding you at the top of a stale list.
+                          // pushing older ones up, and the view pinned to the
+                          // latest rather than stranding you at the top of a stale
+                          // list.
                           //
-                          // `reverse: true` puts index 0 at the bottom AND makes it
-                          // the scroll origin. Since the store is newest-first, that
-                          // put arriving entries exactly at the anchor: offset 380
-                          // meant "380px above the newest entry", so every new line
-                          // silently changed which row that was and the reader's
-                          // position slid away.
+                          // `reverse: true` is load-bearing for performance, not
+                          // just presentation. It puts the newest entry at offset
+                          // 0, so reaching it costs nothing and only the visible
+                          // rows are ever laid out. Rendering oldest-first instead
+                          // puts the newest at maxScrollExtent, which means laying
+                          // out the entire buffer just to find the end: 2.2s to
+                          // open with 1000 entries, versus ~0.5s. Open is
+                          // O(viewport), not O(buffer).
                           //
-                          // Rendering oldest-first instead fixed that but broke two
-                          // other things, because it put the NEWEST entry at
-                          // maxScrollExtent:
-                          //
-                          //  * Opening the page had to lay out every row to know
-                          //    where the end was — 2.2s with a full 1000-entry
-                          //    buffer, and ~30ms per frame after.
-                          //  * Eviction at the cap removed rows from index 0, which
-                          //    shifted every index below the reader.
-                          //
-                          // `reverse: true` solves both: the newest entry is at
-                          // offset 0, so only the visible rows are ever built (open
-                          // is O(viewport), not O(buffer)), and the oldest end —
-                          // where eviction happens — is the far end, where losing a
-                          // row cannot move the viewport.
-                          //
-                          // That leaves insertion at the anchored end, which
-                          // `findChildIndexCallback` handles: it lets the viewport
-                          // re-find a laid-out child by KEY after indices shift,
-                          // rather than re-anchoring on whatever now occupies the
-                          // same slot.
+                          // The cost is that offset 0 is also where the store
+                          // inserts, so arriving entries land between the origin
+                          // and a scrolled-up reader. Two mechanisms cover that:
+                          // `findChildIndexCallback` keeps element identity across
+                          // the index shift, and _trackMissed corrects the offset
+                          // by the extent of what arrived. Both are needed —
+                          // identity alone does not move the viewport.
                           reverse: true,
                           itemCount: filtered.length,
                           findChildIndexCallback: (Key key) => _indexOfId[(key as ValueKey<int>).value],
