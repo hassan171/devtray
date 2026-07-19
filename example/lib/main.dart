@@ -89,6 +89,10 @@ Future<void> _openStores() async {
     });
   }
 
+  // Attach build/user/screen context to everything captured from here on, so
+  // an error carries who and where without the throw site knowing about it.
+  installLogContext();
+
   // Start persisting logs to disk. Everything captured from here on is written
   // as well as buffered, so the Logs page's session picker has past runs to
   // offer — including this one, once it ends.

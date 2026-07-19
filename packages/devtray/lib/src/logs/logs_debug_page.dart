@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/devtray_theme.dart';
@@ -71,6 +73,36 @@ class _LogsViewState extends State<_LogsView> {
   /// survive rebuilds while the page is open.
   final List<FilterCondition<LogEntry>> _conditions = [];
 
+  /// Drives the follow behaviour below. Owned by the State so it survives the
+  /// rebuilds that arriving entries cause.
+  final ScrollController _scroll = ScrollController();
+
+  /// Whether the list is pinned to the newest entry.
+  ///
+  /// True while you're at the bottom, false the moment you scroll up to read
+  /// something. This is the whole feature: a console that keeps scrolling while
+  /// you're trying to read it is unusable, and one that *stops* following after
+  /// you've scrolled back to the bottom is just as bad.
+  ///
+  /// A notifier rather than plain state so the jump-to-latest button can
+  /// appear and disappear without rebuilding the list behind it.
+  final ValueNotifier<bool> _following = ValueNotifier<bool>(true);
+
+  /// Entries that arrived while you were scrolled up — the count on the
+  /// jump-to-latest button, so "3 new" tells you whether it's worth looking.
+  final ValueNotifier<int> _missed = ValueNotifier<int>(0);
+
+  /// Newest entry id seen while following, for counting what came after.
+  int? _lastSeenId;
+
+  /// How close to the bottom still counts as "following".
+  ///
+  /// Not zero: a few pixels of overscroll, or a row part-way off the edge,
+  /// shouldn't silently turn following off — and turning it off wrongly is the
+  /// failure people notice, because the list stops updating for no visible
+  /// reason.
+  static const double _followThreshold = 40;
+
   /// The past run being viewed, or null for the live stream.
   ///
   /// A loaded session is held **separately** from [LogStore] rather than merged
@@ -88,7 +120,216 @@ class _LogsViewState extends State<_LogsView> {
     super.initState();
     // The errors are on screen now — drop the launcher's error badge.
     LogStore.instance.markErrorsSeen();
+    _scroll.addListener(_onScroll);
   }
+
+  @override
+  void dispose() {
+    _scroll
+      ..removeListener(_onScroll)
+      ..dispose();
+    _following.dispose();
+    _missed.dispose();
+    super.dispose();
+  }
+
+  /// Turns following on or off as you scroll.
+  ///
+  /// The list renders oldest-first and is not reversed, so the newest entry is
+  /// at offset 0, and scrolling up into history increases the offset.
+  void _onScroll() {
+    if (!_scroll.hasClients) return;
+
+    // A jump-to-latest in flight is an explicit intent to follow again, and it
+    // must not be second-guessed by the scroll events its own animation
+    // generates — see [_jumpToLatest].
+    if (_jumping) return;
+
+    // `reverse: true`, so offset 0 is the bottom — the newest entry — and
+    // scrolling up into history increases it.
+    final atBottom = _scroll.offset <= _followThreshold;
+    if (atBottom == _following.value) return;
+
+    _following.value = atBottom;
+    if (atBottom) {
+      // Caught up — nothing was missed.
+      _missed.value = 0;
+      _lastSeenId = null;
+      _correctedForCount = 0;
+    } else {
+      // Mark the high-water line the moment following stops, so "new" means
+      // "arrived since you looked away". Latching it during build instead would
+      // tie it to whenever the next rebuild happened to run.
+      _lastSeenId = _newestVisibleId;
+      _missed.value = 0;
+    }
+  }
+
+  /// Id of the newest entry that survived the current filter, captured on each
+  /// build so [_onScroll] can mark the high-water line without re-filtering.
+  int? _newestVisibleId;
+
+  /// Entry id → row index, so the list can re-find an already-laid-out child
+  /// after insertions shift every index. See the list's
+  /// `findChildIndexCallback`.
+  final Map<int, int> _indexOfId = {};
+
+  /// How many arrivals the scroll offset has already been corrected for, so
+  /// each new row is compensated once and only once.
+  int _correctedForCount = 0;
+
+  /// Counts entries that arrived while scrolled up.
+  ///
+  /// Called from the list build, which is the only place that knows what's
+  /// actually in view after filtering — the store's own count would include
+  /// entries the current filter excludes, and offering to jump to lines that
+  /// aren't there would be worse than no count at all.
+  void _trackMissed(List<LogEntry> filtered) {
+    // Newest first, so index 0 is the latest. Recorded even while following, so
+    // [_onScroll] has a high-water line to latch the instant you scroll away.
+    _newestVisibleId = filtered.isEmpty ? null : filtered.first.id;
+
+    // Following needs no maintenance: with `reverse: true` the newest entry
+    // sits at offset 0, so staying at 0 keeps it in view for free. No
+    // post-frame jump, and therefore nothing that can fire mid-drag and yank
+    // the reader back.
+    if (_following.value || filtered.isEmpty) return;
+
+    final since = _lastSeenId;
+    if (since == null) return;
+
+    var count = 0;
+    for (final e in filtered) {
+      if (e.id <= since) break;
+      count++;
+    }
+
+    // Deferred: this runs during build, and firing a notifier inline would mark
+    // a listening widget dirty mid-frame.
+    if (count != _missed.value) {
+      scheduleMicrotask(() {
+        if (mounted) _missed.value = count;
+      });
+    }
+
+    // Hold the reader's place against INSERTION.
+    //
+    // `reverse: true` is required for performance — it puts the newest entry at
+    // offset 0 so only visible rows are ever laid out. But the store also
+    // inserts at index 0, which is precisely the scroll anchor, so every
+    // arrival adds content *between* the origin and the reader and slides them
+    // one row further from it.
+    //
+    // findChildIndexCallback keeps element identity across that shift but does
+    // not move the viewport, so the offset is corrected by exactly the extent
+    // the new rows added. Rows are a uniform height (LogRow is always one
+    // line), so this is exact rather than approximate.
+    if (count > _correctedForCount && _scroll.hasClients) {
+      final newRows = count - _correctedForCount;
+      _correctedForCount = count;
+
+      // Measured in ROWS, not in extent.
+      //
+      // The obvious approach — compare maxScrollExtent across the frame and
+      // shift by the growth — silently does nothing here, because once the
+      // buffer is at its cap the content stops growing: one entry in, one
+      // evicted out, extent unchanged. It doesn't grow, it *slides*, and only a
+      // row count sees that.
+      //
+      // Rows are a uniform height (LogRow is deliberately always one line), so
+      // rows × height is exact.
+      final rowExtent = _rowExtent;
+      if (rowExtent == null) return;
+
+      final shift = newRows * rowExtent;
+
+      // Never fight an in-progress scroll — correcting mid-drag reads as the
+      // list refusing to stay where you put it.
+      if (_scroll.position.isScrollingNotifier.value) return;
+
+      final position = _scroll.position;
+      final target = (position.pixels + shift).clamp(0.0, position.maxScrollExtent);
+      if (target == position.pixels) return;
+
+      // Corrected DURING this build, not after it.
+      //
+      // A post-frame `jumpTo` was the obvious approach and is what caused the
+      // flicker: the frame paints at the stale offset, then snaps. Since this
+      // runs in build — before layout and paint — the offset can be fixed up
+      // front so the frame is simply drawn in the right place and there is no
+      // intermediate state to see.
+      //
+      // `correctPixels` rather than `jumpTo` because that is precisely what it
+      // is for: adjusting the offset to account for content changes, without
+      // notifying listeners or starting an activity — both of which would be
+      // wrong here, since nothing about the user's scroll position has
+      // conceptually changed. It's the same mechanism Flutter's own
+      // scroll-anchoring uses.
+      position.correctPixels(target);
+    }
+  }
+
+  /// Height of a single row, derived from the list itself.
+  ///
+  /// Measured rather than hardcoded so a change to [LogRow]'s padding or text
+  /// style can't silently break the correction above. Null until the list has
+  /// laid out enough to divide by.
+  double? get _rowExtent {
+    if (!_scroll.hasClients) return null;
+    final rows = _indexOfId.length;
+    if (rows < 2) return null;
+
+    final position = _scroll.position;
+    if (!position.hasContentDimensions) return null;
+
+    // maxScrollExtent covers everything except one viewport's worth.
+    final total = position.maxScrollExtent + position.viewportDimension;
+    final extent = total / rows;
+    return extent > 0 ? extent : null;
+
+  }
+
+  /// Scrolls back to the newest entry and resumes following.
+  ///
+  /// Deliberately does **not** set `_following` itself. [_onScroll] owns that
+  /// flag, and setting it here too meant the listener's "did it change?" guard
+  /// saw no change during the animation and never reconciled — leaving the
+  /// button on screen after it had done its job. One writer, no disagreement.
+  void _jumpToLatest() {
+    if (!_scroll.hasClients) return;
+
+    _missed.value = 0;
+    _lastSeenId = null;
+    _correctedForCount = 0;
+
+    // Following resumes NOW, on the intent, rather than being inferred from
+    // where the scroll ends up.
+    //
+    // Inferring it was the bug behind "the button needs a second press":
+    // entries arriving during the animation kept extending the end, so when the
+    // listener looked, the offset genuinely wasn't at the bottom yet and the
+    // flag stayed off. [_jumping] holds that decision for the duration, so the
+    // animation's own scroll events can't undo it.
+    _following.value = true;
+    _jumping = true;
+
+    // The newest entry is at offset 0. Animated rather than jumped: the point
+    // is to show you where you landed, and a teleport to the bottom of a busy
+    // console is disorienting.
+    //
+    // Target 0 rather than a measured extent, so entries arriving during the
+    // animation cannot move the destination out from under it.
+    _scroll.animateTo(0, duration: const Duration(milliseconds: 200), curve: Curves.easeOut).whenComplete(() {
+      // Released only after the animation, so the listener's first read is of
+      // the final position rather than a mid-flight one.
+      _jumping = false;
+    });
+  }
+
+  /// True while [_jumpToLatest] is animating back to the newest entry.
+  ///
+  /// Suppresses [_onScroll]'s follow inference for the duration — see both.
+  bool _jumping = false;
 
   Future<void> _openSession(LogSessionInfo session) async {
     setState(() {
@@ -107,6 +348,7 @@ class _LogsViewState extends State<_LogsView> {
       _sessionEntries = entries;
       _loadingSession = false;
     });
+    _resetScroll();
   }
 
   void _backToLive() {
@@ -115,6 +357,27 @@ class _LogsViewState extends State<_LogsView> {
       _sessionEntries = null;
       _search = '';
       _conditions.clear();
+    });
+    // Different list, so the old offset means nothing — and returning to live
+    // should land on the newest entry, following again.
+    _resetScroll();
+  }
+
+  /// Back to the bottom, following, with nothing outstanding.
+  void _resetScroll() {
+    _following.value = true;
+    _missed.value = 0;
+    _lastSeenId = null;
+    _correctedForCount = 0;
+
+    // Deferred a frame: this is called from a view switch, and the list being
+    // scrolled hasn't been laid out yet — jumping now would either assert or
+    // act on the outgoing list's extents.
+    //
+    // Jumped, not animated: there is no continuity across a view change to
+    // preserve, so an animation would just read as a glitch.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _scroll.hasClients) _scroll.jumpTo(0);
     });
   }
 
@@ -130,13 +393,32 @@ class _LogsViewState extends State<_LogsView> {
 
   /// The structured fields the advanced builder can target. Built fresh so tag
   /// suggestions reflect what's actually present.
-  Map<String, FilterField<LogEntry>> _fields(List<String> tags) => {
+  Map<String, FilterField<LogEntry>> _fields(List<String> tags, List<String> fieldKeys) => {
     'Level': FilterField(name: 'Level', valueOf: (e) => logLevelLabel(e.level), suggestions: LogLevel.values.map(logLevelLabel).toList()),
     'Source': FilterField(name: 'Source', valueOf: _sourceOf, suggestions: ['log', 'flutter', 'uncaught', 'network', 'reported']),
     'Tag': FilterField(name: 'Tag', valueOf: (e) => e.tag ?? '', suggestions: tags),
     'Message': FilterField(name: 'Message', valueOf: (e) => e.message),
     'Time': FilterField(name: 'Time', valueOf: (e) => formatLogTime(e.time)),
+    // Matched as `key=value` text rather than per-key, because the fields
+    // present vary line by line — a fixed column per key would be mostly empty.
+    // `Fields contains userId=42` is the query people actually write.
+    'Fields': FilterField(name: 'Fields', valueOf: (e) => e.fieldsLabel, suggestions: fieldKeys),
   };
+
+  /// Field-key suggestions for the filter builder.
+  ///
+  /// Sampled from the newest entries rather than scanned across the whole
+  /// buffer: this runs on every build, and walking 1000 entries per frame to
+  /// populate an autocomplete would cost more than the suggestions are worth.
+  /// The keys in play are almost always visible in the last few lines anyway,
+  /// since ambient context and enrichers attach to everything.
+  List<String> _fieldKeys(List<LogEntry> entries) {
+    final keys = <String>{};
+    for (final e in entries.take(30)) {
+      keys.addAll(e.fields.keys);
+    }
+    return keys.toList()..sort();
+  }
 
   List<LogEntry> _filtered(List<LogEntry> entries, Map<String, FilterField<LogEntry>> fields) {
     // `searchable` is already lowercased and cached, so this is a plain
@@ -148,7 +430,14 @@ class _LogsViewState extends State<_LogsView> {
 
   String _asPlainText(List<LogEntry> entries) {
     // Oldest-first, so a pasted dump reads chronologically.
-    return entries.reversed.map((e) => '${formatLogTime(e.time)} ${logLevelLabel(e.level)} ${e.tag == null ? '' : '[${e.tag}] '}${e.message}').join('\n');
+    return entries.reversed
+        .map(
+          (e) => '${formatLogTime(e.time)} ${logLevelLabel(e.level)} '
+              '${e.tag == null ? '' : '[${e.tag}] '}${e.message}'
+              // Trailing, so the message still starts at a predictable column.
+              '${e.fields.isEmpty ? '' : '  {${e.fieldsLabel}}'}',
+        )
+        .join('\n');
   }
 
   @override
@@ -198,8 +487,20 @@ class _LogsViewState extends State<_LogsView> {
   Widget _buildBody(BuildContext context, {required List<LogEntry> entries, required List<String> tags}) {
     final t = DevtrayTheme.of(context);
     final store = LogStore.instance;
-    final fields = _fields(tags);
+    final fields = _fields(tags, _fieldKeys(entries));
     final filtered = _filtered(entries, fields);
+
+    // Counted here because this is the only place that knows what survived the
+    // filter. A saved session is fixed, so nothing can arrive to be missed.
+    if (!_isViewingSession) _trackMissed(filtered);
+
+    // entry id → index, for findChildIndexCallback. Rebuilt per build because
+    // that is exactly when indices change; one pass over a list already being
+    // walked to render.
+    _indexOfId
+      ..clear()
+      ..addEntries([for (var i = 0; i < filtered.length; i++) MapEntry(filtered[i].id, i)]);
+
 
     return Column(
       children: [
@@ -255,30 +556,129 @@ class _LogsViewState extends State<_LogsView> {
                   // problem from capture never having been installed.
                   isSession: _isViewingSession,
                 )
-              : Container(
-                  color: t.surface,
-                  child: ListView.builder(
-                    // Reads like a console: newest at the bottom, new lines
-                    // pushing older ones up, and the view pinned to the latest
-                    // rather than stranding you at the top of a stale list.
-                    //
-                    // `reverse` rather than reversing the data: the store is
-                    // already newest-first, so index 0 is the newest — which
-                    // `reverse: true` renders at the bottom. Flipping the list
-                    // itself would mean re-sorting on every single rebuild.
-                    reverse: true,
-                    itemCount: filtered.length,
-                    itemBuilder: (context, i) {
-                      final e = filtered[i];
-                      // Keyed by id — entries are inserted at index 0, so
-                      // every row would otherwise re-associate with a
-                      // different entry on each new line.
-                      return LogRow(key: ValueKey(e.id), entry: e, onTap: () => LogDetailDialog.show(context, e));
-                    },
-                  ),
+              : Stack(
+                  children: [
+                    Positioned.fill(
+                      child: Container(
+                        color: t.surface,
+                        child: ListView.builder(
+                          controller: _scroll,
+                          // Reads like a console: newest at the bottom, new lines
+                          // pushing older ones up, and the view pinned to the latest
+                          // rather than stranding you at the top of a stale list.
+                          //
+                          // `reverse: true` puts index 0 at the bottom AND makes it
+                          // the scroll origin. Since the store is newest-first, that
+                          // put arriving entries exactly at the anchor: offset 380
+                          // meant "380px above the newest entry", so every new line
+                          // silently changed which row that was and the reader's
+                          // position slid away.
+                          //
+                          // Rendering oldest-first instead fixed that but broke two
+                          // other things, because it put the NEWEST entry at
+                          // maxScrollExtent:
+                          //
+                          //  * Opening the page had to lay out every row to know
+                          //    where the end was — 2.2s with a full 1000-entry
+                          //    buffer, and ~30ms per frame after.
+                          //  * Eviction at the cap removed rows from index 0, which
+                          //    shifted every index below the reader.
+                          //
+                          // `reverse: true` solves both: the newest entry is at
+                          // offset 0, so only the visible rows are ever built (open
+                          // is O(viewport), not O(buffer)), and the oldest end —
+                          // where eviction happens — is the far end, where losing a
+                          // row cannot move the viewport.
+                          //
+                          // That leaves insertion at the anchored end, which
+                          // `findChildIndexCallback` handles: it lets the viewport
+                          // re-find a laid-out child by KEY after indices shift,
+                          // rather than re-anchoring on whatever now occupies the
+                          // same slot.
+                          reverse: true,
+                          itemCount: filtered.length,
+                          findChildIndexCallback: (Key key) => _indexOfId[(key as ValueKey<int>).value],
+                          itemBuilder: (context, i) {
+                            // Newest-first, matching `reverse: true` — index 0 is
+                            // the newest and renders at the bottom.
+                            final e = filtered[i];
+                            // The key is what findChildIndexCallback resolves, so
+                            // it must be the stable entry id.
+                            return LogRow(key: ValueKey(e.id), entry: e, onTap: () => LogDetailDialog.show(context, e));
+                          },
+                        ),
+                      ),
+                    ),
+
+                    // Offered only when you've scrolled away from the newest
+                    // entry — while following there is nothing to jump to.
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 8,
+                      child: ValueListenableBuilder<bool>(
+                        valueListenable: _following,
+                        builder: (context, following, _) => following
+                            ? const SizedBox.shrink()
+                            : Center(
+                                child: ValueListenableBuilder<int>(
+                                  valueListenable: _missed,
+                                  builder: (context, missed, _) => _JumpToLatestButton(missed: missed, onTap: _jumpToLatest),
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
                 ),
         ),
       ],
+    );
+  }
+}
+
+/// Returns to the newest entry, and says how much arrived while you were away.
+///
+/// Floats over the list rather than taking a row in the toolbar: it only exists
+/// while you're scrolled up, and a control that appears and disappears in the
+/// header would shift the list under you — the exact problem this feature is
+/// about.
+class _JumpToLatestButton extends StatelessWidget {
+  final int missed;
+  final VoidCallback onTap;
+
+  const _JumpToLatestButton({required this.missed, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = DevtrayTheme.of(context);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: t.accent,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 6, offset: Offset(0, 2))],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.arrow_downward, size: 12, color: t.background),
+              const SizedBox(width: 5),
+              Text(
+                // The count matters: "47 new" and "1 new" are different
+                // decisions about whether to look now.
+                missed > 0 ? '$missed new' : 'Jump to latest',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: t.background),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

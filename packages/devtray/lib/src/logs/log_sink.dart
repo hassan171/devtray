@@ -384,7 +384,21 @@ String formatLogEntryAsJson(LogEntry e) => jsonEncode({
       // and by read-back time the type it came from may not even be in scope.
       if (e.error != null) 'error': e.error.toString(),
       if (e.stackTrace != null) 'stack': e.stackTrace.toString(),
+      // Rendered to strings rather than encoded as-is: a field can hold any
+      // object, and one un-encodable value would otherwise fail the whole line.
+      // The alternative — dropping the field silently — loses exactly the
+      // context that was worth capturing.
+      if (e.fields.isNotEmpty) 'fields': {for (final f in e.fields.entries) f.key: _fieldAsJson(f.value)},
     });
+
+/// A field value as something `jsonEncode` will accept.
+///
+/// Primitives pass through so numbers stay numbers on the way back; everything
+/// else becomes its `toString()`, which always works.
+Object? _fieldAsJson(Object? value) {
+  if (value == null || value is num || value is bool || value is String) return value;
+  return value.toString();
+}
 
 /// One entry as a plain human-readable line, for a sink that wants a log file
 /// someone will open in a text editor rather than parse.
@@ -394,6 +408,10 @@ String formatLogEntryAsJson(LogEntry e) => jsonEncode({
 String formatLogEntryAsText(LogEntry e) {
   final tag = e.tag == null ? '' : ' [${e.tag}]';
   final buffer = StringBuffer('${e.time.toIso8601String()} ${e.level.name.toUpperCase().padRight(7)}$tag ${e.message}');
+  // On the same line as the message: these are the values that make the line
+  // mean something, and pushing them below makes the file read as pairs of
+  // lines rather than a log.
+  if (e.fields.isNotEmpty) buffer.write('  {${e.fieldsLabel}}');
   if (e.error != null) buffer.write('\n  error: ${e.error}');
   if (e.stackTrace != null) buffer.write('\n  ${e.stackTrace.toString().trimRight().replaceAll('\n', '\n  ')}');
   return buffer.toString();
@@ -440,6 +458,10 @@ List<LogEntry> parseLogEntries(String contents) {
                 ),
           errorContext: json['context'] as String?,
           library: json['library'] as String?,
+          fields: switch (json['fields']) {
+            final Map<String, dynamic> f => Map<String, Object?>.from(f),
+            _ => const {},
+          },
         ),
       );
     } catch (_) {

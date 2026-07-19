@@ -2,7 +2,7 @@ import 'package:devtray/devtray.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
-import '../app_services.dart' show UploadLogSink, counter, debug, dio, httpClient, logSessions, todos;
+import '../app_services.dart' show UploadLogSink, counter, currentScreen, debug, dio, httpClient, logSessions, todos;
 import '../counter_cubit.dart';
 import '../load_generator.dart';
 import '../users_box.dart';
@@ -98,6 +98,52 @@ class DebugScreen extends StatelessWidget {
             }),
             // Uncaught async — nothing catches it but the Zone.
             _Btn('Uncaught error', () => Future<void>.error(StateError('Something went wrong in a Future'))),
+          ],
+        ),
+
+        _Section(
+          title: 'Log context',
+          subtitle: 'Every line already carries build, flavor, userId and screen — open any row to see its Fields.',
+          children: [
+            // Ambient: nothing else changes, but every subsequent line differs.
+            _Btn('Sign in (sets userId)', () {
+              LogStore.instance.setContext('userId', 'u-4821');
+              LogStore.instance.log('Signed in', level: LogLevel.info, tag: 'auth');
+            }),
+            _Btn('Sign out', () {
+              LogStore.instance.setContext('userId', 'anonymous');
+              LogStore.instance.log('Signed out', level: LogLevel.info, tag: 'auth');
+            }),
+            // The enricher picks this up on the next line without being told.
+            _Btn('Navigate (moves the screen field)', () {
+              currentScreen = currentScreen == 'checkout' ? 'settings' : 'checkout';
+              LogStore.instance.log('Navigated to $currentScreen', tag: 'nav');
+            }),
+            // Per-call: one line, fields nothing else has.
+            _Btn('Log with per-call fields', () {
+              LogStore.instance.log(
+                'Checkout failed',
+                level: LogLevel.error,
+                tag: 'checkout',
+                fields: {'cartId': 991, 'step': 'payment', 'amount': 42.50},
+              );
+            }),
+            // Scoped: applies inside the block and is gone after it.
+            _Btn('A scoped context (withContext)', () async {
+              await LogStore.instance.withContext({'orderId': 'ord-7731'}, () async {
+                LogStore.instance.log('Submitting order', tag: 'checkout');
+                await Future<void>.delayed(const Duration(milliseconds: 50));
+                LogStore.instance.log('Order confirmed', level: LogLevel.info, tag: 'checkout');
+              });
+              // No orderId on this one — the scope closed.
+              LogStore.instance.log('Back on the cart', tag: 'checkout');
+            }),
+            // The failure path: the line must survive its decoration breaking.
+            _Btn('Break an enricher', () {
+              LogStore.instance.addEnricher('broken', () => throw StateError('this enricher is broken'));
+              LogStore.instance.log('First line after breaking it', tag: 'demo');
+              LogStore.instance.log('Second — enricher now disabled', tag: 'demo');
+            }),
           ],
         ),
 

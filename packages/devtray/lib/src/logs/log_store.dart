@@ -98,6 +98,22 @@ class LogEntry {
   /// For Flutter errors: the widget ownership chain.
   final String? library;
 
+  /// Structured context carried alongside the message — a user id, the current
+  /// screen, a cart total, a build number.
+  ///
+  /// Three sources merge into this at capture time, later winning over earlier:
+  ///
+  /// 1. [LogStore.context] — ambient values set once and attached to everything
+  /// 2. [LogStore.addEnricher] — callbacks computed per entry
+  /// 3. the `fields:` argument on the individual [LogStore.log] call
+  ///
+  /// So a call-site field always beats an enricher, which always beats ambient
+  /// context. That order is the useful one: the more specific the source, the
+  /// more it knows.
+  ///
+  /// Empty (and shared, so free) when nothing is configured.
+  final Map<String, Object?> fields;
+
   // Not `const`: [searchable] memoises into a mutable field. Nothing
   // constructed these as constants — the store is the only producer.
   LogEntry({
@@ -111,6 +127,7 @@ class LogEntry {
     this.source,
     this.errorContext,
     this.library,
+    this.fields = const {},
   });
 
   /// True for a reported error (as opposed to a plain log line) — it carries a
@@ -132,8 +149,20 @@ class LogEntry {
   /// typed. Lazy rather than eager so entries nobody ever searches don't pay.
   ///
   /// Safe to cache because every field it reads is final.
-  String get searchable => _searchable ??= '$message ${tag ?? ''} ${error ?? ''} ${errorContext ?? ''}'.toLowerCase();
+  String get searchable => _searchable ??= [
+        message,
+        tag ?? '',
+        '${error ?? ''}',
+        errorContext ?? '',
+        // Both halves: you search for `userId` as often as for the value, and
+        // "the log line that mentions 4821" is the more common of the two.
+        for (final e in fields.entries) '${e.key} ${e.value}',
+      ].join(' ').toLowerCase();
   String? _searchable;
+
+  /// [fields] rendered as `key=value` pairs — for a row subtitle or a copied
+  /// report, where a Map's `toString()` braces are noise.
+  String get fieldsLabel => fields.entries.map((e) => '${e.key}=${e.value}').join(' ');
 }
 
 /// In-memory ring buffer of log lines — the **single** store behind the Logs
@@ -147,6 +176,30 @@ class LogEntry {
 /// LogStore.instance.log('User signed in', level: LogLevel.info, tag: 'auth');
 /// LogStore.instance.report(someException, stackTrace: s);
 /// ```
+///
+/// ## Carrying context
+///
+/// A line saying "request failed" is worth much less than one that also says
+/// who it happened to, on which screen, on which build. Three ways to attach
+/// that, composing least-specific to most:
+///
+/// ```dart
+/// // Ambient — set once, on everything after.
+/// LogStore.instance.setContext('userId', user.id);
+///
+/// // Computed — fresh per entry, for values that must be current.
+/// LogStore.instance.addEnricher('nav', () => {'screen': router.current});
+///
+/// // Per-call — one line only.
+/// LogStore.instance.log('Checkout failed', fields: {'cartId': 42});
+/// ```
+///
+/// All three land in [LogEntry.fields], are searchable, filterable, and are
+/// written by the log sinks. The payoff is the errors you *didn't* anticipate:
+/// [captureErrors] reports a crash you never wrote a handler for, and ambient
+/// context is what makes that report say whose crash it was.
+///
+/// See [context], [addEnricher] and [LogEntry.fields].
 class LogStore {
   LogStore._() {
     DevtrayKillSwitch.addDisableListener(clear);
@@ -186,14 +239,162 @@ class LogStore {
   Set<String> get tags => UnmodifiableSetView(_tagCounts.keys.toSet());
   final Map<String, int> _tagCounts = {};
 
+  /// Values attached to **every** entry from now on.
+  ///
+  /// For the facts that are true of a whole span of the session rather than of
+  /// one line — who's signed in, which build, which screen. Set them once and
+  /// every log line and error carries them, with no call site to remember:
+  ///
+  /// ```dart
+  /// LogStore.instance.setContext('userId', user.id);
+  /// LogStore.instance.setContext('build', '1.4.2+318');
+  /// ```
+  ///
+  /// The point is errors you didn't anticipate. A crash report that says *who*
+  /// it happened to and *what build* they were on is a different object from
+  /// one that doesn't, and you can't retrofit that at the throw site.
+  ///
+  /// Read-only here — mutate through [setContext] / [removeContext] /
+  /// [clearContext], which keep the snapshot sharing in [_snapshotContext]
+  /// correct.
+  Map<String, Object?> get context => UnmodifiableMapView(_context);
+  final Map<String, Object?> _context = {};
+
+  /// The current context as an immutable snapshot, rebuilt only when [_context]
+  /// changes.
+  ///
+  /// Entries hold a *reference* to this, so unchanged context costs nothing per
+  /// line — but because it's replaced rather than mutated on every change, an
+  /// entry keeps the values that were current when it was logged. Holding the
+  /// live map instead would be cheaper still and wrong: every past line would
+  /// report the screen you're on now.
+  Map<String, Object?>? _contextSnapshot;
+
+  /// Add or replace one ambient value.
+  void setContext(String key, Object? value) {
+    _context[key] = value;
+    _contextSnapshot = null;
+  }
+
+  /// Add or replace several at once.
+  void setContextAll(Map<String, Object?> values) {
+    _context.addAll(values);
+    _contextSnapshot = null;
+  }
+
+  void removeContext(String key) {
+    _context.remove(key);
+    _contextSnapshot = null;
+  }
+
+  void clearContext() {
+    _context.clear();
+    _contextSnapshot = null;
+  }
+
+  /// Runs [body] with extra ambient values, then restores what was there.
+  ///
+  /// For a scope rather than a span — everything logged while handling one
+  /// request, or inside one screen:
+  ///
+  /// ```dart
+  /// await LogStore.instance.withContext({'orderId': id}, () async {
+  ///   await submitOrder();   // every line in here carries orderId
+  /// });
+  /// ```
+  ///
+  /// Restores previous values rather than deleting the keys, so nesting works
+  /// and an inner scope can shadow an outer one. Not re-entrant across
+  /// concurrent async work — two overlapping `withContext` calls on the same
+  /// key will interleave, because this is one shared map rather than Zone
+  /// state. For per-request isolation, pass the field explicitly instead.
+  Future<T> withContext<T>(Map<String, Object?> values, Future<T> Function() body) async {
+    final previous = {for (final key in values.keys) key: _context[key]};
+    final absent = values.keys.where((k) => !_context.containsKey(k)).toSet();
+
+    setContextAll(values);
+    try {
+      return await body();
+    } finally {
+      for (final entry in previous.entries) {
+        if (absent.contains(entry.key)) {
+          _context.remove(entry.key);
+        } else {
+          _context[entry.key] = entry.value;
+        }
+      }
+      _contextSnapshot = null;
+    }
+  }
+
+  /// Callbacks that compute fields at capture time, keyed by name so one can be
+  /// replaced or removed.
+  final Map<String, Map<String, Object?> Function()> _enrichers = {};
+
+  /// Enrichers that threw and are no longer called.
+  final Map<String, Object> _failedEnrichers = {};
+
+  /// How many times an enricher may throw before it's dropped. Two rather than
+  /// one, because a transient failure (a plugin not ready during startup)
+  /// shouldn't permanently cost you the field.
+  static const int _enricherFailureLimit = 2;
+  final Map<String, int> _enricherFailures = {};
+
+  /// Registers a callback that adds fields to every entry, computed fresh each
+  /// time.
+  ///
+  /// For values you'd otherwise have to remember to pass, and that must be
+  /// *current* rather than whatever they were when you last set them:
+  ///
+  /// ```dart
+  /// LogStore.instance.addEnricher('route', () => {'route': currentRoute});
+  /// LogStore.instance.addEnricher('net', () => {'online': connectivity.isOnline});
+  /// ```
+  ///
+  /// Runs on **every** log line, so keep it cheap — this is not the place for
+  /// a platform channel call or a database read. If it throws, the failure is
+  /// recorded as the field's value and the log line still lands; after
+  /// [_enricherFailureLimit] failures the enricher is dropped and a line is
+  /// logged saying so. A broken enricher must never cost you the log it was
+  /// decorating.
+  ///
+  /// Registering the same [name] twice replaces the first.
+  void addEnricher(String name, Map<String, Object?> Function() compute) {
+    _enrichers[name] = compute;
+    _failedEnrichers.remove(name);
+    _enricherFailures.remove(name);
+  }
+
+  void removeEnricher(String name) {
+    _enrichers.remove(name);
+    _failedEnrichers.remove(name);
+    _enricherFailures.remove(name);
+  }
+
+  /// Drops every registered enricher.
+  ///
+  /// Mostly for tests — the store is a singleton, so a registration made in one
+  /// would otherwise decorate every entry in the next. Mirrors
+  /// [StateInspector.clearInspectors].
+  @visibleForTesting
+  void clearEnrichers() {
+    _enrichers.clear();
+    _failedEnrichers.clear();
+    _enricherFailures.clear();
+  }
+
+  /// Enricher name → the error that disabled it.
+  Map<String, Object> get failedEnrichers => UnmodifiableMapView(_failedEnrichers);
+
   void log(
     String message, {
     LogLevel level = LogLevel.debug,
     String? tag,
     Object? error,
     StackTrace? stackTrace,
+    Map<String, Object?>? fields,
   }) {
-    _add(message: message, level: level, tag: tag, error: error, stackTrace: stackTrace);
+    _add(message: message, level: level, tag: tag, error: error, stackTrace: stackTrace, fields: fields);
   }
 
   /// Records an error into the stream — badging the launcher and carrying the
@@ -207,6 +408,7 @@ class LogStore {
     ErrorSource source = ErrorSource.reported,
     String? context,
     String? library,
+    Map<String, Object?>? fields,
   }) {
     final recorded = _add(
       message: error.toString(),
@@ -217,6 +419,7 @@ class LogStore {
       source: source,
       errorContext: context,
       library: library,
+      fields: fields,
     );
     // Only badge if the entry was actually recorded — with the kill switch off
     // _add is a no-op, and badging a launcher that isn't there would be a leak.
@@ -235,6 +438,7 @@ class LogStore {
     ErrorSource? source,
     String? errorContext,
     String? library,
+    Map<String, Object?>? fields,
   }) {
     // The debugPrint/Zone/error hooks stay installed for the process lifetime,
     // so without this a release build would keep buffering entries nothing will
@@ -244,6 +448,7 @@ class LogStore {
     if (tag != null) _tagCounts.update(tag, (n) => n + 1, ifAbsent: () => 1);
 
     final entry = LogEntry(
+      fields: _resolveFields(fields),
       id: _nextId++,
       time: DateTime.now(),
       level: level,
@@ -277,6 +482,68 @@ class LogStore {
     // a build. `bump` coalesces into one deferred notification.
     tick.bump();
     return true;
+  }
+
+  /// Merges ambient context, enrichers and per-call fields into one map.
+  ///
+  /// Costs nothing in the common case: with no context, no enrichers and no
+  /// per-call fields it returns a shared const map without allocating. With
+  /// only ambient context it hands back the shared snapshot — so context you
+  /// set once is free per line, however many lines there are.
+  Map<String, Object?> _resolveFields(Map<String, Object?>? callFields) {
+    final hasCall = callFields != null && callFields.isNotEmpty;
+    final hasEnrichers = _enrichers.isNotEmpty;
+
+    if (!hasCall && !hasEnrichers) {
+      if (_context.isEmpty) return const {};
+      // Shared, not copied — see [_contextSnapshot].
+      return _contextSnapshot ??= Map.unmodifiable(_context);
+    }
+
+    // Least specific first, so each layer overwrites the last.
+    final merged = <String, Object?>{..._context};
+
+    if (hasEnrichers) {
+      for (final name in _enrichers.keys.toList()) {
+        if (_failedEnrichers.containsKey(name)) continue;
+        try {
+          merged.addAll(_enrichers[name]!());
+        } catch (e) {
+          _noteEnricherFailure(name, e, merged);
+        }
+      }
+    }
+
+    if (hasCall) merged.addAll(callFields);
+    return merged;
+  }
+
+  /// Records a throwing enricher without losing the entry it was decorating.
+  ///
+  /// The failure becomes the field's value, so a broken enricher is visible on
+  /// the line it broke rather than silently missing. Past the limit it's
+  /// dropped, because an enricher that throws every time would otherwise write
+  /// its error onto every log line in the session.
+  void _noteEnricherFailure(String name, Object error, Map<String, Object?> merged) {
+    merged['$name!'] = 'enricher failed: $error';
+
+    final failures = (_enricherFailures[name] ?? 0) + 1;
+    _enricherFailures[name] = failures;
+    if (failures < _enricherFailureLimit) return;
+
+    _failedEnrichers[name] = error;
+    _enrichers.remove(name);
+
+    // Deliberately not via log(): this runs *inside* _add, and re-entering
+    // would recurse. Queued instead, so the notice lands as its own line right
+    // after the one that was being written.
+    scheduleMicrotask(() {
+      log(
+        'Log enricher "$name" failed $failures times and was removed: $error',
+        level: LogLevel.error,
+        tag: 'devtray',
+      );
+    });
   }
 
   static String _sourceTag(ErrorSource s) => switch (s) {

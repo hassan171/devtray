@@ -60,7 +60,7 @@ export 'src/logs/components/log_session_picker.dart';
 // Errors — no separate store or page. Errors live in the one LogStore as
 // error-level entries (LogStore.report / captureErrors, ErrorSource, the badge)
 // and render in the Logs page. This is just the shared detail renderer.
-export 'src/logs/error_log_detail.dart' show ErrorDetailSections, errorSourceLabel, errorAsPlainText, requestSummary;
+export 'src/logs/error_log_detail.dart' show ErrorDetailSections, LogFieldsSection, errorSourceLabel, errorAsPlainText, requestSummary;
 
 // Advanced filtering — the JQL-style condition builder, reusable on any page.
 export 'src/filter/debug_filter.dart';

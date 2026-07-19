@@ -67,6 +67,41 @@ Future<LogSessionSource> installLogPersistence() async {
   return DevtrayFileSessions(loader);
 }
 
+/// Attaches context to every log line and error, three ways.
+///
+/// The three layers, least specific to most:
+///
+/// * **Ambient** — set once, carried by everything after. For facts true of a
+///   span of the session: who's signed in, which build.
+/// * **Enrichers** — computed per entry. For values that must be *current*
+///   rather than whatever they were when you last set them.
+/// * **Per-call** — passed at the call site, on one line only.
+///
+/// The payoff is errors nobody anticipated. A crash that says who it happened
+/// to, on which screen, on which build is a different object from one that
+/// doesn't — and you can't add that at a throw site you didn't write.
+void installLogContext() {
+  LogStore.instance
+    ..setContext('build', '1.4.2+318')
+    ..setContext('flavor', 'example')
+    // Nobody is signed in yet — set on sign-in, and every line after it carries
+    // the user without a single call site knowing about it.
+    ..setContext('userId', 'anonymous')
+    // Computed fresh per entry: `currentScreen` changes as you navigate, and an
+    // ambient value would go stale the moment you moved.
+    ..addEnricher('nav', () => {'screen': currentScreen})
+    // Enrichers run on EVERY log line, so they have to stay cheap — this is a
+    // field read, not a platform channel call.
+    ..addEnricher('session', () => {'uptime': '${DateTime.now().difference(_startedAt).inSeconds}s'});
+}
+
+final DateTime _startedAt = DateTime.now();
+
+/// Which screen the app is on, read by the `nav` enricher above.
+///
+/// A global for the example's sake; a real app reads this from its router.
+String currentScreen = 'bootstrap';
+
 /// Bridges the gap between `pages:` (built synchronously in `main`) and the log
 /// directory (opened asynchronously during bootstrap).
 ///
