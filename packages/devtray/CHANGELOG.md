@@ -1,5 +1,68 @@
 # Changelog
 
+## 0.2.0
+
+Performance, log persistence, and structured log context.
+
+### Breaking
+
+**`Devtray.enabled` now defaults to `kDebugMode` instead of `true`.**
+
+The stores already refused to record in release builds, so the one thing that survived
+into production was the floating bug button. If you deliberately ship the overlay in a
+release flavour (staging, dogfood), pass it explicitly:
+
+```dart
+Devtray(enabled: true, child: MyApp());   // was the default; now opt-in
+```
+
+`runDebugApp(enabled: ...)` is unaffected — it always required the argument.
+
+### Added
+
+- **Log persistence.** `LogSink` is the shape of a destination and `LogExporter` owns the
+  batching; nothing happens until you add a sink. Entries reach the sinks *before* the
+  ring buffer evicts, so a long session writes every line even though the page shows the
+  last 1000. `FlushPolicy` is a choice — `immediate()` / `batched()` / `manual()` — with
+  `flushOnPause` to catch backgrounding. See the new
+  [`devtray_log_file`](https://pub.dev/packages/devtray_log_file) for files; a remote
+  uploader is just another `LogSink`.
+- **Saved session browser.** `LogsDebugPage(sessionSource: ...)` adds a picker for past
+  runs, opened read-only and clearly marked as not live. Loaded sessions are held
+  separately from `LogStore` and never re-exported.
+- **Structured context on log entries.** Three layers, composing least-specific to most:
+  `LogStore.setContext` (ambient), `addEnricher` (computed per entry), and `fields:` on
+  the individual call — plus `withContext` for a scope. All land in `LogEntry.fields`,
+  are searchable and filterable, and are written by the sinks. Costs nothing when unused.
+- `JumpToLatestButton`, `LogFieldsSection`, `NetworkLogRow` and `DebugStorageAdapter.notice`
+  are now exported.
+
+### Fixed
+
+- **The overlay no longer taxes the host app's frames.** Dragging the launcher called
+  `setState` on the widget wrapping your entire app, once per pointer move, and there was
+  no `RepaintBoundary` anywhere — so every drag frame repainted the app behind it. Both
+  layers are now behind boundaries and the app sits outside every builder.
+- **The Logs and Network lists stay still while you read them.** A scrolled-back reader
+  no longer drifts as entries arrive or are evicted.
+- **Opening a full buffer is no longer slow.** Both lists now declare `itemExtent` (rows
+  are a fixed height), so the viewport computes scroll geometry arithmetically instead of
+  laying out every row. Logs: 2197ms → 485ms with 1000 entries. Network frame cost:
+  ~37ms → ~23ms.
+- Search is debounced, and `LogEntry.searchable` is computed once rather than rebuilt per
+  entry per keystroke.
+- Response bodies are capped (`NetworkLogStore.maxBodyChars`, default 256KB), the HTML
+  sniff no longer stringifies whole bodies on every rebuild, and `prettyJson` is memoised.
+- State history no longer holds large state objects strongly — non-primitives are
+  snapshotted at capture time. `StateInspector.retainStateObjects` opts back in.
+- The Storage page reads only the selected adapter, refreshes only what was mutated, and
+  caps sqflite reads at `maxRows` with the truncation surfaced.
+- `NetworkLogStore` and `StateInspector` now coalesce their change notifications, matching
+  `LogStore`.
+- The dio interceptor detects double-registration (which used to orphan an entry as
+  permanently pending); the Riverpod and bloc observers check the kill switch before doing
+  work that throws-and-catches per provider update in release.
+
 ## 0.1.0
 
 **The core now has no dependencies beyond Flutter.** Every integration moved to its own

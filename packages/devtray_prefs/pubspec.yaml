@@ -1,6 +1,6 @@
 name: devtray_prefs
 description: "shared_preferences support for devtray — a Storage page adapter, and persistence for mock rules."
-version: 0.1.0
+version: 0.2.0
 repository: https://github.com/hassan171/devtray/tree/main/packages/devtray_prefs
 issue_tracker: https://github.com/hassan171/devtray/issues
 
@@ -13,7 +13,7 @@ resolution: workspace
 dependencies:
   flutter:
     sdk: flutter
-  devtray: ^0.1.0
+  devtray: ^0.2.0
   shared_preferences: ^2.3.0
 
 dev_dependencies:
