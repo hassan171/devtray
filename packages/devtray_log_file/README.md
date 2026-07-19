@@ -46,13 +46,13 @@ or it will look in the wrong place and find nothing.
 
 ## Rotation
 
-One file per app run. A file that grows past `maxBytes` rolls over to a new one; files past
-`maxFiles` are deleted oldest-first.
+One file per app run. A file that grows past `maxBytes` rolls over to a continuation; runs
+past `maxFiles` are deleted oldest-first.
 
 ```dart
 await FileLogSink.open(
   maxBytes: 5 * 1024 * 1024,   // default
-  maxFiles: 5,                 // default
+  maxFiles: 5,                 // default — sessions, not files
 );
 ```
 
@@ -60,6 +60,16 @@ One file per run rather than one rolling file, because the question a log answer
 always *"what happened in the run that broke"* — and a single rolling file makes you find
 those boundaries yourself. The cost is that a crash-restart loop makes files quickly, which
 is what `maxFiles` bounds.
+
+A run that rolls over produces `session_<start>.devtraylog`,
+`session_<start>_part2.devtraylog`, and so on. Continuations keep the **session's start
+time**, not the time of the rollover — so every part of one run sorts together and is
+recognisably the same run. The picker shows them as `2026-07-19 14:30:00` and
+`2026-07-19 14:30:00 · part 2`.
+
+`maxFiles` counts **sessions**, not files. A session is evicted whole or not at all: pruning
+file-by-file could delete part 1 and keep parts 2–3, leaving a log that starts mid-story
+with nothing to say a beginning ever existed.
 
 ## Format
 

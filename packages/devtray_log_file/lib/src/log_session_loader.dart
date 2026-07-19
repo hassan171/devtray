@@ -108,13 +108,27 @@ class LogSessionLoader {
     }
   }
 
-  /// `session_2026-07-19T14-30-00-000.devtraylog` → `2026-07-19 14:30:00`.
+  /// `session_2026-07-19T14-30-00-000_part2.devtraylog`
+  /// → `2026-07-19 14:30:00 · part 2`.
+  ///
+  /// The part number is shown rather than a bare "(continued)" because the
+  /// question you're actually asking is *which* part, and of what. Both parts
+  /// of a run carry the same start time, so they read as one session split in
+  /// two rather than two unrelated runs.
   ///
   /// Falls back to the raw filename if it doesn't match the pattern, so a file
   /// someone dropped in by hand still lists rather than showing as blank.
   static String _displayName(File file) {
     final base = file.uri.pathSegments.last.replaceAll(FileLogSink.extension, '');
-    final stamp = base.replaceFirst('session_', '').replaceFirst('_cont', '');
+    var stamp = base.replaceFirst('session_', '');
+
+    // Split the part suffix off before parsing the timestamp.
+    String suffix = '';
+    final marker = stamp.indexOf('_part');
+    if (marker != -1) {
+      suffix = ' · part ${stamp.substring(marker + 5)}';
+      stamp = stamp.substring(0, marker);
+    }
 
     final parts = stamp.split('T');
     if (parts.length != 2) return base;
@@ -122,8 +136,7 @@ class LogSessionLoader {
     final time = parts[1].split('-');
     if (time.length < 3) return base;
 
-    final continued = base.endsWith('_cont') ? ' (continued)' : '';
-    return '${parts[0]} ${time[0]}:${time[1]}:${time[2]}$continued';
+    return '${parts[0]} ${time[0]}:${time[1]}:${time[2]}$suffix';
   }
 }
 

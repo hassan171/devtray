@@ -65,7 +65,27 @@ void main() {
       expect(await first.exists(), isTrue, reason: 'the rolled-off file is part of the session, not garbage');
     });
 
-    test('prunes the oldest files past maxFiles', () async {
+    test('a continuation keeps the session start stamp, not the rollover time', () async {
+      final sink = await FileLogSink.open(directory: dir, maxBytes: 200);
+      final startStamp = sink.file.uri.pathSegments.last.replaceAll(FileLogSink.extension, '').replaceFirst('session_', '');
+
+      for (var i = 0; i < 10; i++) {
+        await sink.write([_entry('a reasonably long log line number $i', id: i)]);
+      }
+
+      final files = await FileLogSink.listSessionFiles(dir);
+      // Every part of one run must be recognisable as that run. Stamping the
+      // continuation with the rollover time would make one session look like
+      // two unrelated ones minutes apart.
+      expect(
+        files.every((f) => f.path.contains(startStamp)),
+        isTrue,
+        reason: 'all parts share the session start stamp',
+      );
+      expect(files.any((f) => f.path.contains('_part2')), isTrue);
+    });
+
+    test('prunes the oldest sessions past maxFiles', () async {
       // Pre-existing sessions, oldest-looking name first.
       for (final stamp in ['2026-01-01T00-00-00', '2026-02-01T00-00-00', '2026-03-01T00-00-00']) {
         await File('${dir.path}${Platform.pathSeparator}session_$stamp${FileLogSink.extension}').writeAsString('{}\n');
@@ -77,6 +97,45 @@ void main() {
       final remaining = await FileLogSink.listSessionFiles(dir);
       final names = remaining.map((f) => f.path).join(' ');
       expect(names, isNot(contains('2026-01-01')), reason: 'the oldest goes first');
+    });
+
+    test('a multi-part session is pruned whole, never half', () async {
+      // Two old runs, the second of which rolled over into three parts.
+      await File('${dir.path}${Platform.pathSeparator}session_2026-01-01T00-00-00${FileLogSink.extension}').writeAsString('{}\n');
+      for (final part in ['', '_part2', '_part3']) {
+        await File('${dir.path}${Platform.pathSeparator}session_2026-02-01T00-00-00$part${FileLogSink.extension}').writeAsString('{}\n');
+      }
+
+      // Cap of 1 session: the January run goes, the February run stays intact.
+      await FileLogSink.open(directory: dir, maxFiles: 1);
+
+      final names = (await FileLogSink.listSessionFiles(dir)).map((f) => f.path).join(' ');
+
+      expect(names, isNot(contains('2026-01-01')), reason: 'the oldest session is evicted');
+      // The failure this guards: counting files rather than sessions could drop
+      // part 1 and keep parts 2-3, leaving a log that starts mid-story.
+      expect(names, contains('2026-02-01T00-00-00${FileLogSink.extension}'), reason: 'part 1 survives');
+      expect(names, contains('_part2'));
+      expect(names, contains('_part3'));
+    });
+
+    test('maxFiles counts sessions, so one long run does not evict the others', () async {
+      // One run in five parts, plus two other runs.
+      for (final part in ['', '_part2', '_part3', '_part4', '_part5']) {
+        await File('${dir.path}${Platform.pathSeparator}session_2026-02-01T00-00-00$part${FileLogSink.extension}').writeAsString('{}\n');
+      }
+      await File('${dir.path}${Platform.pathSeparator}session_2026-03-01T00-00-00${FileLogSink.extension}').writeAsString('{}\n');
+      await File('${dir.path}${Platform.pathSeparator}session_2026-04-01T00-00-00${FileLogSink.extension}').writeAsString('{}\n');
+
+      await FileLogSink.open(directory: dir, maxFiles: 3);
+
+      final names = (await FileLogSink.listSessionFiles(dir)).map((f) => f.path).join(' ');
+
+      // A file-counting cap of 3 would have thrown away everything but the
+      // newest run's tail. "Keep 3 runs" is what the setting means.
+      expect(names, contains('2026-03-01'));
+      expect(names, contains('2026-04-01'));
+      expect(names, contains('2026-02-01'));
     });
 
     test('ignores files that are not session logs', () async {
@@ -107,6 +166,19 @@ void main() {
   });
 
   group('LogSessionLoader', () {
+    test('labels a continuation with its part number and the run start time', () async {
+      final stamp = '2026-07-19T14-30-00';
+      await File('${dir.path}${Platform.pathSeparator}session_$stamp${FileLogSink.extension}').writeAsString('{}\n');
+      await File('${dir.path}${Platform.pathSeparator}session_${stamp}_part2${FileLogSink.extension}').writeAsString('{}\n');
+
+      final sessions = await LogSessionLoader(dir).list();
+      final labels = sessions.map((s) => s.name).toList();
+
+      // Both carry the same start time, so they read as one run split in two.
+      expect(labels, contains('2026-07-19 14:30:00'));
+      expect(labels, contains('2026-07-19 14:30:00 · part 2'));
+    });
+
     test('lists sessions newest first', () async {
       for (final stamp in ['2026-01-01T00-00-00', '2026-03-01T00-00-00', '2026-02-01T00-00-00']) {
         await File('${dir.path}${Platform.pathSeparator}session_$stamp${FileLogSink.extension}').writeAsString('{}\n');
