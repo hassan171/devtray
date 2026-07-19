@@ -44,6 +44,9 @@ export 'src/network/mocking/mock_store.dart';
 export 'src/network/mocking/mocks_view.dart';
 export 'src/network/network_debug_page.dart';
 export 'src/network/network_log_store.dart';
+// The row, mostly for its `extent` — a custom page rendering the same list
+// needs the same fixed height to set `itemExtent`.
+export 'src/network/components/network_log_row.dart';
 
 // Logs page
 export 'src/logs/log_bridge.dart';

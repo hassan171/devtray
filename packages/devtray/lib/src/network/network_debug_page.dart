@@ -92,6 +92,109 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
   /// registered page.
   bool _showMocks = false;
 
+  /// Drives the scroll anchoring below. Owned by the State so it survives the
+  /// rebuilds that arriving requests cause.
+  final ScrollController _scroll = ScrollController();
+
+  /// Entry id → row index, for the list's `findChildIndexCallback`.
+  final Map<int, int> _indexOfId = {};
+
+  /// Newest entry id at the moment the reader scrolled away from the bottom.
+  /// Null while pinned to the newest request.
+  int? _anchorId;
+
+  /// Arrivals already compensated for, so each new row shifts the offset once.
+  int _correctedForCount = 0;
+
+  /// How close to the newest entry still counts as "pinned".
+  ///
+  /// Not zero: a few pixels of overscroll shouldn't silently switch the list
+  /// into held mode, because that stops it following for no visible reason.
+  static const double _followThreshold = 40;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scroll
+      ..removeListener(_onScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  /// Tracks whether the reader has scrolled away from the newest request.
+  ///
+  /// `reverse: true`, so offset 0 is the newest and scrolling back through
+  /// history increases the offset.
+  void _onScroll() {
+    if (!_scroll.hasClients) return;
+
+    final atNewest = _scroll.offset <= _followThreshold;
+    if (atNewest && _anchorId != null) {
+      // Caught up — resume following, nothing to hold.
+      _anchorId = null;
+      _correctedForCount = 0;
+    } else if (!atNewest && _anchorId == null) {
+      // Mark the high-water line the moment the reader looks away, so
+      // "arrived since" is measured from here.
+      _anchorId = _newestVisibleId;
+      _correctedForCount = 0;
+    }
+  }
+
+  /// Newest id that survived the filter, captured per build.
+  int? _newestVisibleId;
+
+  /// Holds the reader's place as requests arrive.
+  ///
+  /// The store inserts at index 0, which under `reverse: true` is the scroll
+  /// anchor — so every arrival adds a row between the origin and a scrolled-back
+  /// reader and slides them one row further from it. Same problem, same shape of
+  /// fix as the Logs page; see the long note there.
+  void _holdPosition(List<NetworkLogEntry> filtered) {
+    _newestVisibleId = filtered.isEmpty ? null : filtered.first.id;
+    _indexOfId
+      ..clear()
+      ..addEntries([for (var i = 0; i < filtered.length; i++) MapEntry(filtered[i].id, i)]);
+
+    final anchor = _anchorId;
+    if (anchor == null || filtered.isEmpty || !_scroll.hasClients) return;
+
+    var arrived = 0;
+    for (final e in filtered) {
+      if (e.id <= anchor) break;
+      arrived++;
+    }
+    if (arrived <= _correctedForCount) return;
+
+    final newRows = arrived - _correctedForCount;
+
+    // Never fight a scroll in progress — correcting mid-drag reads as the list
+    // refusing to stay where you put it.
+    final position = _scroll.position;
+    if (position.isScrollingNotifier.value) return;
+
+    // Rows are a fixed height, so this is exact. Measuring the growth in
+    // maxScrollExtent instead would silently do nothing once the buffer is at
+    // its cap: one request in, one evicted out, extent unchanged.
+    final target = (position.pixels + newRows * NetworkLogRow.extent).clamp(0.0, position.maxScrollExtent);
+
+    // Consumed only once the correction is going to be applied, so one skipped
+    // mid-drag isn't silently forgotten.
+    _correctedForCount = arrived;
+    if (target == position.pixels) return;
+
+    // Corrected during build rather than post-frame: a post-frame jumpTo paints
+    // one frame at the stale offset and then snaps, which is visible as a
+    // flicker. correctPixels adjusts for a content change without notifying
+    // listeners or starting a scroll activity.
+    position.correctPixels(target);
+  }
+
   List<NetworkLogEntry> _filtered(List<NetworkLogEntry> entries) {
     if (_search.isEmpty) return entries;
     final q = _search.toLowerCase();
@@ -144,6 +247,12 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
             final mockingEnabled = !MockStore.instance.isDisabled;
             final entries = store.entries;
             final filtered = _filtered(entries);
+
+            // Keeps a scrolled-back reader in place, and feeds the list's
+            // findChildIndexCallback. Runs in build because that is where the
+            // index shift becomes visible — and because correcting the offset
+            // before layout is what avoids a flicker.
+            _holdPosition(filtered);
             // Indexed lookup rather than a scan of all 500 entries per tick.
             final selected = _selectedId == null ? null : store.byId(_selectedId!);
 
@@ -179,9 +288,32 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
                   child: filtered.isEmpty
                       ? _NetworkEmptyState(searching: entries.isNotEmpty)
                       : ListView.builder(
-                          // The list is the hot path — a chatty app fills it fast,
-                          // and builder + itemExtent keeps scrolling flat.
+                          controller: _scroll,
+                          // The list is the hot path — a chatty app fills it fast.
+                          //
+                          // `itemExtent` is what makes it cheap. Rows are a fixed
+                          // height (see NetworkLogRow.extent), so the viewport
+                          // computes scroll geometry arithmetically instead of
+                          // laying rows out to discover it — which is what stops a
+                          // full buffer from being O(buffer) to open.
+                          //
+                          // `reverse: true` is about CORRECTNESS, not speed.
+                          // Measured both ways with itemExtent set and the open
+                          // times overlap (430-590ms either way). What it changes
+                          // is which end of the list eviction happens at: the store
+                          // inserts at index 0 and evicts from the end, so
+                          // unreversed the newest request sits at maxScrollExtent
+                          // and every eviction shifts the content *below* a
+                          // scrolled-back reader. Reversed, eviction happens at the
+                          // far end where it cannot move the viewport, leaving only
+                          // insertion to compensate for (see _holdPosition).
+                          reverse: true,
+                          itemExtent: NetworkLogRow.extent,
                           itemCount: filtered.length,
+                          // Lets the viewport re-find an already-laid-out row by
+                          // key after arrivals shift every index, rather than
+                          // re-anchoring on whatever now occupies the same slot.
+                          findChildIndexCallback: (Key key) => _indexOfId[(key as ValueKey<int>).value],
                           itemBuilder: (context, i) => NetworkLogRow(
                             // Keyed by id: entries are inserted at index 0, so
                             // without this every row's element re-associates

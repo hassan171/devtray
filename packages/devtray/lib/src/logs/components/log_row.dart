@@ -47,6 +47,17 @@ class LogRow extends StatelessWidget {
 
   const LogRow({super.key, required this.entry, required this.onTap});
 
+  /// Height of one row, and the list's `itemExtent`.
+  ///
+  /// A fact about the layout, not a guess: the row is always exactly one line
+  /// (see the class doc), so every row is this tall. Declaring it lets the list
+  /// compute scroll geometry arithmetically rather than laying rows out to
+  /// discover it — and it is what the scroll-anchoring correction in
+  /// LogsDebugPage multiplies by to hold a reader's place.
+  ///
+  /// Must stay in step with the `height:` in [build].
+  static const double extent = 25.5;
+
   @override
   Widget build(BuildContext context) {
     final t = DevtrayTheme.of(context);
@@ -63,10 +74,20 @@ class LogRow extends StatelessWidget {
             color: isError ? t.error.withValues(alpha: 0.05) : null,
             border: Border(bottom: BorderSide(color: t.border.withValues(alpha: 0.4), width: 0.5)),
           ),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+          // A fixed height rather than IntrinsicHeight.
+          //
+          // The row is deliberately always exactly one line (see the class doc),
+          // so the intrinsic pass was measuring a height that never varies while
+          // paying for a second layout walk of every row, every frame. It also
+          // bounds the height that `CrossAxisAlignment.stretch` below needs.
+          //
+          // Mainly it lets the list set `itemExtent`, which is worth more: the
+          // viewport can then compute scroll geometry arithmetically instead of
+          // laying rows out to discover it.
+          height: LogRow.extent,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
                 // The spine carries the level, so severity is peripheral — you
                 // find the red line without reading a single word.
                 Container(width: 2, color: color.withValues(alpha: isError ? 0.9 : 0.5)),
@@ -118,8 +139,7 @@ class LogRow extends StatelessWidget {
                     ),
                   ),
                 ),
-              ],
-            ),
+            ],
           ),
         ),
       ),

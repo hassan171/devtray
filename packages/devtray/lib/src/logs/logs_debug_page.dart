@@ -577,6 +577,10 @@ class _LogsViewState extends State<_LogsView> {
                           // by the extent of what arrived. Both are needed —
                           // identity alone does not move the viewport.
                           reverse: true,
+                          // Rows are a fixed height, so the viewport can compute
+                          // scroll geometry arithmetically instead of laying rows
+                          // out to discover it.
+                          itemExtent: LogRow.extent,
                           itemCount: filtered.length,
                           findChildIndexCallback: (Key key) => _indexOfId[(key as ValueKey<int>).value],
                           itemBuilder: (context, i) {
