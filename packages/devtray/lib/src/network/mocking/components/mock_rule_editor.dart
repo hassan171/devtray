@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../../../core/devtray_theme.dart';
 import '../../../core/debug_text_styles.dart';
-import '../../network_log_store.dart';
+import '../../devtray_net.dart';
 import '../mock_rule.dart';
-import '../mock_store.dart';
+import '../devtray_mocks.dart';
 
 /// Add/edit a mock rule.
 ///
@@ -35,7 +35,7 @@ class MockRuleEditor extends StatefulWidget {
   static Future<void> showForEntry(BuildContext context, NetworkLogEntry entry) {
     final body = entry.responseBody;
     final seed = MockRule(
-      id: MockStore.instance.nextId(),
+      id: DevtrayMocks.instance.nextId(),
       // Path only, not the full URL — a rule keyed to the host would break the
       // moment you point the app at a different environment.
       urlPattern: entry.uri.path,
@@ -58,7 +58,7 @@ class MockRuleEditor extends StatefulWidget {
 }
 
 class _MockRuleEditorState extends State<MockRuleEditor> {
-  late final MockRule _base = widget.existing ?? widget.seed ?? MockRule(id: MockStore.instance.nextId(), urlPattern: '');
+  late final MockRule _base = widget.existing ?? widget.seed ?? MockRule(id: DevtrayMocks.instance.nextId(), urlPattern: '');
 
   late final _urlController = TextEditingController(text: _base.urlPattern);
   late final _bodyController = TextEditingController(text: _base.body ?? '');
@@ -115,7 +115,7 @@ class _MockRuleEditorState extends State<MockRuleEditor> {
       enabled: true,
     );
 
-    final store = MockStore.instance;
+    final store = DevtrayMocks.instance;
     widget.existing == null ? store.add(rule) : store.update(rule);
 
     Navigator.of(context).pop();

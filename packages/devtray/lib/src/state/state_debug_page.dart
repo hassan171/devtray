@@ -6,10 +6,10 @@ import '../core/debug_text_styles.dart';
 import '../widgets/debug_search_bar.dart';
 import 'components/state_detail_pane.dart';
 import 'components/state_row.dart';
-import 'state_inspector.dart';
+import 'devtray_state.dart';
 
 /// Every state source the app has created, its **live state**, and its change
-/// history — cubits, blocs, or anything else pushed into [StateInspector].
+/// history — cubits, blocs, or anything else pushed into [DevtrayState].
 ///
 /// For bloc, install the adapter:
 ///
@@ -17,7 +17,7 @@ import 'state_inspector.dart';
 /// Bloc.observer = DebugBlocObserver();
 /// ```
 ///
-/// For other libraries, feed [StateInspector] directly (see `state_bridge.dart`).
+/// For other libraries, feed [DevtrayState] directly (see `state_bridge.dart`).
 ///
 /// Narrow layouts show the list OR the detail; wide layouts show both.
 class StateDebugPage extends DebugPage {
@@ -51,7 +51,7 @@ class _StateViewState extends State<_StateView> {
   @override
   Widget build(BuildContext context) {
     final t = DevtrayTheme.of(context);
-    final store = StateInspector.instance;
+    final store = DevtrayState.instance;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -203,7 +203,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Nothing has been pushed into StateInspector. Install an observer:',
+              'Nothing has been pushed into DevtrayState. Install an observer:',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 11, color: t.textMuted, height: 1.4),
             ),
@@ -214,7 +214,7 @@ class _EmptyState extends StatelessWidget {
             ]),
             const SizedBox(height: 10),
             Text(
-              'Or push into StateInspector.instance directly.',
+              'Or push into DevtrayState.instance directly.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 11, color: t.textMuted, height: 1.4),
             ),

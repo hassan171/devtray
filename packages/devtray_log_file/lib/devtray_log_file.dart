@@ -1,11 +1,11 @@
 /// File persistence for `devtray`'s captured logs — write them to disk, and
 /// read a past run back.
 ///
-/// [LogStore] is a ring buffer that dies with the process, which means the log
+/// [DevtrayLog] is a ring buffer that dies with the process, which means the log
 /// of the crash you just saw is gone. This is the fix:
 ///
 /// ```dart
-/// LogExporter.instance.addSink(await FileLogSink.open());
+/// DevtrayExport.instance.addSink(await FileLogSink.open());
 /// ```
 ///
 /// One file per app run, rotated by size, pruned past a file count. Then, to

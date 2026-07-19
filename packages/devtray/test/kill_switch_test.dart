@@ -5,10 +5,10 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   setUp(() {
     DevtrayKillSwitch.reset();
-    NetworkLogStore.instance.clear();
-    LogStore.instance.clear();
-    LogStore.instance.clear();
-    MockStore.instance
+    DevtrayNet.instance.clear();
+    DevtrayLog.instance.clear();
+    DevtrayLog.instance.clear();
+    DevtrayMocks.instance
       ..enable()
       ..clear()
       ..offline.value = false;
@@ -24,7 +24,7 @@ void main() {
     setUp(() => DevtrayKillSwitch.enabled = false);
 
     test('network requests are not captured', () {
-      final entry = NetworkLogStore.instance.add(
+      final entry = DevtrayNet.instance.add(
         method: 'POST',
         uri: Uri.parse('https://api.test/login'),
         requestHeaders: {'Authorization': 'Bearer live-token'},
@@ -35,23 +35,23 @@ void main() {
       // so in a release build they'd otherwise keep buffering 500 requests —
       // tokens, bodies and all — that nothing will ever read.
       expect(entry, isNull);
-      expect(NetworkLogStore.instance.entries, isEmpty);
+      expect(DevtrayNet.instance.entries, isEmpty);
     });
 
     test('logs are not captured', () {
-      LogStore.instance.log('something');
-      expect(LogStore.instance.entries, isEmpty);
+      DevtrayLog.instance.log('something');
+      expect(DevtrayLog.instance.entries, isEmpty);
     });
 
     test('errors are not captured, and the launcher badge stays at zero', () {
-      LogStore.instance.report(StateError('boom'));
+      DevtrayLog.instance.report(StateError('boom'));
 
-      expect(LogStore.instance.entries, isEmpty);
-      expect(LogStore.instance.unseenErrorCount.value, 0);
+      expect(DevtrayLog.instance.entries, isEmpty);
+      expect(DevtrayLog.instance.unseenErrorCount.value, 0);
     });
 
     test('mocks never intercept — the worst thing this package could do', () {
-      MockStore.instance
+      DevtrayMocks.instance
         ..add(const MockRule(id: 'r', urlPattern: '/orders', statusCode: 500))
         ..offline.value = true;
 
@@ -62,33 +62,33 @@ void main() {
 
   group('turning it off mid-session', () {
     test('drops whatever was already captured', () {
-      NetworkLogStore.instance.add(method: 'GET', uri: Uri.parse('https://api.test/x'));
-      LogStore.instance.log('secret');
-      LogStore.instance.report('boom');
+      DevtrayNet.instance.add(method: 'GET', uri: Uri.parse('https://api.test/x'));
+      DevtrayLog.instance.log('secret');
+      DevtrayLog.instance.report('boom');
 
-      expect(NetworkLogStore.instance.entries, isNotEmpty);
-      expect(LogStore.instance.entries, isNotEmpty);
-      expect(LogStore.instance.entries, isNotEmpty);
+      expect(DevtrayNet.instance.entries, isNotEmpty);
+      expect(DevtrayLog.instance.entries, isNotEmpty);
+      expect(DevtrayLog.instance.entries, isNotEmpty);
 
       DevtrayKillSwitch.enabled = false;
 
       // Otherwise flipping the switch would leave the very buffer of traffic it
       // exists to prevent.
-      expect(NetworkLogStore.instance.entries, isEmpty);
-      expect(LogStore.instance.entries, isEmpty);
-      expect(LogStore.instance.entries, isEmpty);
+      expect(DevtrayNet.instance.entries, isEmpty);
+      expect(DevtrayLog.instance.entries, isEmpty);
+      expect(DevtrayLog.instance.entries, isEmpty);
     });
 
     test('turning it back on resumes capture', () {
       DevtrayKillSwitch.enabled = false;
-      expect(LogStore.instance.log, isNotNull); // no-op, no throw
-      LogStore.instance.log('dropped');
-      expect(LogStore.instance.entries, isEmpty);
+      expect(DevtrayLog.instance.log, isNotNull); // no-op, no throw
+      DevtrayLog.instance.log('dropped');
+      expect(DevtrayLog.instance.entries, isEmpty);
 
       DevtrayKillSwitch.enabled = true;
-      LogStore.instance.log('kept');
+      DevtrayLog.instance.log('kept');
 
-      expect(LogStore.instance.entries.single.message, 'kept');
+      expect(DevtrayLog.instance.entries.single.message, 'kept');
     });
   });
 }

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Mocks are no longer a page — they render as [MocksView] inside the Network
-/// tab. The view is self-contained (reads MockStore directly), so host it in a
+/// tab. The view is self-contained (reads DevtrayMocks directly), so host it in a
 /// bare Scaffold, sized so its Expanded list has bounded height.
 Widget _host(Widget child) => MaterialApp(
       home: Scaffold(body: SizedBox(height: 600, child: child)),
@@ -15,15 +15,15 @@ Widget _hostPage(DebugPage page) => MaterialApp(
     );
 
 void main() {
-  late MockStore mocks;
+  late DevtrayMocks mocks;
 
   setUp(() {
-    mocks = MockStore.instance
+    mocks = DevtrayMocks.instance
       ..enable()
       ..clear()
       ..offline.value = false
       ..rulesEnabled.value = true;
-    NetworkLogStore.instance.clear();
+    DevtrayNet.instance.clear();
   });
 
   group('MocksView', () {
@@ -110,7 +110,7 @@ void main() {
     testWidgets('the warning does not move the request list', (tester) async {
       // The whole point of moving it into the toolbar. Toggling interception
       // must not shift a single row.
-      final logs = NetworkLogStore.instance;
+      final logs = DevtrayNet.instance;
       final e = logs.add(method: 'GET', uri: Uri.parse('https://api.test/users'))!;
       logs.complete(e.id, status: NetworkLogStatus.success, statusCode: 200);
 
@@ -185,7 +185,7 @@ void main() {
 
   group('MOCKED badge on the request list', () {
     testWidgets('a mocked entry is badged; a real one is not', (tester) async {
-      final logs = NetworkLogStore.instance;
+      final logs = DevtrayNet.instance;
 
       final mocked = logs.add(method: 'GET', uri: Uri.parse('https://api.test/orders'))!;
       logs.complete(mocked.id, status: NetworkLogStatus.failed, statusCode: 500);
@@ -207,7 +207,7 @@ void main() {
   group('opting out of mocking entirely', () {
     testWidgets('a disabled store hides the "Mock this request" button', (tester) async {
       mocks.disable();
-      final logs = NetworkLogStore.instance;
+      final logs = DevtrayNet.instance;
       final entry = logs.add(method: 'GET', uri: Uri.parse('https://api.test/orders'))!;
       logs.complete(entry.id, status: NetworkLogStatus.success, statusCode: 200);
 
@@ -237,7 +237,7 @@ void main() {
     });
 
     testWidgets('by default the button IS shown', (tester) async {
-      final logs = NetworkLogStore.instance;
+      final logs = DevtrayNet.instance;
       final entry = logs.add(method: 'GET', uri: Uri.parse('https://api.test/orders'))!;
       logs.complete(entry.id, status: NetworkLogStatus.success, statusCode: 200);
 
@@ -250,7 +250,7 @@ void main() {
       expect(find.byTooltip('Mock this request'), findsOneWidget);
     });
 
-    test('MockStore.disable() stops interception for real, not just in the UI', () {
+    test('DevtrayMocks.disable() stops interception for real, not just in the UI', () {
       // Hiding the UI is not enough — the adapters consult the store regardless
       // of which pages are registered, so a rule added from code would still
       // fake traffic with nothing on screen to reveal it.
@@ -273,7 +273,7 @@ void main() {
 
   group('Mocks button inside the Network tab', () {
     testWidgets('opens the MocksView and the back arrow returns to the list', (tester) async {
-      final logs = NetworkLogStore.instance;
+      final logs = DevtrayNet.instance;
       final entry = logs.add(method: 'GET', uri: Uri.parse('https://api.test/orders'))!;
       logs.complete(entry.id, status: NetworkLogStatus.success, statusCode: 200);
       mocks.add(const MockRule(id: 'r', urlPattern: '/rules-list'));
@@ -329,7 +329,7 @@ void main() {
 
   group('MockRuleEditor', () {
     testWidgets('seeds a new rule from a captured request, prefilling its body', (tester) async {
-      final logs = NetworkLogStore.instance;
+      final logs = DevtrayNet.instance;
       final entry = logs.add(method: 'POST', uri: Uri.parse('https://api.test/v1/orders'))!;
       logs.complete(
         entry.id,

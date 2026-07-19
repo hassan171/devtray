@@ -3,7 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../core/devtray_kill_switch.dart';
-import '../logs/log_store.dart' show CoalescingValueNotifier, LogStore;
+import '../core/devtray_typedefs.dart';
+import '../logs/devtray_log.dart' show CoalescingValueNotifier, DevtrayLog;
 import 'debug_inspectable.dart';
 
 /// One recorded change to a tracked state source.
@@ -11,7 +12,7 @@ import 'debug_inspectable.dart';
 /// ### What this holds, and why it matters
 ///
 /// [from] and [to] are whatever the app emitted. History is capped
-/// ([StateInspector.maxChangesPerSource]), but a cap on *count* is not a cap on
+/// ([DevtrayState.maxChangesPerSource]), but a cap on *count* is not a cap on
 /// *size*: 100 changes to a cubit holding a 5000-item list meant 100 lists the
 /// GC couldn't touch. [TrackedSource.ref] is deliberately weak so the inspector
 /// never keeps a source alive — retaining its whole history strongly defeated
@@ -19,7 +20,7 @@ import 'debug_inspectable.dart';
 ///
 /// So non-trivial [from]/[to] values are **snapshotted to a string at capture
 /// time** and the object itself is dropped (see
-/// [StateInspector.retainStateObjects]). Primitives — `num`, `bool`, `String`,
+/// [DevtrayState.retainStateObjects]). Primitives — `num`, `bool`, `String`,
 /// `enum`, `null` — are kept as-is: they don't retain object graphs, and keeping
 /// them means equality assertions and registered formatters still work on the
 /// common case. [event] is always kept: it's a small command object, not
@@ -70,7 +71,7 @@ class StateSnapshot {
 /// A live state source the inspector has seen — a cubit, a bloc, a Riverpod
 /// provider, a `ValueNotifier`, anything.
 ///
-/// Held by a caller-supplied [id] (see [StateInspector.record]) rather than by
+/// Held by a caller-supplied [id] (see [DevtrayState.record]) rather than by
 /// type: an app can have several instances of the same type alive at once (one
 /// per screen), and they must not be conflated. For bloc, the adapter uses
 /// `identityHashCode`.
@@ -91,7 +92,7 @@ class TrackedSource {
 
   /// **Weak** on purpose.
   ///
-  /// Reading a source's non-state fields (see [StateInspector.inspect]) means
+  /// Reading a source's non-state fields (see [DevtrayState.inspect]) means
   /// calling into the live instance, so we need a handle on it. A strong one
   /// would make this debug tool the thing keeping every state object your app
   /// ever created alive — the exact leak the tool exists to help you find.
@@ -125,11 +126,11 @@ class TrackedSource {
 ///
 /// Nothing is captured when [DevtrayKillSwitch] is off, so a release build
 /// pays nothing but the adapter's own (trivial) dispatch.
-class StateInspector {
-  StateInspector._() {
+class DevtrayState {
+  DevtrayState._() {
     DevtrayKillSwitch.addDisableListener(clear);
   }
-  static final StateInspector instance = StateInspector._();
+  static final DevtrayState instance = DevtrayState._();
 
   /// Extractors for fields that live on the source but not in its state.
   ///
@@ -143,7 +144,7 @@ class StateInspector {
   /// runtime reflection to go find the rest. So you point at them:
   ///
   /// ```dart
-  /// StateInspector.instance.inspect<SyncCubit>((c) => {
+  /// DevtrayState.instance.inspect<SyncCubit>((c) => {
   ///   'queue': c.queue.length,
   ///   'next': c.queue.firstOrNull,
   ///   'retries': c.retries,
@@ -157,7 +158,7 @@ class StateInspector {
   /// in the class, implement [DebugInspectable] instead; a registration here
   /// wins over that, so you can override a source's own fields without touching
   /// it.
-  void inspect<T extends Object>(Map<String, Object?> Function(T source) extract) {
+  void inspect<T extends Object>(DevtrayInspector<T> extract) {
     _inspectors[T.toString()] = (source) => extract(source as T);
   }
 
@@ -205,14 +206,14 @@ class StateInspector {
   /// and takes precedence.
   ///
   /// ```dart
-  /// StateInspector.instance.format<CartState>((s) => '${s.items.length} items · \$${s.total}');
+  /// DevtrayState.instance.format<CartState>((s) => '${s.items.length} items · \$${s.total}');
   /// ```
   ///
   /// Applies to the current-state line and the from/to lines in the change
   /// history alike. Without any registration, [display] already handles the
   /// common cases — `List`/`Map`/`Set` one entry per line, `DateTime` as
   /// ISO-8601 — and falls back to `toString()`.
-  void format<T extends Object>(String Function(T state) render) {
+  void format<T extends Object>(DevtrayFormatter<T> render) {
     _formatters[T.toString()] = (state) => render(state as T);
   }
 
@@ -223,14 +224,14 @@ class StateInspector {
   /// every other `List<String>` state in the app":
   ///
   /// ```dart
-  /// StateInspector.instance.formatSource<TodoBloc>((state) => (state as List<String>).join('\n'));
+  /// DevtrayState.instance.formatSource<TodoBloc>((state) => (state as List<String>).join('\n'));
   /// ```
   ///
   /// The callback receives the state value (typed as `Object?` — cast it, since
   /// the source type `S` doesn't tell us the state type). A registration here
   /// wins over a [format] on the same state type, so you can special-case one
   /// source while a broader state-type formatter still covers the rest.
-  void formatSource<S extends Object>(String Function(Object? state) render) {
+  void formatSource<S extends Object>(DevtrayFormatter<Object?> render) {
     _sourceFormatters[S.toString()] = (state) => render(state);
   }
 
@@ -330,7 +331,7 @@ class StateInspector {
 
   /// A "something changed" signal for the State page.
   ///
-  /// Coalesced, matching [LogStore.tick]: an animation-driven cubit emits per
+  /// Coalesced, matching [DevtrayLog.tick]: an animation-driven cubit emits per
   /// frame, and a plain notifier fired a synchronous notification on each.
   final CoalescingValueNotifier<int> tick = CoalescingValueNotifier<int>(0);
 

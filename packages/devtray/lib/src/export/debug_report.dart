@@ -1,7 +1,7 @@
 import 'dart:convert';
 
-import '../logs/log_store.dart';
-import '../network/network_log_store.dart';
+import '../logs/devtray_log.dart';
+import '../network/devtray_net.dart';
 
 /// Which sections to include in a report.
 class DebugReportSections {
@@ -63,7 +63,7 @@ class DebugReport {
 
     if (sections.errors) {
       // Errors are the error-level entries of the one log store.
-      final allErrors = LogStore.instance.entries.where((e) => e.isError).toList();
+      final allErrors = DevtrayLog.instance.entries.where((e) => e.isError).toList();
       final errors = allErrors.take(maxErrors).toList();
       buffer.writeln('## Errors (${allErrors.length})');
       if (errors.isEmpty) buffer.writeln('None.');
@@ -86,8 +86,8 @@ class DebugReport {
     }
 
     if (sections.network) {
-      final entries = NetworkLogStore.instance.entries.take(maxNetworkEntries).toList();
-      buffer.writeln('## Network (${NetworkLogStore.instance.entries.length})');
+      final entries = DevtrayNet.instance.entries.take(maxNetworkEntries).toList();
+      buffer.writeln('## Network (${DevtrayNet.instance.entries.length})');
       if (entries.isEmpty) buffer.writeln('None.');
 
       for (final e in entries) {
@@ -106,9 +106,9 @@ class DebugReport {
     }
 
     if (sections.logs) {
-      final logs = LogStore.instance.entries.take(maxLogEntries).toList();
+      final logs = DevtrayLog.instance.entries.take(maxLogEntries).toList();
       buffer
-        ..writeln('## Logs (${LogStore.instance.entries.length})')
+        ..writeln('## Logs (${DevtrayLog.instance.entries.length})')
         ..writeln('```');
       // Oldest first, so a pasted dump reads chronologically.
       for (final e in logs.reversed) {

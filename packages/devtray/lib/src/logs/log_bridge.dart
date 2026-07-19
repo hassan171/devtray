@@ -1,7 +1,7 @@
 /// Bridges an existing logging setup into the overlay's Logs page.
 ///
-/// The Logs page reads from [LogStore] and nothing else, so hooking up any
-/// logger means: call [LogStore.log] from wherever your logger emits. This file
+/// The Logs page reads from [DevtrayLog] and nothing else, so hooking up any
+/// logger means: call [DevtrayLog.log] from wherever your logger emits. This file
 /// just makes the common shapes convenient — none of it is required.
 ///
 /// ## package:logger
@@ -22,7 +22,7 @@
 /// class DevtrayLogOutput extends LogOutput {
 ///   @override
 ///   void output(OutputEvent event) {
-///     LogStore.instance.log(
+///     DevtrayLog.instance.log(
 ///       event.lines.join('\n'),
 ///       level: debugLevelFromName(event.level.name),
 ///     );
@@ -34,7 +34,7 @@
 ///
 /// ```dart
 /// talker.stream.listen((data) {
-///   LogStore.instance.log(
+///   DevtrayLog.instance.log(
 ///     data.message ?? '',
 ///     level: debugLevelFromName(data.logLevel?.name),
 ///     tag: data.title,
@@ -71,7 +71,7 @@
 ///
 /// ```dart
 /// Logger.root.onRecord.listen((r) {
-///   LogStore.instance.log(
+///   DevtrayLog.instance.log(
 ///     r.message,
 ///     tag: r.loggerName,
 ///     level: debugLevelFromName(r.level.name),
@@ -85,10 +85,10 @@ library;
 import 'dart:async';
 import 'dart:developer' as developer;
 
-import 'log_store.dart';
+import 'devtray_log.dart';
 
 /// A drop-in replacement for `dart:developer`'s `log()` that also records into
-/// [LogStore], so the line shows up on the Logs page.
+/// [DevtrayLog], so the line shows up on the Logs page.
 ///
 /// `developer.log` is `external` — implemented by the VM, with no hook to
 /// intercept (see the library docs above). Bridging at the call site is the only
@@ -98,7 +98,7 @@ import 'log_store.dart';
 ///
 /// Nothing is swallowed — the real `developer.log` is still called, so DevTools'
 /// Logging view is unaffected. When the kill switch is off, only the
-/// [LogStore] side no-ops.
+/// [DevtrayLog] side no-ops.
 ///
 /// [level] follows the `package:logging` scale that `developer.log` documents
 /// (FINE 500 / INFO 800 / WARNING 900 / SEVERE 1000) and is mapped onto
@@ -123,7 +123,7 @@ void debugLog(
     error: error,
     stackTrace: stackTrace,
   );
-  LogStore.instance.log(
+  DevtrayLog.instance.log(
     message,
     // `log()` defaults level to 0, which is *not* "debug" on the logging scale —
     // it means "unset". Treat it as debug rather than mapping 0 to something

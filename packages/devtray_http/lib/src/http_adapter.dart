@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 
 
 /// A `package:http` client wrapper that captures every request into
-/// [NetworkLogStore], and applies any mock rules from [MockStore] (delay / fake
+/// [DevtrayNet], and applies any mock rules from [DevtrayMocks] (delay / fake
 /// response / simulated failure).
 ///
 /// ```dart
@@ -20,16 +20,16 @@ import 'package:http/http.dart' as http;
 /// Streamed responses are buffered so the body can be shown in the inspector —
 /// the caller still gets a valid [http.StreamedResponse], but a very large
 /// download will be held in memory. Add its URL to
-/// `NetworkLogStore.instance.excludedUrlPatterns` to skip it entirely.
+/// `DevtrayNet.instance.excludedUrlPatterns` to skip it entirely.
 class DebugHttpClient extends http.BaseClient {
   final http.Client _inner;
-  final NetworkLogStore _store;
-  final MockStore _mocks;
+  final DevtrayNet _store;
+  final DevtrayMocks _mocks;
 
-  DebugHttpClient([http.Client? inner, NetworkLogStore? store, MockStore? mockStore])
+  DebugHttpClient([http.Client? inner, DevtrayNet? store, DevtrayMocks? mockStore])
       : _inner = inner ?? http.Client(),
-        _store = store ?? NetworkLogStore.instance,
-        _mocks = mockStore ?? MockStore.instance;
+        _store = store ?? DevtrayNet.instance,
+        _mocks = mockStore ?? DevtrayMocks.instance;
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
@@ -150,7 +150,7 @@ class DebugHttpClient extends http.BaseClient {
   /// a 50 MB body allocates a second 50 MB, on the UI isolate, for a log line
   /// nobody can read. Past the limit only the head is decoded.
   ///
-  /// [NetworkLogStore.maxBodyChars] caps what's ultimately retained; this caps
+  /// [DevtrayNet.maxBodyChars] caps what's ultimately retained; this caps
   /// what's built in the first place.
   static const int _maxDecodedBytes = 256 * 1024;
 

@@ -16,7 +16,7 @@ enum MockAction {
 
 /// A single interception rule: match a request, then delay / fake / fail it.
 ///
-/// Rules are held on [MockStore] and consulted by the adapters on every
+/// Rules are held on [DevtrayMocks] and consulted by the adapters on every
 /// request. The first enabled rule that matches wins.
 class MockRule {
   final String id;

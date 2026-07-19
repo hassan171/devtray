@@ -10,11 +10,11 @@ import 'components/network_detail_pane.dart';
 import 'html_previewer.dart';
 import 'components/network_log_row.dart';
 import 'components/network_search_bar.dart';
-import 'mocking/mock_store.dart';
+import 'mocking/devtray_mocks.dart';
 import 'mocking/mocks_view.dart';
-import 'network_log_store.dart';
+import 'devtray_net.dart';
 
-/// The built-in network inspector page. Reads from [NetworkLogStore], which is
+/// The built-in network inspector page. Reads from [DevtrayNet], which is
 /// fed by `DebugDioInterceptor`, `DebugHttpClient`, or your own adapter.
 ///
 /// Narrow layouts (below [wideBreakpoint]) show the list OR the detail; wide
@@ -25,10 +25,10 @@ import 'network_log_store.dart';
 /// One switch, and it isn't here:
 ///
 /// ```dart
-/// MockStore.instance.disable();
+/// DevtrayMocks.instance.disable();
 /// ```
 ///
-/// The page reads [MockStore.isDisabled] and drops the Mocks button, the "Mock
+/// The page reads [DevtrayMocks.isDisabled] and drops the Mocks button, the "Mock
 /// this request" action and the interception warning along with it. There used
 /// to be a separate `enableMocking` flag for the UI, which meant the two could
 /// disagree — hiding the UI while rules added from code went on faking traffic
@@ -40,7 +40,7 @@ class NetworkDebugPage extends DebugPage {
   /// Which failed requests are forwarded to the Logs page (and badge the
   /// launcher). Defaults to [NetworkErrorReporting.all] — every failure. Pass a
   /// narrower mode to cut routine 4xx noise. Applied to
-  /// [NetworkLogStore.errorReporting] when the page builds; code can still
+  /// [DevtrayNet.errorReporting] when the page builds; code can still
   /// override it at any time.
   final NetworkErrorReporting errorReporting;
 
@@ -71,7 +71,7 @@ class NetworkDebugPage extends DebugPage {
   Widget build(BuildContext context) {
     // The page owns the policy now (no in-app toggle). Set it here so it takes
     // effect as soon as the page is in the tree.
-    NetworkLogStore.instance.errorReporting.value = errorReporting;
+    DevtrayNet.instance.errorReporting.value = errorReporting;
     return _NetworkDebugView(wideBreakpoint: wideBreakpoint, onPreviewHtml: onPreviewHtml);
   }
 }
@@ -268,7 +268,7 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
   @override
   Widget build(BuildContext context) {
     final t = DevtrayTheme.of(context);
-    final store = NetworkLogStore.instance;
+    final store = DevtrayNet.instance;
 
     // The mocking UI lives inside this tab — a back arrow returns to the list.
     if (_showMocks) {
@@ -306,7 +306,7 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
             // mocking UI, so there's no way to hide the UI while rules keep
             // faking traffic. Read per build — `disable()` can be called at any
             // time, including from a test.
-            final mockingEnabled = !MockStore.instance.isDisabled;
+            final mockingEnabled = !DevtrayMocks.instance.isDisabled;
             final entries = store.entries;
             final filtered = _filtered(entries);
 

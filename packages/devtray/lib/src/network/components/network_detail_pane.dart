@@ -7,7 +7,7 @@ import '../../widgets/debug_tab_bar.dart';
 import '../curl_builder.dart';
 import '../html_previewer.dart';
 import '../mocking/components/mock_rule_editor.dart';
-import '../network_log_store.dart';
+import '../devtray_net.dart';
 import 'network_badges.dart';
 import 'network_formatters.dart';
 
@@ -26,7 +26,7 @@ class NetworkDetailPane extends StatefulWidget {
 
   /// Shows the "Mock this request" action.
   ///
-  /// The page passes `!MockStore.isDisabled` — with the store off, this would
+  /// The page passes `!DevtrayMocks.isDisabled` — with the store off, this would
   /// create a rule that can't intercept and that no UI can reach.
   final bool enableMocking;
 

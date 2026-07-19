@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../core/devtray_theme.dart';
 import '../network/components/network_formatters.dart';
-import '../network/network_log_store.dart';
+import '../network/devtray_net.dart';
 import '../widgets/copyable_section.dart';
-import 'log_store.dart';
+import 'devtray_log.dart';
 
 String errorSourceLabel(ErrorSource s) => switch (s) {
       ErrorSource.flutter => 'Flutter',

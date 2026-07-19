@@ -1,7 +1,7 @@
 // bloc and Riverpod, feeding the same page at once.
 //
 // This is the payoff of keeping StateDebugPage in the core: it reads from
-// StateInspector and nothing else, so the bindings are additive. An app
+// DevtrayState and nothing else, so the bindings are additive. An app
 // migrating from bloc to Riverpod — which is when a state inspector is most
 // useful — sees both halves in one list, and neither adapter knows the other
 // exists.
@@ -46,7 +46,7 @@ Widget _host() => const MaterialApp(
 void main() {
   setUp(() {
     DevtrayKillSwitch.reset();
-    StateInspector.instance.clear();
+    DevtrayState.instance.clear();
     Bloc.observer = DebugBlocObserver();
   });
 
@@ -77,7 +77,7 @@ void main() {
     addTearDown(container.dispose);
     container.read(sessionProvider.notifier).signIn('ada');
 
-    final sources = StateInspector.instance.sources;
+    final sources = DevtrayState.instance.sources;
     expect(sources, hasLength(2));
 
     final cubit = sources.firstWhere((s) => s.type == '_CartCubit');
@@ -103,6 +103,6 @@ void main() {
     addTearDown(container.dispose);
     container.read(sessionProvider.notifier).signIn('ada');
 
-    expect(StateInspector.instance.sources, isEmpty);
+    expect(DevtrayState.instance.sources, isEmpty);
   });
 }

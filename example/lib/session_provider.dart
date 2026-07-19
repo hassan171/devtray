@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// A Riverpod provider, living alongside the example's bloc cubits on purpose.
 ///
-/// The State page shows **both** — it reads from `StateInspector`, which knows
+/// The State page shows **both** — it reads from `DevtrayState`, which knows
 /// about neither library. `devtray_bloc` and `devtray_riverpod` are
 /// each ~50 lines of glue pushing into the same API, and installing both is what
 /// an app mid-migration actually needs.
@@ -14,7 +14,7 @@ class Session extends Notifier<String> {
   String build() => 'anonymous';
 
   /// Fields the notifier holds *outside* its state — the case
-  /// `StateInspector.inspect` exists for. Riverpod's `state` is protected
+  /// `DevtrayState.inspect` exists for. Riverpod's `state` is protected
   /// (unlike a bloc's, which is public), so an extractor can't read it from
   /// outside; these are the notifier's own, and it can expose whatever it likes.
   int signIns = 0;

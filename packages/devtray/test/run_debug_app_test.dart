@@ -22,18 +22,18 @@ const _app = MaterialApp(home: Scaffold(body: Text('app')));
 
 void main() {
   setUp(() {
-    LogStore.instance.clear();
-    LogStore.instance.clear();
+    DevtrayLog.instance.clear();
+    DevtrayLog.instance.clear();
   });
 
   group('runDebugApp', () {
-    testWidgets('mounts the app under a Devtray with the launcher', (tester) async {
+    testWidgets('mounts the app under a DevtrayOverlay with the launcher', (tester) async {
       await withDebugPrintRestored(() async {
         runDebugApp(app: _app, pages: const [LogsDebugPage()]);
         await tester.pumpAndSettle();
 
         expect(find.text('app'), findsOneWidget);
-        expect(find.byType(Devtray), findsOneWidget);
+        expect(find.byType(DevtrayOverlay), findsOneWidget);
         expect(find.byIcon(Icons.bug_report), findsOneWidget);
       });
     });
@@ -58,7 +58,7 @@ void main() {
 
         debugPrint('hello from the app');
 
-        expect(LogStore.instance.entries.any((e) => e.message == 'hello from the app'), isTrue);
+        expect(DevtrayLog.instance.entries.any((e) => e.message == 'hello from the app'), isTrue);
       });
     });
 
@@ -70,12 +70,12 @@ void main() {
         expect(find.text('app'), findsOneWidget);
         // Not merely inert — absent. A release build gets the app it would have
         // had without the package.
-        expect(find.byType(Devtray), findsNothing);
+        expect(find.byType(DevtrayOverlay), findsNothing);
         expect(find.byIcon(Icons.bug_report), findsNothing);
 
         // And the hooks are not installed either.
         debugPrint('should not be captured');
-        expect(LogStore.instance.entries, isEmpty);
+        expect(DevtrayLog.instance.entries, isEmpty);
       });
     });
 
@@ -109,7 +109,7 @@ void main() {
           () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null),
         );
 
-        LogStore.instance.log('a line worth copying');
+        DevtrayLog.instance.log('a line worth copying');
         runDebugApp(app: _app, pages: const [LogsDebugPage()]);
         await tester.pumpAndSettle();
 
@@ -158,7 +158,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        final overlay = tester.widget<Devtray>(find.byType(Devtray));
+        final overlay = tester.widget<DevtrayOverlay>(find.byType(DevtrayOverlay));
         expect(overlay.presentation, DevtrayPresentation.fullscreen);
         expect(overlay.theme.background, const DevtrayTheme.dark().background);
       });

@@ -1,6 +1,6 @@
-/// Feeding [StateInspector] from a state-management library other than bloc.
+/// Feeding [DevtrayState] from a state-management library other than bloc.
 ///
-/// The State page reads from [StateInspector] and nothing else. Bloc has a
+/// The State page reads from [DevtrayState] and nothing else. Bloc has a
 /// bundled adapter ([DebugBlocObserver]); everything else pushes in through the
 /// same small API. None of the snippets below live in the package — copying
 /// them keeps the package from depending on riverpod, getx, etc. for everyone.
@@ -10,7 +10,7 @@
 /// - `record(id, type: ..., from: ..., to: ..., event: ..., instance: ...)`
 ///   for each change. `id` must be **stable per instance** (use
 ///   `identityHashCode(source)`). `instance` is optional — pass it to enable
-///   live non-state field reads via [StateInspector.inspect].
+///   live non-state field reads via [DevtrayState.inspect].
 /// - `recordCreate(...)` / `recordError(...)` / `recordClose(...)` for the rest
 ///   of the lifecycle. All optional — `record` lazily registers anything new.
 ///
@@ -32,9 +32,9 @@
 /// ```dart
 /// void inspectNotifier<T>(ValueNotifier<T> n, {required String name}) {
 ///   var last = n.value;
-///   StateInspector.instance.recordCreate(identityHashCode(n), type: name, state: last, instance: n);
+///   DevtrayState.instance.recordCreate(identityHashCode(n), type: name, state: last, instance: n);
 ///   n.addListener(() {
-///     StateInspector.instance.record(identityHashCode(n), type: name, from: last, to: n.value, instance: n);
+///     DevtrayState.instance.record(identityHashCode(n), type: name, from: last, to: n.value, instance: n);
 ///     last = n.value;
 ///   });
 /// }
@@ -47,7 +47,7 @@
 ///
 /// ```dart
 /// void setCount(int next) {
-///   StateInspector.instance.record(1, type: 'HomeScreen.count', from: _count, to: next);
+///   DevtrayState.instance.record(1, type: 'HomeScreen.count', from: _count, to: next);
 ///   setState(() => _count = next);
 /// }
 /// ```
@@ -57,7 +57,7 @@
 /// A `GetxController`'s reactive fields (`.obs`) expose `listen`:
 ///
 /// ```dart
-/// count.listen((v) => StateInspector.instance.record(
+/// count.listen((v) => DevtrayState.instance.record(
 ///       identityHashCode(controller), type: 'CountController.count', to: v));
 /// ```
 library;

@@ -10,7 +10,7 @@ import 'package:devtray/devtray.dart';
 /// This cubit is wired up from the OUTSIDE, in main.dart:
 ///
 /// ```dart
-/// StateInspector.instance.inspect<CounterCubit>((c) => {
+/// DevtrayState.instance.inspect<CounterCubit>((c) => {
 ///   'history': c.history,
 ///   'lastTouched': c.lastTouched,
 /// });
@@ -72,7 +72,7 @@ class TodoCleared extends TodoEvent {
 /// The other way to expose non-state fields: implement [DebugInspectable].
 ///
 /// Lives next to the fields it exposes, so it can't drift out of sync — at the
-/// cost of a devtray import in the class. (A [StateInspector.inspect]
+/// cost of a devtray import in the class. (A [DevtrayState.inspect]
 /// registration would override this, so you can still change what's shown from
 /// the outside.)
 class TodoBloc extends Bloc<TodoEvent, List<String>> implements DebugInspectable {

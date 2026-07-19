@@ -12,7 +12,7 @@ import 'package:flutter/foundation.dart';
 /// ```
 ///
 /// So in a release build with that interceptor still in place, every request,
-/// header and response body kept landing in `NetworkLogStore` — a rolling buffer
+/// header and response body kept landing in `DevtrayNet` — a rolling buffer
 /// of 500 requests, auth tokens and all, held in memory with nothing to read it
 /// and no reason to exist. Same for logs and errors.
 ///

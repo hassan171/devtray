@@ -33,25 +33,25 @@ class InMemoryMockRuleStorage implements MockRuleStorage {
 ///
 /// ```dart
 /// // Simulate a dead backend:
-/// MockStore.instance.offline.value = true;
+/// DevtrayMocks.instance.offline.value = true;
 ///
 /// // Force one endpoint to fail:
-/// MockStore.instance.add(MockRule(
+/// DevtrayMocks.instance.add(MockRule(
 ///   id: 'orders-500',
 ///   urlPattern: '/orders',
 ///   statusCode: 500,
 ///   body: '{"message": "boom"}',
 /// ));
 /// ```
-class MockStore {
-  MockStore._();
-  static final MockStore instance = MockStore._();
+class DevtrayMocks {
+  DevtrayMocks._();
+  static final DevtrayMocks instance = DevtrayMocks._();
 
   /// Set before the first request to persist rules across restarts:
   ///
   /// ```dart
-  /// MockStore.instance.storage = SharedPreferencesMockRuleStorage();
-  /// await MockStore.instance.load();
+  /// DevtrayMocks.instance.storage = SharedPreferencesMockRuleStorage();
+  /// await DevtrayMocks.instance.load();
   /// ```
   MockRuleStorage storage = InMemoryMockRuleStorage();
 
@@ -65,7 +65,7 @@ class MockStore {
   /// used to allow.
   ///
   /// ```dart
-  /// MockStore.instance.disable();   // before the first request
+  /// DevtrayMocks.instance.disable();   // before the first request
   /// ```
   bool _disabled = false;
   bool get isDisabled => _disabled;

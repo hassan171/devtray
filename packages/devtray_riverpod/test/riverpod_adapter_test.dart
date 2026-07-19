@@ -1,7 +1,7 @@
 // The Riverpod adapter, against a real ProviderContainer.
 //
 // This package is the second state-management binding, and that's the point of
-// it: if StateInspector were secretly shaped around bloc, wiring a genuinely
+// it: if DevtrayState were secretly shaped around bloc, wiring a genuinely
 // different API — providers, not blocs; a context object, not positional args —
 // is where it would show. The core's own state_page_test proves the page needs
 // no library at all; these prove one specific library reaches it.
@@ -36,7 +36,7 @@ class _Counter extends Notifier<int> {
   @override
   int build() => 0;
 
-  /// A field held OUTSIDE the state — what StateInspector.inspect exists for,
+  /// A field held OUTSIDE the state — what DevtrayState.inspect exists for,
   /// and the thing that silently didn't work until the adapter started passing
   /// the notifier as `instance`.
   int sets = 0;
@@ -60,13 +60,13 @@ ProviderContainer _container({ProviderObserver? next}) {
 void main() {
   setUp(() {
     DevtrayKillSwitch.reset();
-    StateInspector.instance.clear();
+    DevtrayState.instance.clear();
   });
 
   test('reading a provider registers it, with its declared name', () {
     _container().read(counter);
 
-    final source = StateInspector.instance.sources.single;
+    final source = DevtrayState.instance.sources.single;
     expect(source.type, 'counter');
     expect(source.state, 0);
   });
@@ -74,7 +74,7 @@ void main() {
   test('an unnamed provider falls back to its type, never a blank row', () {
     _container().read(unnamed);
 
-    expect(StateInspector.instance.sources.single.type, isNotEmpty);
+    expect(DevtrayState.instance.sources.single.type, isNotEmpty);
   });
 
   test('a change is recorded as a transition', () {
@@ -82,7 +82,7 @@ void main() {
     c.read(counter.notifier).set(1);
     c.read(counter.notifier).set(2);
 
-    final source = StateInspector.instance.sources.single;
+    final source = DevtrayState.instance.sources.single;
     expect(source.state, 2, reason: 'the page shows the current value');
     // Newest first, like the log stream.
     expect(source.changes.first.to, 2);
@@ -97,18 +97,18 @@ void main() {
     c.read(counter);
     c.read(counter.notifier).set(1);
 
-    expect(StateInspector.instance.sources, hasLength(1));
+    expect(DevtrayState.instance.sources, hasLength(1));
   });
 
-  group('StateInspector.inspect — fields outside the state', () {
+  group('DevtrayState.inspect — fields outside the state', () {
     // Regression: the adapter recorded no `instance`, so inspect<T> had nothing
     // to read fields off and the extra fields silently never appeared. Bloc
     // worked (a bloc IS the object); Riverpod didn't, because it splits the
     // const provider declaration from the notifier that actually holds the
     // fields. The notifier is the analogue of the bloc, and the thing to pass.
     setUp(() {
-      StateInspector.instance.inspect<_Counter>((c) => {'sets': c.sets});
-      addTearDown(StateInspector.instance.clearInspectors);
+      DevtrayState.instance.inspect<_Counter>((c) => {'sets': c.sets});
+      addTearDown(DevtrayState.instance.clearInspectors);
     });
 
     test('a notifier field shows up on its source', () {
@@ -116,9 +116,9 @@ void main() {
       c.read(counter.notifier).set(1);
       c.read(counter.notifier).set(2);
 
-      final source = StateInspector.instance.sources.single;
+      final source = DevtrayState.instance.sources.single;
       // liveFieldsOf is what the page itself calls to render the extra fields.
-      expect(StateInspector.instance.liveFieldsOf(source), {'sets': 2});
+      expect(DevtrayState.instance.liveFieldsOf(source), {'sets': 2});
     });
 
     test('the notifier is carried from the very first record', () {
@@ -126,7 +126,7 @@ void main() {
       final c = _container();
       c.read(counter);
 
-      expect(StateInspector.instance.sources.single.ref?.target, isA<_Counter>());
+      expect(DevtrayState.instance.sources.single.ref?.target, isA<_Counter>());
     });
 
     test('a plain Provider has no notifier, and that is not an error', () {
@@ -134,7 +134,7 @@ void main() {
       final plain = Provider<int>((ref) => 7, name: 'plain');
       _container().read(plain);
 
-      final source = StateInspector.instance.sources.single;
+      final source = DevtrayState.instance.sources.single;
       expect(source.state, 7);
       expect(source.ref?.target, isNull);
     });
@@ -145,7 +145,7 @@ void main() {
     c.read(counter);
     c.read(unnamed);
 
-    expect(StateInspector.instance.sources, hasLength(2));
+    expect(DevtrayState.instance.sources, hasLength(2));
   });
 
   test('a provider that throws is recorded as an error', () {
@@ -156,18 +156,18 @@ void main() {
       c.read(boom);
     } catch (_) {}
 
-    final source = StateInspector.instance.sources.single;
+    final source = DevtrayState.instance.sources.single;
     expect(source.error, isA<StateError>());
   });
 
   test('disposing the container closes its sources', () {
     final c = ProviderContainer(observers: [const DebugRiverpodObserver()]);
     c.read(counter);
-    expect(StateInspector.instance.sources.single.isClosed, isFalse);
+    expect(DevtrayState.instance.sources.single.isClosed, isFalse);
 
     c.dispose();
 
-    expect(StateInspector.instance.sources.single.isClosed, isTrue);
+    expect(DevtrayState.instance.sources.single.isClosed, isTrue);
   });
 
   test('chaining forwards every event — your own observer keeps working', () {
@@ -193,6 +193,6 @@ void main() {
     c.read(counter);
     c.read(counter.notifier).set(1);
 
-    expect(StateInspector.instance.sources, isEmpty);
+    expect(DevtrayState.instance.sources, isEmpty);
   });
 }

@@ -1,7 +1,7 @@
 // The State page's own tests — with no state-management library in sight.
 //
 // This is the claim the architecture rests on: `StateDebugPage` reads from
-// `StateInspector` and nothing else, so bloc is just one way to fill it and a
+// `DevtrayState` and nothing else, so bloc is just one way to fill it and a
 // Riverpod (or getx, or homegrown) app can feed the same page by pushing into
 // the same small API. `DebugBlocObserver` is only ~40 lines of glue on top.
 //
@@ -25,12 +25,12 @@ class _Counter {
 void main() {
   setUp(() {
     DevtrayKillSwitch.reset();
-    StateInspector.instance.clear();
+    DevtrayState.instance.clear();
   });
 
   testWidgets('a source pushed in by hand appears on the page', (tester) async {
     final counter = _Counter();
-    StateInspector.instance.recordCreate(
+    DevtrayState.instance.recordCreate(
       identityHashCode(counter),
       type: 'CounterNotifier',
       state: 0,
@@ -46,9 +46,9 @@ void main() {
   testWidgets('changes build a history, newest first', (tester) async {
     final counter = _Counter();
     final id = identityHashCode(counter);
-    StateInspector.instance.recordCreate(id, type: 'CounterNotifier', state: 0, instance: counter);
-    StateInspector.instance.record(id, type: 'CounterNotifier', from: 0, to: 1, instance: counter);
-    StateInspector.instance.record(id, type: 'CounterNotifier', from: 1, to: 2, instance: counter);
+    DevtrayState.instance.recordCreate(id, type: 'CounterNotifier', state: 0, instance: counter);
+    DevtrayState.instance.record(id, type: 'CounterNotifier', from: 0, to: 1, instance: counter);
+    DevtrayState.instance.record(id, type: 'CounterNotifier', from: 1, to: 2, instance: counter);
 
     await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
@@ -63,8 +63,8 @@ void main() {
   testWidgets('an error is recorded against its source', (tester) async {
     final counter = _Counter();
     final id = identityHashCode(counter);
-    StateInspector.instance.recordCreate(id, type: 'CounterNotifier', state: 0, instance: counter);
-    StateInspector.instance.recordError(id, StateError('boom'), StackTrace.current);
+    DevtrayState.instance.recordCreate(id, type: 'CounterNotifier', state: 0, instance: counter);
+    DevtrayState.instance.recordError(id, StateError('boom'), StackTrace.current);
 
     await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
@@ -79,13 +79,13 @@ void main() {
     addTearDown(DevtrayKillSwitch.reset);
 
     final counter = _Counter();
-    StateInspector.instance.recordCreate(
+    DevtrayState.instance.recordCreate(
       identityHashCode(counter),
       type: 'CounterNotifier',
       state: 0,
       instance: counter,
     );
 
-    expect(StateInspector.instance.sources, isEmpty);
+    expect(DevtrayState.instance.sources, isEmpty);
   });
 }

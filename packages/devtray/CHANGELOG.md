@@ -1,5 +1,81 @@
 # Changelog
 
+## 0.4.0
+
+Setup used to be spread across three mechanisms — arguments to `runDebugApp`, mutating
+singletons, and imperative `start()` calls — in an order nobody stated. This release gives
+it one place, and renames the stores so a call site says which tool it belongs to.
+
+### Breaking
+
+Every rename is mechanical; the behaviour is unchanged.
+
+| Was | Now |
+|---|---|
+| `Devtray` (the widget) | `DevtrayOverlay` |
+| `LogStore` | `DevtrayLog` |
+| `NetworkLogStore` | `DevtrayNet` |
+| `StateInspector` | `DevtrayState` |
+| `MockStore` | `DevtrayMocks` |
+| `LogExporter` | `DevtrayExport` |
+| `FreezeWatchdog` | `DevtrayJank` |
+
+`Devtray` is now the configuration facade and the shorthand for logging, which is why the
+widget had to move aside. A find-and-replace on whole words covers the rename; the analyzer
+finds anything missed.
+
+**Why rename at all.** `LogStore.instance.log(...)` reads like a generic utility that
+happens to be in scope. Someone reading unfamiliar code should be able to tell where a log
+line goes, and every new name is *shorter* than the one it replaces.
+
+### Added
+
+- **`configure:` on `runDebugApp`** — one place for every store setting:
+
+  ```dart
+  runDebugApp(
+    app: const MyApp(),
+    configure: (devtray) => devtray
+      ..excludeUrls(['/health'])
+      ..context({'build': '1.4.2'})
+      ..inspect<CartCubit>((c) => {'items': c.items.length})
+      ..detectFreezes(),
+  );
+  ```
+
+  It runs after the kill switch is set and the capture hooks are installed, and before your
+  `setup` bootstrap. That ordering is the point: configuring a store *before* the kill switch
+  silently does nothing, which was easy to hit when setup was scattered. It is skipped
+  entirely when `enabled` is false, so anything expensive inside it costs a release build
+  nothing.
+
+  Covers every tunable on every store, with `raw(() { ... })` for anything it doesn't — a
+  missing convenience method must never be a reason to configure something outside the
+  callback and lose the guarantee. A test asserts the full surface and fails when a new knob
+  is added without a route to it.
+
+- **`Devtray.log` / `.report` / `.setContext` / `.withContext`** — statics for the call sites
+  an app hits constantly. `Devtray.log('signed in')` rather than
+  `DevtrayLog.instance.log('signed in')`. The stores stay public for everything else.
+
+- **`logToAsync`** — for sinks that must be opened asynchronously, like a file sink that
+  creates a directory. `runDebugApp` awaits it before running your app, so lines logged
+  during bootstrap still reach the sink. A sink that fails to open is reported into the log
+  and skipped, rather than taking down the launch of the app it exists to observe.
+
+- **`inspectAll`** — several typed extractors in one call:
+
+  ```dart
+  ..inspectAll([
+    Inspect<CartCubit>((c) => {'items': c.items.length}),
+    Inspect<Session>((s) => {'signIns': s.signIns}),
+  ])
+  ```
+
+  Each entry is an `Inspect<T>` rather than a bare callback because the registry is keyed by
+  the source type — a list of plain functions would erase it. `inspect<T>` is unchanged and
+  still right for a single one.
+
 ## 0.3.0
 
 The Timeline page, and UI-freeze detection. No breaking changes.
@@ -20,9 +96,9 @@ The Timeline page, and UI-freeze detection. No breaking changes.
   from 200ms to 10 minutes on a logarithmic slider. Zoom survives the live/paused toggle —
   the reset button is the explicit way back to the default.
 
-- **`FreezeWatchdog`** — detects periods where the UI isolate stopped responding, and frames
+- **`DevtrayJank`** — detects periods where the UI isolate stopped responding, and frames
   that rendered too slowly, drawn as a fourth lane on the timeline. **Opt-in** via
-  `TimelineDebugPage(detectFreezes: true)` or `FreezeWatchdog.instance.start()`, because it
+  `TimelineDebugPage(detectFreezes: true)` or `DevtrayJank.instance.start()`, because it
   is the only capture in the overlay with a real steady-state cost.
 
   Detection is **retrospective and cannot be otherwise**: a blocked isolate runs no timer,
@@ -59,7 +135,7 @@ Devtray(enabled: true, child: MyApp());   // was the default; now opt-in
 
 ### Added
 
-- **Log persistence.** `LogSink` is the shape of a destination and `LogExporter` owns the
+- **Log persistence.** `LogSink` is the shape of a destination and `DevtrayExport` owns the
   batching; nothing happens until you add a sink. Entries reach the sinks *before* the
   ring buffer evicts, so a long session writes every line even though the page shows the
   last 1000. `FlushPolicy` is a choice — `immediate()` / `batched()` / `manual()` — with
@@ -68,9 +144,9 @@ Devtray(enabled: true, child: MyApp());   // was the default; now opt-in
   uploader is just another `LogSink`.
 - **Saved session browser.** `LogsDebugPage(sessionSource: ...)` adds a picker for past
   runs, opened read-only and clearly marked as not live. Loaded sessions are held
-  separately from `LogStore` and never re-exported.
+  separately from `DevtrayLog` and never re-exported.
 - **Structured context on log entries.** Three layers, composing least-specific to most:
-  `LogStore.setContext` (ambient), `addEnricher` (computed per entry), and `fields:` on
+  `DevtrayLog.setContext` (ambient), `addEnricher` (computed per entry), and `fields:` on
   the individual call — plus `withContext` for a scope. All land in `LogEntry.fields`,
   are searchable and filterable, and are written by the sinks. Costs nothing when unused.
 - `JumpToLatestButton`, `LogFieldsSection`, `NetworkLogRow` and `DebugStorageAdapter.notice`
@@ -90,14 +166,14 @@ Devtray(enabled: true, child: MyApp());   // was the default; now opt-in
   ~37ms → ~23ms.
 - Search is debounced, and `LogEntry.searchable` is computed once rather than rebuilt per
   entry per keystroke.
-- Response bodies are capped (`NetworkLogStore.maxBodyChars`, default 256KB), the HTML
+- Response bodies are capped (`DevtrayNet.maxBodyChars`, default 256KB), the HTML
   sniff no longer stringifies whole bodies on every rebuild, and `prettyJson` is memoised.
 - State history no longer holds large state objects strongly — non-primitives are
-  snapshotted at capture time. `StateInspector.retainStateObjects` opts back in.
+  snapshotted at capture time. `DevtrayState.retainStateObjects` opts back in.
 - The Storage page reads only the selected adapter, refreshes only what was mutated, and
   caps sqflite reads at `maxRows` with the truncation surfaced.
-- `NetworkLogStore` and `StateInspector` now coalesce their change notifications, matching
-  `LogStore`.
+- `DevtrayNet` and `DevtrayState` now coalesce their change notifications, matching
+  `DevtrayLog`.
 - The dio interceptor detects double-registration (which used to orphan an entry as
   permanently pending); the Riverpod and bloc observers check the kill switch before doing
   work that throws-and-catches per provider update in release.
@@ -133,14 +209,14 @@ a transport-agnostic store, so dio and http still feed the same page.
 
    ```dart
    // + devtray_prefs
-   MockStore.instance.storage = SharedPreferencesMockRuleStorage();
+   DevtrayMocks.instance.storage = SharedPreferencesMockRuleStorage();
    ```
 
    The flag was a second switch that could only ever disagree with the first: `storage`
    defaults to in-memory, which is always empty at startup, so restoring from it was already
    a no-op.
 
-3. **`NetworkDebugPage(enableMocking:)` is gone.** `MockStore.instance.disable()` is the one
+3. **`NetworkDebugPage(enableMocking:)` is gone.** `DevtrayMocks.instance.disable()` is the one
    switch — the page reads it and drops the whole mocking UI along with the interception.
 
    Two switches meant they could disagree, and the dangerous direction was silent: hiding the

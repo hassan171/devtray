@@ -89,23 +89,6 @@ Future<void> _openStores() async {
     });
   }
 
-  // Attach build/user/screen context to everything captured from here on, so
-  // an error carries who and where without the throw site knowing about it.
-  installLogContext();
-
-  // Watch for UI freezes for the whole session, not just while the Timeline is
-  // on screen — the Debug tab's jank buttons freeze the UI from a different
-  // tab, and a watchdog scoped to the Timeline page would miss them.
-  //
-  // Opt-in on purpose: a heartbeat timer plus a per-frame callback is the only
-  // capture in the overlay with a real steady-state cost.
-  FreezeWatchdog.instance.start();
-
-  // Start persisting logs to disk. Everything captured from here on is written
-  // as well as buffered, so the Logs page's session picker has past runs to
-  // offer — including this one, once it ends.
-  await installLogPersistence();
-
   // A relational store alongside the map-shaped ones — see NotesDbAdapter.
   await NotesDb.init();
 
@@ -117,50 +100,81 @@ Future<void> _openStores() async {
 }
 
 void main() {
-  // Keep background noise out of the inspector.
-  NetworkLogStore.instance.excludedUrlPatterns.add('/health');
-
-  // Feeds the State page from bloc. The observer is the only bloc-specific
-  // adapter — StateInspector itself is library-agnostic. Already have an
-  // observer? Chain it:
+  // Feeds the State page from bloc. Stays out here because it's an assignment
+  // to bloc's own global, not devtray configuration — the observer is the only
+  // bloc-specific adapter; DevtrayState itself is library-agnostic. Already
+  // have an observer? Chain it:
   //   Bloc.observer = DebugBlocObserver(next: MyObserver());
   Bloc.observer = DebugBlocObserver();
-
-  // Show fields a source holds OUTSIDE its state. The inspector only ever sees
-  // the current state, and Flutter has no reflection to go find the rest — so
-  // you point at them. Registered from out here, CounterCubit needs no debug
-  // import.
-  //
-  // (TodoBloc does the same thing the other way, by implementing
-  // DebugInspectable — see counter_cubit.dart.)
-  StateInspector.instance.inspect<CounterCubit>((c) => {'history': c.history, 'lastTouched': c.lastTouched});
-
-  // The same mechanism, for a Riverpod notifier — `inspect` is keyed by type and
-  // knows nothing about which library produced it. Nothing here is bloc- or
-  // Riverpod-specific; that's the whole point.
-  //
-  // (It reads the notifier's own fields, not `state`: Riverpod protects that,
-  // where a bloc's is public. The state is already on the page anyway — `inspect`
-  // is for what ISN'T.)
-  StateInspector.instance.inspect<Session>((s) => {'signIns': s.signIns, 'lastSignIn': s.lastSignIn});
-
-  // Control how a state is DISPLAYED (not the data). TodoBloc's state is a
-  // List<String>, which by default prints cramped: [todo 48, todo 48, todo 49].
-  // Render one todo per line — but ONLY for TodoBloc, not every List<String>
-  // state in the app. formatSource is keyed by the SOURCE type, so it's scoped
-  // to this one cubit; format<T> would hit every source whose state is a T.
-  StateInspector.instance.formatSource<TodoBloc>((state) {
-    final todos = state as List<String>;
-    return todos.isEmpty ? '(no todos)' : todos.map((t) => '• $t').join('\n');
-  });
 
   // One call: installs the log/error capture Zone, wraps the app in the
   // overlay, and runs it. `enabled` gates both — with it false this is a plain
   // runApp() and the package leaves no trace in the tree.
   runDebugApp(
+    // Everything the overlay's stores need, in one place.
+    //
+    // These used to be half a dozen `Something.instance.x = y` lines scattered
+    // above this call, which was easy to lose track of and — for the ones that
+    // check the kill switch — silently order-dependent. `configure` runs after
+    // the kill switch is set and the capture hooks are installed, and is
+    // skipped entirely in a release build.
+    configure: (d) => d
+      // Keep background noise out of the inspector.
+      ..excludeUrls(['/health'])
+      // Ambient context on every log line and error. The payoff is the errors
+      // nobody anticipated: a crash report that says who it happened to,
+      // without the throw site knowing anything about it.
+      ..context({'build': '1.4.2+318', 'flavor': 'example', 'userId': 'anonymous'})
+      // Computed per entry, for values that must be *current* rather than
+      // whatever they were when last set.
+      ..enrich('nav', () => {'screen': currentScreen})
+      ..enrich('session', () => {'uptime': '${DateTime.now().difference(startedAt).inSeconds}s'})
+      // Show fields a source holds OUTSIDE its state. The inspector only ever
+      // sees the current state, and Flutter has no reflection to go find the
+      // rest — so you point at them. Registered here, neither class needs a
+      // debug import of its own.
+      //
+      // `inspectAll` where several are registered together; `inspect<T>` is
+      // identical for a single one. Each entry carries its own type, which is
+      // why they are `Inspect` objects — the registry is keyed by type, and a
+      // list of bare callbacks would erase it.
+      //
+      // Note the second is a Riverpod notifier and the first a bloc cubit:
+      // `inspect` knows nothing about which library produced them, which is the
+      // whole point. (TodoBloc does the same thing the other way, by
+      // implementing DebugInspectable — see counter_cubit.dart.)
+      ..inspectAll([
+        Inspect<CounterCubit>((c) => {'history': c.history, 'lastTouched': c.lastTouched}),
+        Inspect<Session>((s) => {'signIns': s.signIns, 'lastSignIn': s.lastSignIn}),
+      ])
+      // Control how a state is DISPLAYED (not the data). TodoBloc's state is a
+      // List<String>, which by default prints cramped. formatSource is keyed by
+      // the SOURCE type, so this is scoped to this one bloc; formatState<T>
+      // would hit every source whose state is a T.
+      ..formatSource<TodoBloc>((state) {
+        final todos = state as List<String>;
+        return todos.isEmpty ? '(no todos)' : todos.map((t) => '• $t').join('\n');
+      })
+      // Watch for UI freezes for the whole session, not just while the Timeline
+      // page is mounted — the Debug tab's jank buttons freeze the UI from a
+      // different tab, and a page-scoped watchdog would miss them.
+      ..detectFreezes()
+      // Logs leave memory and land on disk, so the Logs page's session picker
+      // has past runs to offer. Async because opening the directory touches the
+      // filesystem; runDebugApp awaits it before running the app, so bootstrap
+      // lines still make it into the file.
+      ..logToAsync(
+        openFileLogSink,
+        // Batched is the default; spelled out because it's the setting worth
+        // knowing about. Short interval so the example's files fill visibly.
+        policy: const FlushPolicy.batched(size: 25, interval: Duration(seconds: 2)),
+      )
+      // A second destination on the same buffer — the shape of shipping logs
+      // somewhere. Not a real upload: see UploadLogSink.
+      ..logTo(UploadLogSink()),
     // The Riverpod scope wraps the app, so the observer sees every provider.
     // Note what ISN'T here: no second State page, no choosing between libraries.
-    // The bloc observer above and this one push into the same StateInspector,
+    // The bloc observer above and this one push into the same DevtrayState,
     // and the page shows both — which is exactly what an app migrating from one
     // to the other needs.
     app: ProviderScope(

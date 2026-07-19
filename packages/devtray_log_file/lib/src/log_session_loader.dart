@@ -17,7 +17,7 @@ import 'file_log_sink.dart';
 /// ```
 ///
 /// Loaded entries are plain [LogEntry]s and are deliberately **not** pushed
-/// into [LogStore] — see [LogSession]. The Logs page renders them in a separate
+/// into [DevtrayLog] — see [LogSession]. The Logs page renders them in a separate
 /// read-only view.
 class LogSessionLoader {
   /// Where session files are read from.

@@ -23,7 +23,7 @@ class _FakeAdapter implements HttpClientAdapter {
 void main() {
   setUp(() {
     DevtrayKillSwitch.enabled = true;
-    NetworkLogStore.instance.clear();
+    DevtrayNet.instance.clear();
   });
 
   tearDown(() => DevtrayKillSwitch.enabled = true);
@@ -45,7 +45,7 @@ void main() {
       return dio.get<dynamic>('https://api.test/x').then((res) {
         expect(res.statusCode, 200);
         expect(network.wasCalled, isTrue);
-        expect(NetworkLogStore.instance.entries, isEmpty);
+        expect(DevtrayNet.instance.entries, isEmpty);
       });
     });
   });

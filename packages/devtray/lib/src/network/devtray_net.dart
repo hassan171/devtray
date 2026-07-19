@@ -3,7 +3,7 @@ import 'dart:collection';
 import 'package:flutter/foundation.dart';
 
 import '../core/devtray_kill_switch.dart';
-import '../logs/log_store.dart';
+import '../logs/devtray_log.dart';
 
 enum NetworkLogStatus { pending, success, failed }
 
@@ -27,7 +27,7 @@ enum NetworkErrorReporting {
 }
 
 /// A single captured request/response pair. Transport-agnostic — dio, http and
-/// hand-rolled clients all funnel into this shape via [NetworkLogStore].
+/// hand-rolled clients all funnel into this shape via [DevtrayNet].
 class NetworkLogEntry {
   final int id;
   final String method;
@@ -151,16 +151,16 @@ class NetworkError implements Exception {
 /// public so any client can be wired up by hand:
 ///
 /// ```dart
-/// final entry = NetworkLogStore.instance.add(method: 'GET', uri: uri, ...);
+/// final entry = DevtrayNet.instance.add(method: 'GET', uri: uri, ...);
 /// // ...
-/// NetworkLogStore.instance.complete(entry.id, statusCode: 200, status: NetworkLogStatus.success);
+/// DevtrayNet.instance.complete(entry.id, statusCode: 200, status: NetworkLogStatus.success);
 /// ```
-class NetworkLogStore {
-  NetworkLogStore._() {
+class DevtrayNet {
+  DevtrayNet._() {
     // Flipping the kill switch off must also drop what's already buffered.
     DevtrayKillSwitch.addDisableListener(clear);
   }
-  static final NetworkLogStore instance = NetworkLogStore._();
+  static final DevtrayNet instance = DevtrayNet._();
 
   /// Oldest entries are dropped past this cap. Tune before wiring up a client.
   int maxEntries = 500;
@@ -176,7 +176,7 @@ class NetworkLogStore {
   /// any time from code:
   ///
   /// ```dart
-  /// NetworkLogStore.instance.errorReporting.value = NetworkErrorReporting.serverAndTransport;
+  /// DevtrayNet.instance.errorReporting.value = NetworkErrorReporting.serverAndTransport;
   /// ```
   final ValueNotifier<NetworkErrorReporting> errorReporting = ValueNotifier(NetworkErrorReporting.all);
 
@@ -197,7 +197,7 @@ class NetworkLogStore {
 
   /// A "something changed" signal for the Network page.
   ///
-  /// Coalesced, matching [LogStore.tick]: `complete()` is called from inside a
+  /// Coalesced, matching [DevtrayLog.tick]: `complete()` is called from inside a
   /// transport interceptor, which can run during any phase of the frame, and a
   /// burst of concurrent requests would otherwise fire a synchronous
   /// notification each. See [CoalescingValueNotifier].
@@ -269,7 +269,7 @@ class NetworkLogStore {
     // Every adapter funnels through complete(), so hooking here forwards
     // failures from dio, http and any hand-rolled client alike.
     if (status == NetworkLogStatus.failed && _shouldReport(entry)) {
-      LogStore.instance.report(
+      DevtrayLog.instance.report(
         NetworkError(entry),
         // Transport failures have no useful Dart stack (the throw site is deep
         // in the HTTP client), so the entry itself is the diagnostic.
@@ -308,7 +308,7 @@ class NetworkLogStore {
     if (body is! String || body.length <= maxBodyChars) return body;
     return '${body.substring(0, maxBodyChars)}\n\n'
         '[devtray] truncated — ${body.length} characters total, kept $maxBodyChars. '
-        'Raise NetworkLogStore.instance.maxBodyChars to keep more.';
+        'Raise DevtrayNet.instance.maxBodyChars to keep more.';
   }
 
   void clear() {

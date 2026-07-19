@@ -4,8 +4,8 @@ import 'package:flutter/foundation.dart' show debugPrint;
 
 const String _logIdKey = '__devtray_netlog_id';
 
-/// Captures every dio request into [NetworkLogStore], and applies any mock rules
-/// from [MockStore] (delay / fake response / simulated failure).
+/// Captures every dio request into [DevtrayNet], and applies any mock rules
+/// from [DevtrayMocks] (delay / fake response / simulated failure).
 ///
 /// ```dart
 /// dio.interceptors.add(DebugDioInterceptor());
@@ -13,14 +13,14 @@ const String _logIdKey = '__devtray_netlog_id';
 ///
 /// Add it **last** so it sees the final headers other interceptors set (auth
 /// tokens, etc.). To keep noisy endpoints out of the list, populate
-/// `NetworkLogStore.instance.excludedUrlPatterns`.
+/// `DevtrayNet.instance.excludedUrlPatterns`.
 class DebugDioInterceptor extends Interceptor {
-  final NetworkLogStore _store;
-  final MockStore _mocks;
+  final DevtrayNet _store;
+  final DevtrayMocks _mocks;
 
-  DebugDioInterceptor({NetworkLogStore? store, MockStore? mockStore})
-      : _store = store ?? NetworkLogStore.instance,
-        _mocks = mockStore ?? MockStore.instance;
+  DebugDioInterceptor({DevtrayNet? store, DevtrayMocks? mockStore})
+      : _store = store ?? DevtrayNet.instance,
+        _mocks = mockStore ?? DevtrayMocks.instance;
 
   @override
   Future<void> onRequest(RequestOptions options, RequestInterceptorHandler handler) async {

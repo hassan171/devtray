@@ -65,9 +65,9 @@ class SlowFrameEvent {
 /// A periodic timer at [heartbeatInterval] plus a per-frame callback. Small,
 /// but the first thing in the overlay with a real steady-state cost — so it is
 /// **opt-in**: nothing runs until [start] is called.
-class FreezeWatchdog {
-  FreezeWatchdog._();
-  static final FreezeWatchdog instance = FreezeWatchdog._();
+class DevtrayJank {
+  DevtrayJank._();
+  static final DevtrayJank instance = DevtrayJank._();
 
   /// How often the heartbeat checks in.
   ///

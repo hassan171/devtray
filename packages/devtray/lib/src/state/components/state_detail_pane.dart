@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/devtray_theme.dart';
 import '../../core/debug_text_styles.dart';
 import '../../widgets/copyable_section.dart';
-import '../state_inspector.dart';
+import '../devtray_state.dart';
 import 'state_row.dart';
 
 /// One source in full: its live state, any error, and every change it has
@@ -48,7 +48,7 @@ class _StateDetailPaneState extends State<StateDetailPane> {
 
     // Read on every build, so the values are live rather than a snapshot from
     // whenever the source last emitted.
-    final fields = StateInspector.instance.liveFieldsOf(source);
+    final fields = DevtrayState.instance.liveFieldsOf(source);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -96,7 +96,7 @@ class _StateDetailPaneState extends State<StateDetailPane> {
                   delegate: SliverChildListDelegate([
                     CopyableSection(
                       title: 'Current state',
-                      body: StateInspector.instance.display(source.state, sourceType: source.type),
+                      body: DevtrayState.instance.display(source.state, sourceType: source.type),
                     ),
 
                     // The error, if any, sits directly under the state — you
@@ -114,7 +114,7 @@ class _StateDetailPaneState extends State<StateDetailPane> {
                     // Fields the source holds OUTSIDE its state — a sync queue,
                     // a lookup map, a retry counter. Read live from the instance
                     // on every rebuild, so they're current. See
-                    // StateInspector.inspect.
+                    // DevtrayState.inspect.
                     if (fields.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       _SectionHeader(
@@ -422,7 +422,7 @@ class _StateLine extends StatelessWidget {
               // Same formatting as the current-state line, so from/to read
               // consistently — a source-scoped/state-type formatter or the
               // pretty List/Map dump.
-              StateInspector.instance.display(value, sourceType: sourceType),
+              DevtrayState.instance.display(value, sourceType: sourceType),
               style: DebugTextStyles.debugMono(color: color, fontSize: 11, height: 1.35),
             ),
           ),

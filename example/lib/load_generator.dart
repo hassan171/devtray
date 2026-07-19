@@ -59,7 +59,7 @@ class LoadGenerator {
     _logTimer = Timer.periodic(logPeriod, (_) => _fireLogsAndState());
     isRunning.value = true;
 
-    LogStore.instance.log(
+    Devtray.log(
       'Load generator started — network every ${networkPeriod.inMilliseconds}ms, '
       'logs every ${logPeriod.inMilliseconds}ms',
       level: LogLevel.info,
@@ -76,7 +76,7 @@ class LoadGenerator {
     _logTimer = null;
     isRunning.value = false;
 
-    LogStore.instance.log('Load generator stopped after ${emitted.value} events', level: LogLevel.info, tag: 'load');
+    Devtray.log('Load generator stopped after ${emitted.value} events', level: LogLevel.info, tag: 'load');
   }
 
   void toggle() => isRunning.value ? stop() : start();
@@ -88,7 +88,7 @@ class LoadGenerator {
   /// in-flight HTTP calls would spend a minute resolving and mostly measure
   /// jsonplaceholder's rate limiter.
   Future<void> burst({int requests = 12, int logs = 1200}) async {
-    LogStore.instance.log('Burst: $requests requests, $logs log lines', level: LogLevel.info, tag: 'load');
+    Devtray.log('Burst: $requests requests, $logs log lines', level: LogLevel.info, tag: 'load');
 
     for (var i = 0; i < logs; i++) {
       _emitLog(i);
@@ -163,19 +163,18 @@ class LoadGenerator {
 
   /// One log line, cycling through every level, tag and shape the page renders.
   void _emitLog(int n) {
-    final store = LogStore.instance;
 
     switch (n % 8) {
       case 0:
-        store.log('Cache hit for key user:${n % 50}', level: LogLevel.debug, tag: 'cache');
+        Devtray.log('Cache hit for key user:${n % 50}', level: LogLevel.debug, tag: 'cache');
       case 1:
-        store.log('Sync completed in ${_random.nextInt(400)}ms', level: LogLevel.info, tag: 'sync');
+        Devtray.log('Sync completed in ${_random.nextInt(400)}ms', level: LogLevel.info, tag: 'sync');
       case 2:
-        store.log('Retry ${n % 3 + 1}/3 for pending upload', level: LogLevel.warning, tag: 'upload');
+        Devtray.log('Retry ${n % 3 + 1}/3 for pending upload', level: LogLevel.warning, tag: 'upload');
       case 3:
         // A long, multi-line message — the row has to stay one line collapsed
         // and readable expanded.
-        store.log(
+        Devtray.log(
           'Payload rejected by validator\n'
           '  field: email\n'
           '  value: not-an-email-$n\n'
@@ -185,19 +184,19 @@ class LoadGenerator {
         );
       case 4:
         // Untagged, so the tag filter has entries that don't match any tag.
-        store.log('Frame budget exceeded: ${16 + _random.nextInt(30)}ms');
+        Devtray.log('Frame budget exceeded: ${16 + _random.nextInt(30)}ms');
       case 5:
         // Goes through the debugPrint hook rather than the store directly.
         debugPrint('debugPrint from the load generator — tick $n');
       case 6:
         // A reported error with a real stack, so the Logs detail has one to show.
-        store.report(
+        Devtray.report(
           StateError('Simulated failure #$n'),
           stackTrace: StackTrace.current,
           context: 'LoadGenerator._emitLog',
         );
       case 7:
-        store.log('User ${n % 20} tapped "Save"', level: LogLevel.info, tag: 'analytics');
+        Devtray.log('User ${n % 20} tapped "Save"', level: LogLevel.info, tag: 'analytics');
     }
   }
 
@@ -222,7 +221,7 @@ class LoadGenerator {
   /// The work is deliberately un-optimisable: the result is written to
   /// [lastJankResult] so the compiler cannot decide the loop is dead.
   void freezeUi([Duration duration = const Duration(milliseconds: 900)]) {
-    LogStore.instance.log(
+    Devtray.log(
       'About to block the UI isolate for ${duration.inMilliseconds}ms',
       level: LogLevel.warning,
       tag: 'jank',
@@ -238,7 +237,7 @@ class LoadGenerator {
     }
     lastJankResult = sink;
 
-    LogStore.instance.log(
+    Devtray.log(
       'Unblocked after ${stopwatch.elapsedMilliseconds}ms — check the Timeline jank lane',
       level: LogLevel.warning,
       tag: 'jank',
@@ -252,7 +251,7 @@ class LoadGenerator {
   /// heartbeat sees nothing. Between them the two cover both "we dropped 40
   /// frames" and "we rendered nothing for a second".
   Future<void> stutterUi({int frames = 30, Duration each = const Duration(milliseconds: 45)}) async {
-    LogStore.instance.log('Stuttering for $frames frames', level: LogLevel.warning, tag: 'jank');
+    Devtray.log('Stuttering for $frames frames', level: LogLevel.warning, tag: 'jank');
 
     for (var f = 0; f < frames; f++) {
       // The burn has to happen INSIDE a frame to be a slow frame.
@@ -286,7 +285,7 @@ class LoadGenerator {
       await completer.future;
     }
 
-    LogStore.instance.log(
+    Devtray.log(
       'Stutter done — check the Timeline jank lane for slow frames',
       level: LogLevel.warning,
       tag: 'jank',

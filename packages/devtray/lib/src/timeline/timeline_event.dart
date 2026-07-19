@@ -1,7 +1,7 @@
-import '../logs/log_store.dart';
-import '../network/network_log_store.dart';
-import '../state/state_inspector.dart';
-import 'freeze_watchdog.dart';
+import '../logs/devtray_log.dart';
+import '../network/devtray_net.dart';
+import '../state/devtray_state.dart';
+import 'devtray_jank.dart';
 
 /// Which lane an event is drawn in.
 enum TimelineLane {
@@ -106,7 +106,7 @@ List<TimelineEvent> collectTimelineEvents({
   final events = <TimelineEvent>[];
 
   if (includeJank) {
-    for (final f in FreezeWatchdog.instance.freezes) {
+    for (final f in DevtrayJank.instance.freezes) {
       if (f.end.isBefore(from) || f.start.isAfter(to)) continue;
       events.add(
         TimelineEvent(
@@ -121,7 +121,7 @@ List<TimelineEvent> collectTimelineEvents({
       );
     }
 
-    for (final f in FreezeWatchdog.instance.slowFrames) {
+    for (final f in DevtrayJank.instance.slowFrames) {
       if (f.at.isBefore(from) || f.at.isAfter(to)) continue;
       events.add(
         TimelineEvent(
@@ -138,7 +138,7 @@ List<TimelineEvent> collectTimelineEvents({
   }
 
   if (includeNetwork) {
-    for (final e in NetworkLogStore.instance.entries) {
+    for (final e in DevtrayNet.instance.entries) {
       final pending = e.status == NetworkLogStatus.pending;
       final end = e.completedAt ?? (pending ? to : e.startedAt);
       // Overlap, not containment: a request that started before the window but
@@ -161,7 +161,7 @@ List<TimelineEvent> collectTimelineEvents({
   }
 
   if (includeLogs) {
-    for (final e in LogStore.instance.entries) {
+    for (final e in DevtrayLog.instance.entries) {
       if (e.time.isBefore(from) || e.time.isAfter(to)) continue;
       events.add(
         TimelineEvent(
@@ -176,7 +176,7 @@ List<TimelineEvent> collectTimelineEvents({
   }
 
   if (includeState) {
-    for (final source in StateInspector.instance.sources) {
+    for (final source in DevtrayState.instance.sources) {
       for (final change in source.changes) {
         if (change.time.isBefore(from) || change.time.isAfter(to)) continue;
         events.add(

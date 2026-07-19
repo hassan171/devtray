@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+
+No changes of its own, but the core renamed several public types — see its
+changelog for the migration table. Requires `devtray ^0.4.0`.
+
 ## 0.3.0
 
 No changes. Versioned in step with the rest of the set, and requires

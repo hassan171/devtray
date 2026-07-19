@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+
+No changes of its own, but the core renamed several public types — see its
+changelog for the migration table. Requires `devtray ^0.4.0`.
+
 ## 0.3.0
 
 No changes. Versioned in step with the rest of the set, and requires
@@ -9,7 +14,7 @@ No changes. Versioned in step with the rest of the set, and requires
 
 - `onTransition` now checks the kill switch before stashing the pending event. Without it,
   a release build with the observer installed kept taking a strong reference to an event
-  object per transition, for a `StateInspector` that was never going to read them.
+  object per transition, for a `DevtrayState` that was never going to read them.
 
 ## 0.1.0
 

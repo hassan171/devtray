@@ -1,7 +1,7 @@
 import 'package:devtray/devtray.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Feeds [StateInspector] from Riverpod. Install it on the scope:
+/// Feeds [DevtrayState] from Riverpod. Install it on the scope:
 ///
 /// ```dart
 /// ProviderScope(
@@ -18,7 +18,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// ```
 ///
 /// This is the **only** file in the package that imports Riverpod. The store it
-/// feeds ([StateInspector]) is library-agnostic — which is why the State page
+/// feeds ([DevtrayState]) is library-agnostic — which is why the State page
 /// itself lives in the core, and why bloc and Riverpod can fill the same page
 /// with neither knowing about the other.
 ///
@@ -47,7 +47,7 @@ base class DebugRiverpodObserver extends ProviderObserver {
 
   /// The live Notifier behind the provider, or null for a plain `Provider`.
   ///
-  /// This is what [StateInspector.inspect] needs: the object whose fields it
+  /// This is what [DevtrayState.inspect] needs: the object whose fields it
   /// reads. A bloc IS that object, so `DebugBlocObserver` just passes the bloc.
   /// Riverpod splits the two — the *provider* is a const declaration holding
   /// nothing, and the *notifier* is where a `signIns` counter or a cache would
@@ -81,14 +81,14 @@ base class DebugRiverpodObserver extends ProviderObserver {
 
   @override
   void didAddProvider(ProviderObserverContext context, Object? value) {
-    // Checked here, not just inside StateInspector: _notifierOf() below does a
+    // Checked here, not just inside DevtrayState: _notifierOf() below does a
     // dynamic read that throws NoSuchMethodError for every plain Provider and
     // FutureProvider, and constructing a thrown exception (with its stack) on
     // every provider event is not something a release build should pay for.
     // The observer stays installed for the process lifetime, so without this
     // an app that ships it keeps paying.
     if (DevtrayKillSwitch.enabled) {
-      StateInspector.instance.recordCreate(
+      DevtrayState.instance.recordCreate(
         _idOf(context),
         type: _typeOf(context),
         state: value,
@@ -101,7 +101,7 @@ base class DebugRiverpodObserver extends ProviderObserver {
   @override
   void didUpdateProvider(ProviderObserverContext context, Object? previousValue, Object? newValue) {
     if (DevtrayKillSwitch.enabled) {
-      StateInspector.instance.record(
+      DevtrayState.instance.record(
         _idOf(context),
         type: _typeOf(context),
         from: previousValue,
@@ -118,7 +118,7 @@ base class DebugRiverpodObserver extends ProviderObserver {
 
   @override
   void providerDidFail(ProviderObserverContext context, Object error, StackTrace stackTrace) {
-    StateInspector.instance.recordError(_idOf(context), error, stackTrace);
+    DevtrayState.instance.recordError(_idOf(context), error, stackTrace);
     next?.providerDidFail(context, error, stackTrace);
   }
 
@@ -127,7 +127,7 @@ base class DebugRiverpodObserver extends ProviderObserver {
     // `didDisposeProvider`, not `didUnmountProvider`: this fires when the
     // provider's onDispose listeners run, which is when it stops being live —
     // the moment worth showing. Unmounting is a later memory-management detail.
-    StateInspector.instance.recordClose(_idOf(context));
+    DevtrayState.instance.recordClose(_idOf(context));
     next?.didDisposeProvider(context);
   }
 }

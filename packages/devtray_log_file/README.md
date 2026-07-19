@@ -2,7 +2,7 @@
 
 Write [devtray](../devtray)'s captured logs to disk, and load a past run back into the Logs page.
 
-`LogStore` is an in-memory ring buffer: 1000 entries, oldest dropped, gone when the process
+`DevtrayLog` is an in-memory ring buffer: 1000 entries, oldest dropped, gone when the process
 exits. That's the right default for a debug overlay, but it means the log of the crash you
 just saw died with the app. This is the fix.
 
@@ -11,12 +11,21 @@ just saw died with the app. This is the fix.
 ```dart
 import 'package:devtray_log_file/devtray_log_file.dart';
 
-LogExporter.instance.addSink(await FileLogSink.open());
+runDebugApp(
+  app: const MyApp(),
+  configure: (devtray) => devtray..logToAsync(() => FileLogSink.open()),
+  pages: const [...],
+);
 ```
 
 That's the whole opt-in. Every captured line is now written as well as buffered — including
 lines the ring buffer later evicts, so a long session lands on disk in full even though the
 page only ever shows the last 1000.
+
+`logToAsync` rather than `logTo` because opening the sink touches the filesystem — it creates
+the directory and prunes old sessions. `runDebugApp` awaits it before running your app, so
+lines logged during bootstrap still reach the file rather than falling in the gap between
+"configured" and "open".
 
 To read past runs back, hand the Logs page a session source:
 
@@ -97,7 +106,8 @@ class UploadSink extends LogSink {
   }
 }
 
-LogExporter.instance.addSink(UploadSink());
+// then, in configure:
+..logTo(UploadSink())
 ```
 
 The batching, flush policy and failure handling all apply unchanged, and sinks fan out — a
@@ -109,10 +119,13 @@ them for you would be wrong for most apps.
 
 ## When logs get written
 
-Set the policy on `LogExporter`:
+Set the policy alongside the sink:
 
 ```dart
-LogExporter.instance.policy = const FlushPolicy.batched(size: 50, interval: Duration(seconds: 5));
+..logToAsync(
+  () => FileLogSink.open(),
+  policy: const FlushPolicy.batched(size: 50, interval: Duration(seconds: 5)),
+)
 ```
 
 | Policy | Loses on crash | Cost |
@@ -121,9 +134,9 @@ LogExporter.instance.policy = const FlushPolicy.batched(size: 50, interval: Dura
 | `batched()` (default) | Up to one interval | One write per batch |
 | `manual()` | Everything since the last `flush()` | Nothing until you ask |
 
-`LogExporter.flushOnPause` (on by default) flushes when the app is backgrounded — the last
+`DevtrayExport.flushOnPause` (on by default) flushes when the app is backgrounded — the last
 moment before the OS may kill the process, and what makes `batched` safe enough to be the
-default. It needs `LogExporter.observeLifecycle()`, which `runDebugApp` calls for you.
+default. It needs `DevtrayExport.observeLifecycle()`, which `runDebugApp` calls for you.
 
 ## Failure handling
 
@@ -131,7 +144,7 @@ A sink that throws is disabled for the rest of the session and the failure is re
 the log itself, where you'll see it on the Logs page — rather than being allowed to take
 down the app it's meant to be diagnosing. One bad sink doesn't stop the others.
 
-`LogExporter.failedSinks` lists what broke; `retrySink(name)` re-enables one.
+`DevtrayExport.failedSinks` lists what broke; `retrySink(name)` re-enables one.
 
 ## Why this isn't in devtray itself
 

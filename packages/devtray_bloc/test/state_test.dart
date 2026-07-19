@@ -52,7 +52,7 @@ Widget _host() => const MaterialApp(
 void main() {
   setUp(() {
     DevtrayKillSwitch.reset();
-    StateInspector.instance.clear();
+    DevtrayState.instance.clear();
     Bloc.observer = DebugBlocObserver();
   });
 
@@ -66,7 +66,7 @@ void main() {
       final cubit = CounterCubit();
       addTearDown(cubit.close);
 
-      final tracked = StateInspector.instance.sources.single;
+      final tracked = DevtrayState.instance.sources.single;
       expect(tracked.type, 'CounterCubit');
       expect(tracked.state, 0);
       expect(tracked.changes, isEmpty, reason: 'creation is not a change');
@@ -80,7 +80,7 @@ void main() {
         ..increment()
         ..increment();
 
-      final tracked = StateInspector.instance.sources.single;
+      final tracked = DevtrayState.instance.sources.single;
       expect(tracked.state, 2);
       expect(tracked.changes, hasLength(2));
 
@@ -101,7 +101,7 @@ void main() {
 
       a.increment();
 
-      final sources = StateInspector.instance.sources;
+      final sources = DevtrayState.instance.sources;
       expect(sources, hasLength(2));
       expect(sources.map((x) => x.state), containsAll([1, 0]));
     });
@@ -112,7 +112,7 @@ void main() {
 
       cubit.boom();
 
-      final tracked = StateInspector.instance.sources.single;
+      final tracked = DevtrayState.instance.sources.single;
       expect(tracked.error, isA<StateError>());
       expect(tracked.stackTrace, isNotNull);
     });
@@ -122,7 +122,7 @@ void main() {
       cubit.increment();
       await cubit.close();
 
-      final tracked = StateInspector.instance.sources.single;
+      final tracked = DevtrayState.instance.sources.single;
       // You often want to see what a cubit did just before its screen was popped.
       expect(tracked.isClosed, isTrue);
       expect(tracked.state, 1);
@@ -136,8 +136,8 @@ void main() {
       final live = CounterCubit();
       addTearDown(live.close);
 
-      expect(StateInspector.instance.sources.first.isClosed, isFalse);
-      expect(StateInspector.instance.sources.last.isClosed, isTrue);
+      expect(DevtrayState.instance.sources.first.isClosed, isFalse);
+      expect(DevtrayState.instance.sources.last.isClosed, isTrue);
     });
 
     test('clearClosed drops the dead ones and keeps the live', () async {
@@ -146,9 +146,9 @@ void main() {
       final live = CounterCubit();
       addTearDown(live.close);
 
-      StateInspector.instance.clearClosed();
+      DevtrayState.instance.clearClosed();
 
-      expect(StateInspector.instance.sources.single.isClosed, isFalse);
+      expect(DevtrayState.instance.sources.single.isClosed, isFalse);
     });
   });
 
@@ -166,7 +166,7 @@ void main() {
       bloc.add(const Decrement());
       await Future<void>.delayed(Duration.zero);
 
-      final tracked = StateInspector.instance.sources.single;
+      final tracked = DevtrayState.instance.sources.single;
       expect(tracked.changes, hasLength(2));
 
       // Newest first: the Decrement (1 → 0) and the Increment (0 → 1).
@@ -188,7 +188,7 @@ void main() {
       bloc.add(const Increment());
       await Future<void>.delayed(Duration.zero);
 
-      expect(StateInspector.instance.sources.single.changes, hasLength(1));
+      expect(DevtrayState.instance.sources.single.changes, hasLength(1));
     });
 
     test('a plain cubit has no event', () {
@@ -197,7 +197,7 @@ void main() {
 
       cubit.increment();
 
-      expect(StateInspector.instance.sources.single.changes.single.event, isNull);
+      expect(DevtrayState.instance.sources.single.changes.single.event, isNull);
     });
   });
 
@@ -207,75 +207,75 @@ void main() {
     // has no reflection to go find it. So the cubit (or the app) has to point.
 
     test('inspect() exposes fields without touching the cubit', () {
-      StateInspector.instance.inspect<CounterCubit>((c) => {'extra': c.extra});
-      addTearDown(StateInspector.instance.clearInspectors);
+      DevtrayState.instance.inspect<CounterCubit>((c) => {'extra': c.extra});
+      addTearDown(DevtrayState.instance.clearInspectors);
 
       final cubit = CounterCubit();
       addTearDown(cubit.close);
       cubit.extra = 'hello';
 
-      final tracked = StateInspector.instance.sources.single;
-      expect(StateInspector.instance.liveFieldsOf(tracked), {'extra': 'hello'});
+      final tracked = DevtrayState.instance.sources.single;
+      expect(DevtrayState.instance.liveFieldsOf(tracked), {'extra': 'hello'});
     });
 
     test('fields are read LIVE, not snapshotted at emit time', () {
-      StateInspector.instance.inspect<CounterCubit>((c) => {'extra': c.extra});
-      addTearDown(StateInspector.instance.clearInspectors);
+      DevtrayState.instance.inspect<CounterCubit>((c) => {'extra': c.extra});
+      addTearDown(DevtrayState.instance.clearInspectors);
 
       final cubit = CounterCubit();
       addTearDown(cubit.close);
 
-      final tracked = StateInspector.instance.sources.single;
-      expect(StateInspector.instance.liveFieldsOf(tracked)['extra'], isNull);
+      final tracked = DevtrayState.instance.sources.single;
+      expect(DevtrayState.instance.liveFieldsOf(tracked)['extra'], isNull);
 
       // Changed with NO emit — the whole reason the detail pane has a re-read
       // button.
       cubit.extra = 'changed';
 
-      expect(StateInspector.instance.liveFieldsOf(tracked)['extra'], 'changed');
+      expect(DevtrayState.instance.liveFieldsOf(tracked)['extra'], 'changed');
     });
 
     test('DebugInspectable works too', () {
       final cubit = InspectableCubit();
       addTearDown(cubit.close);
 
-      final tracked = StateInspector.instance.sources.single;
-      expect(StateInspector.instance.liveFieldsOf(tracked), {'from': 'the interface'});
+      final tracked = DevtrayState.instance.sources.single;
+      expect(DevtrayState.instance.liveFieldsOf(tracked), {'from': 'the interface'});
     });
 
     test('a registration WINS over the interface, so you can override a cubit', () {
-      StateInspector.instance.inspect<InspectableCubit>((c) => {'from': 'the registry'});
-      addTearDown(StateInspector.instance.clearInspectors);
+      DevtrayState.instance.inspect<InspectableCubit>((c) => {'from': 'the registry'});
+      addTearDown(DevtrayState.instance.clearInspectors);
 
       final cubit = InspectableCubit();
       addTearDown(cubit.close);
 
-      final tracked = StateInspector.instance.sources.single;
-      expect(StateInspector.instance.liveFieldsOf(tracked), {'from': 'the registry'});
+      final tracked = DevtrayState.instance.sources.single;
+      expect(DevtrayState.instance.liveFieldsOf(tracked), {'from': 'the registry'});
     });
 
     test('a cubit exposing nothing yields no fields', () {
       final cubit = CounterCubit();
       addTearDown(cubit.close);
 
-      expect(StateInspector.instance.liveFieldsOf(StateInspector.instance.sources.single), isEmpty);
+      expect(DevtrayState.instance.liveFieldsOf(DevtrayState.instance.sources.single), isEmpty);
     });
 
     test('a throwing extractor does NOT take the page down', () {
-      StateInspector.instance.inspect<CounterCubit>((c) => throw StateError('bad extractor'));
-      addTearDown(StateInspector.instance.clearInspectors);
+      DevtrayState.instance.inspect<CounterCubit>((c) => throw StateError('bad extractor'));
+      addTearDown(DevtrayState.instance.clearInspectors);
 
       final cubit = CounterCubit();
       addTearDown(cubit.close);
 
-      final fields = StateInspector.instance.liveFieldsOf(StateInspector.instance.sources.single);
+      final fields = DevtrayState.instance.liveFieldsOf(DevtrayState.instance.sources.single);
       expect(fields.keys.single, contains('threw'));
       expect(fields.values.single.toString(), contains('bad extractor'));
     });
 
     test('the instance is held WEAKLY — the tool must not keep your cubits alive', () {
       final cubit = CounterCubit();
-      final tracked = StateInspector.instance.sources.single;
+      final tracked = DevtrayState.instance.sources.single;
 
       // A strong reference would make this debug tool the thing leaking every
       // cubit the app ever created — the exact bug it exists to help you find.
@@ -288,8 +288,8 @@ void main() {
 
   group('caps', () {
     test('changes are capped per source, keeping the newest', () {
-      StateInspector.instance.maxChangesPerSource = 3;
-      addTearDown(() => StateInspector.instance.maxChangesPerSource = 100);
+      DevtrayState.instance.maxChangesPerSource = 3;
+      addTearDown(() => DevtrayState.instance.maxChangesPerSource = 100);
 
       final cubit = CounterCubit();
       addTearDown(cubit.close);
@@ -298,7 +298,7 @@ void main() {
         cubit.increment();
       }
 
-      final changes = StateInspector.instance.sources.single.changes;
+      final changes = DevtrayState.instance.sources.single.changes;
       expect(changes, hasLength(3));
       expect(changes.first.to, 10, reason: 'the newest is kept');
     });
@@ -306,36 +306,36 @@ void main() {
 
   group('display / format', () {
     test('a registered formatter renders the state', () {
-      StateInspector.instance.format<int>((n) => 'count=$n');
-      addTearDown(StateInspector.instance.clearInspectors);
+      DevtrayState.instance.format<int>((n) => 'count=$n');
+      addTearDown(DevtrayState.instance.clearInspectors);
 
-      expect(StateInspector.instance.display(3), 'count=3');
+      expect(DevtrayState.instance.display(3), 'count=3');
     });
 
     test('formatSource scopes to one source type, not every state of that type', () {
-      StateInspector.instance.formatSource<CounterCubit>((s) => 'only-counter=$s');
-      addTearDown(StateInspector.instance.clearInspectors);
+      DevtrayState.instance.formatSource<CounterCubit>((s) => 'only-counter=$s');
+      addTearDown(DevtrayState.instance.clearInspectors);
 
       // Matches when the source type is passed…
-      expect(StateInspector.instance.display(3, sourceType: 'CounterCubit'), 'only-counter=3');
+      expect(DevtrayState.instance.display(3, sourceType: 'CounterCubit'), 'only-counter=3');
       // …but a different source with the same int state is untouched.
-      expect(StateInspector.instance.display(3, sourceType: 'OtherCubit'), '3');
+      expect(DevtrayState.instance.display(3, sourceType: 'OtherCubit'), '3');
       // …and with no source context at all, it doesn't apply.
-      expect(StateInspector.instance.display(3), '3');
+      expect(DevtrayState.instance.display(3), '3');
     });
 
     test('formatSource wins over a state-type format', () {
-      StateInspector.instance.format<int>((n) => 'by-type');
-      StateInspector.instance.formatSource<CounterCubit>((s) => 'by-source');
-      addTearDown(StateInspector.instance.clearInspectors);
+      DevtrayState.instance.format<int>((n) => 'by-type');
+      DevtrayState.instance.formatSource<CounterCubit>((s) => 'by-source');
+      addTearDown(DevtrayState.instance.clearInspectors);
 
-      expect(StateInspector.instance.display(1, sourceType: 'CounterCubit'), 'by-source');
+      expect(DevtrayState.instance.display(1, sourceType: 'CounterCubit'), 'by-source');
       // A source WITHOUT its own formatter still falls back to the state-type one.
-      expect(StateInspector.instance.display(1, sourceType: 'OtherCubit'), 'by-type');
+      expect(DevtrayState.instance.display(1, sourceType: 'OtherCubit'), 'by-type');
     });
 
     test('a List pretty-prints by default (no registration)', () {
-      final out = StateInspector.instance.display(['a', 'b']);
+      final out = DevtrayState.instance.display(['a', 'b']);
       // JSON-indented — one entry per line, not the cramped [a, b].
       expect(out, contains('\n'));
       expect(out, contains('"a"'));
@@ -344,40 +344,40 @@ void main() {
     test('a non-JSON-encodable list lays out element-wise, not one cramped line', () {
       // A list of objects JsonEncoder can't handle must not throw — each element
       // gets its own line via toString().
-      final out = StateInspector.instance.display([CounterCubit(), CounterCubit()]);
+      final out = DevtrayState.instance.display([CounterCubit(), CounterCubit()]);
       expect(out, contains('CounterCubit'));
       expect(out, contains('\n'), reason: 'one entry per line');
     });
 
     test('a Set is rendered one entry per line', () {
-      final out = StateInspector.instance.display({'x', 'y'});
+      final out = DevtrayState.instance.display({'x', 'y'});
       expect(out, contains('"x"'));
       expect(out, contains('\n'));
     });
 
     test('a Map renders too, and a non-encodable one degrades to key: value', () {
-      expect(StateInspector.instance.display({'a': 1}), contains('"a"'));
+      expect(DevtrayState.instance.display({'a': 1}), contains('"a"'));
       // A value JsonEncoder can't take (a live object) → "key: value" lines,
       // each value via its own toString().
-      final out = StateInspector.instance.display({'c': 'hi', 'n': const Duration(seconds: 1)});
+      final out = DevtrayState.instance.display({'c': 'hi', 'n': const Duration(seconds: 1)});
       expect(out, 'c: hi\nn: 0:00:01.000000');
     });
 
     test('a DateTime uses ISO-8601', () {
-      final out = StateInspector.instance.display(DateTime.utc(2026, 7, 15, 9, 30));
+      final out = DevtrayState.instance.display(DateTime.utc(2026, 7, 15, 9, 30));
       expect(out, '2026-07-15T09:30:00.000Z');
     });
 
     test('a throwing formatter degrades instead of taking the page down', () {
-      StateInspector.instance.format<int>((_) => throw StateError('bad'));
-      addTearDown(StateInspector.instance.clearInspectors);
+      DevtrayState.instance.format<int>((_) => throw StateError('bad'));
+      addTearDown(DevtrayState.instance.clearInspectors);
 
-      expect(StateInspector.instance.display(1), contains('formatter threw'));
+      expect(DevtrayState.instance.display(1), contains('formatter threw'));
     });
 
     testWidgets('the formatted state shows on the page', (tester) async {
-      StateInspector.instance.format<int>((n) => 'COUNT_$n');
-      addTearDown(StateInspector.instance.clearInspectors);
+      DevtrayState.instance.format<int>((n) => 'COUNT_$n');
+      addTearDown(DevtrayState.instance.clearInspectors);
 
       final cubit = CounterCubit();
       addTearDown(cubit.close);
@@ -398,7 +398,7 @@ void main() {
       addTearDown(cubit.close);
       cubit.increment();
 
-      expect(StateInspector.instance.sources, isEmpty);
+      expect(DevtrayState.instance.sources, isEmpty);
     });
   });
 
@@ -415,14 +415,14 @@ void main() {
       expect(seen, contains('create'));
       expect(seen, contains('change'));
       // …and ours does too.
-      expect(StateInspector.instance.sources.single.changes, hasLength(1));
+      expect(DevtrayState.instance.sources.single.changes, hasLength(1));
     });
   });
 
   group('StateDebugPage', () {
     testWidgets('tells you when no observer is installed', (tester) async {
       Bloc.observer = _NoopObserver();
-      StateInspector.instance.clear();
+      DevtrayState.instance.clear();
 
       await tester.pumpWidget(_host());
       await tester.pumpAndSettle();
@@ -456,7 +456,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // This is the whole point — watching state change on-device.
-      expect(StateInspector.instance.sources.single.state, 1);
+      expect(DevtrayState.instance.sources.single.state, 1);
       expect(find.text('CounterCubit'), findsOneWidget);
     });
 

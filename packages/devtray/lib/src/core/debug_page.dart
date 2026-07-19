@@ -4,10 +4,10 @@ import 'package:flutter/widgets.dart';
 ///
 /// The overlay ships with [NetworkDebugPage]; everything else is supplied by
 /// the host app. Implement this (or use [DebugPage.builder]) and pass it to
-/// `Devtray(pages: [...])`.
+/// `DevtrayOverlay(pages: [...])`.
 ///
 /// ```dart
-/// Devtray(
+/// DevtrayOverlay(
 ///   pages: [
 ///     const NetworkDebugPage(),
 ///     DebugPage.builder(title: 'Env', builder: (_) => const MyEnvPage()),

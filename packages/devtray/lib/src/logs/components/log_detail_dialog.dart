@@ -4,7 +4,7 @@ import '../../core/devtray_theme.dart';
 import '../../core/debug_text_styles.dart';
 import '../../widgets/copyable_section.dart';
 import '../error_log_detail.dart';
-import '../log_store.dart';
+import '../devtray_log.dart';
 import 'log_row.dart';
 
 /// One log line in full: its message, and — for an error — the whole report

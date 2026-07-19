@@ -22,7 +22,7 @@ import 'package:devtray_prefs/devtray_prefs.dart';
 StorageDebugPage(adapters: [SharedPreferencesStorageAdapter()])
 
 // Make Network-page mock rules survive a restart
-MockStore.instance.storage = SharedPreferencesMockRuleStorage();
+DevtrayMocks.instance.storage = SharedPreferencesMockRuleStorage();
 ```
 
 Two independent pieces — use either. Without the second, mock rules are session-only and vanish on hot restart.
