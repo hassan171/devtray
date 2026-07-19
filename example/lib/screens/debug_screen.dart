@@ -2,7 +2,7 @@ import 'package:devtray/devtray.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
-import '../app_services.dart' show counter, debug, dio, httpClient, todos;
+import '../app_services.dart' show UploadLogSink, counter, debug, dio, httpClient, logSessions, todos;
 import '../counter_cubit.dart';
 import '../load_generator.dart';
 import '../users_box.dart';
@@ -98,6 +98,33 @@ class DebugScreen extends StatelessWidget {
             }),
             // Uncaught async — nothing catches it but the Zone.
             _Btn('Uncaught error', () => Future<void>.error(StateError('Something went wrong in a Future'))),
+          ],
+        ),
+
+        _Section(
+          title: 'Log persistence',
+          subtitle: 'Logs are written to disk as they happen — the folder icon on the Logs page opens past runs.',
+          children: [
+            // Forces the batch out now rather than waiting for the interval, so
+            // "start the generator, flush, open the picker" works immediately.
+            _Btn('Flush to disk now', () async {
+              await LogExporter.instance.flush();
+              LogStore.instance.log(
+                'Flushed — ${UploadLogSink.batchesSent} batches to the simulated uploader '
+                '(${UploadLogSink.entriesSent} entries)',
+                level: LogLevel.info,
+                tag: 'export',
+              );
+            }),
+            _Btn('Where are the files?', () async {
+              final dir = logSessions?.directory.path;
+              LogStore.instance.log(dir == null ? 'Log persistence is not installed' : 'Log files: $dir', tag: 'export');
+            }),
+            // The state a batched policy is meant to survive.
+            _Btn('Simulate a crash (uncaught)', () {
+              LogStore.instance.log('About to throw — this line should survive in the file', level: LogLevel.warning, tag: 'export');
+              Future<void>.error(StateError('Crash simulation — check the saved session'));
+            }),
           ],
         ),
 

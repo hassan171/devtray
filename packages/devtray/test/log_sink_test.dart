@@ -10,7 +10,7 @@ class _RecordingSink extends LogSink {
   final List<List<LogEntry>> batches = [];
   int closeCount = 0;
 
-  _RecordingSink([this.name = 'recording']);
+  _RecordingSink({this.name = 'recording'});
 
   List<LogEntry> get allEntries => [for (final b in batches) ...b];
 
@@ -211,6 +211,24 @@ void main() {
       await Future.wait([exporter.flush(), exporter.flush()]);
 
       expect(sink.allEntries.where((e) => e.message == 'first').length, 1, reason: 'written exactly once');
+    });
+
+    test('every healthy sink gets the same batch', () async {
+      // Two destinations at once is the shape that matters: a file for later
+      // and an upload for now, both fed from one buffer.
+      final toFile = _RecordingSink(name: 'file');
+      final toServer = _RecordingSink(name: 'server');
+
+      exporter
+        ..policy = const FlushPolicy.manual()
+        ..addSink(toFile)
+        ..addSink(toServer);
+
+      LogStore.instance.log('fan out');
+      await exporter.flush();
+
+      expect(toFile.allEntries.single.message, 'fan out');
+      expect(toServer.allEntries.single.message, 'fan out');
     });
 
     test('removing a sink closes it', () async {

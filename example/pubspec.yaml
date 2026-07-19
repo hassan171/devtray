@@ -35,6 +35,8 @@ dependencies:
     path: ../packages/devtray_hive
   devtray_sqflite:
     path: ../packages/devtray_sqflite
+  devtray_log_file:
+    path: ../packages/devtray_log_file
   dio: ^5.7.0
   http: ^1.2.0
   shared_preferences: ^2.3.0

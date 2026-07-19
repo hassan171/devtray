@@ -1,6 +1,7 @@
 import 'package:devtray/devtray.dart';
 import 'package:devtray_dio/devtray_dio.dart';
 import 'package:devtray_http/devtray_http.dart';
+import 'package:devtray_log_file/devtray_log_file.dart';
 import 'package:dio/dio.dart';
 import 'package:http/http.dart' as http;
 
@@ -30,3 +31,106 @@ final httpClient = DebugHttpClient(http.Client());
 /// Live state sources, so the State page has something to watch.
 final counter = CounterCubit();
 final todos = TodoBloc();
+
+/// Reads saved log sessions back. Set by [installLogPersistence]; null until
+/// then, which is what the Logs page checks before offering the picker.
+LogSessionLoader? logSessions;
+
+/// Starts writing captured logs to disk, and returns the source the Logs page
+/// browses them with.
+///
+/// The whole opt-in is `addSink` — before it, [LogStore] behaves exactly as it
+/// always has and nothing is written anywhere.
+Future<LogSessionSource> installLogPersistence() async {
+  final sink = await FileLogSink.open(
+    // Documents rather than the cache default: this example is *about* showing
+    // the files, and cache directories can be evicted by the OS between runs.
+    // A real app logging for its own diagnostics wants the cache default.
+    location: LogFileLocation.documents,
+    // Small, so the example actually rotates — the load generator crosses this
+    // in a few seconds. A real app wants megabytes.
+    maxBytes: 64 * 1024,
+    maxFiles: 8,
+  );
+
+  LogExporter.instance
+    // Batched is the default; spelled out here because it's the setting worth
+    // knowing about. Short interval so the example's files fill visibly.
+    ..policy = const FlushPolicy.batched(size: 25, interval: Duration(seconds: 2))
+    ..addSink(sink)
+    // A second destination on the same buffer — the shape of shipping logs
+    // somewhere. It isn't a real upload: see UploadLogSink.
+    ..addSink(UploadLogSink());
+
+  final loader = LogSessionLoader(sink.directory);
+  logSessions = loader;
+  return DevtrayFileSessions(loader);
+}
+
+/// Bridges the gap between `pages:` (built synchronously in `main`) and the log
+/// directory (opened asynchronously during bootstrap).
+///
+/// The same problem the storage adapters solve by being passed as a mutable
+/// list. A source rather than a list here, because [LogsDebugPage] wants one
+/// object — so this one just forwards to [logSessions] once it exists, and
+/// reports empty until then.
+///
+/// A real app that already knows its paths, or that awaits its bootstrap before
+/// calling `runDebugApp`, hands over `DevtrayFileSessions(loader)` directly and
+/// needs none of this.
+class DeferredLogSessions extends LogSessionSource {
+  const DeferredLogSessions();
+
+  LogSessionSource? get _delegate {
+    final loader = logSessions;
+    return loader == null ? null : DevtrayFileSessions(loader);
+  }
+
+  @override
+  Future<List<LogSessionInfo>> list() async => await _delegate?.list() ?? const [];
+
+  @override
+  Future<List<LogEntry>> load(LogSessionInfo session) async => await _delegate?.load(session) ?? const [];
+
+  @override
+  bool get canDelete => true;
+
+  @override
+  Future<void> delete(LogSessionInfo session) async => _delegate?.delete(session);
+
+  @override
+  Future<void> deleteAll() async => _delegate?.deleteAll();
+}
+
+/// Stands in for "send the logs to my server".
+///
+/// Prints instead of uploading, on purpose — an example that POSTs to a real
+/// endpoint is one nobody can run. The shape is the point: a sink is just
+/// `write(batch)`, so a real one swaps the print for `dio.post(...)` and
+/// everything else — batching, the flush policy, failure handling — already
+/// applies.
+///
+/// Note what ISN'T here: no endpoint, auth, retry or consent logic. Those are
+/// the app's decisions, which is exactly why the package ships the interface
+/// and not an uploader.
+class UploadLogSink extends LogSink {
+  @override
+  String get name => 'Upload (simulated)';
+
+  /// Batches this sink has "sent" — read by the debug screen so the example can
+  /// show that fan-out to multiple sinks is really happening.
+  static int batchesSent = 0;
+  static int entriesSent = 0;
+
+  @override
+  Future<void> write(List<LogEntry> batch) async {
+    // A real implementation:
+    //   await dio.post('/logs', data: {'lines': batch.map(formatLogEntryAsJson).toList()});
+    batchesSent++;
+    entriesSent += batch.length;
+
+    // Deliberately NOT logging here. A sink that logs re-enters the store it is
+    // draining — with an immediate policy that recurses until the stack gives
+    // out. See the LogSink docs.
+  }
+}

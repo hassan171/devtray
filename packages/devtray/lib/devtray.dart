@@ -55,6 +55,7 @@ export 'src/logs/logs_debug_page.dart';
 // The transports themselves live outside the core (see devtray_log_file), which
 // carries no dependencies and cannot reach dart:io or the filesystem.
 export 'src/logs/log_sink.dart';
+export 'src/logs/components/log_session_picker.dart';
 
 // Errors — no separate store or page. Errors live in the one LogStore as
 // error-level entries (LogStore.report / captureErrors, ErrorSource, the badge)

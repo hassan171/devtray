@@ -89,6 +89,11 @@ Future<void> _openStores() async {
     });
   }
 
+  // Start persisting logs to disk. Everything captured from here on is written
+  // as well as buffered, so the Logs page's session picker has past runs to
+  // offer — including this one, once it ends.
+  await installLogPersistence();
+
   // A relational store alongside the map-shaped ones — see NotesDbAdapter.
   await NotesDb.init();
 
@@ -169,7 +174,15 @@ void main() {
       // Combined logs + errors. Errors fold in as error-level rows (expand one
       // for its full report); the advanced filter's `Source`/`Level` fields
       // reproduce an errors-only view. Search + quick chips still on top.
-      const LogsDebugPage(),
+      //
+      // `sessionSource` adds the other half: logs are written to disk as they
+      // happen (see installLogPersistence), and this is what lets you open a
+      // *previous run* and read it back. Without it the page is live-only,
+      // which is what it was before and still is for an app that wants that.
+      //
+      // Deferred for the same reason as the storage adapters below — opening
+      // the log directory is async, and `pages:` is built now.
+      LogsDebugPage(sessionSource: DeferredLogSessions()),
       // Stores of genuinely different shapes — a plain key/value one, a typed
       // object box, and SQL tables — so the store list has something to choose
       // between, and DebugStorageAdapter has something to prove.
