@@ -10,7 +10,7 @@ Widget _host(DebugPage page) => MaterialApp(
 /// have scrubbed. This one doesn't — the report is for you, and a report you
 /// can't replay a request from is useless.
 void _seedStores() {
-  final logs = NetworkLogStore.instance;
+  final logs = DevtrayNet.instance;
   final entry = logs.add(
     method: 'POST',
     uri: Uri.parse('https://api.test/login'),
@@ -27,15 +27,15 @@ void _seedStores() {
     responseBody: {'access_token': 'issued-token', 'user': 'ada'},
   );
 
-  LogStore.instance.log('Signed in', level: LogLevel.info, tag: 'auth');
-  LogStore.instance.report(StateError('boom'), stackTrace: StackTrace.current);
+  DevtrayLog.instance.log('Signed in', level: LogLevel.info, tag: 'auth');
+  DevtrayLog.instance.report(StateError('boom'), stackTrace: StackTrace.current);
 }
 
 void main() {
   setUp(() {
-    NetworkLogStore.instance.clear();
-    LogStore.instance.clear();
-    LogStore.instance.clear();
+    DevtrayNet.instance.clear();
+    DevtrayLog.instance.clear();
+    DevtrayLog.instance.clear();
   });
 
   group('DebugReport', () {
@@ -94,7 +94,7 @@ void main() {
 
     test('caps how much it dumps, but is honest about the total', () {
       for (var i = 0; i < 30; i++) {
-        LogStore.instance.log('line $i');
+        DevtrayLog.instance.log('line $i');
       }
 
       final report = DebugReport.build(maxLogEntries: 5);

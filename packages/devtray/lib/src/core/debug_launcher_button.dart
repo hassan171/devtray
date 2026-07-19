@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../logs/log_store.dart';
+import '../logs/devtray_log.dart';
 import 'devtray_theme.dart';
 
 /// The draggable floating bug button. Positioned by the parent overlay; this
@@ -42,7 +42,7 @@ class DebugLauncherButton extends StatelessWidget {
       color: Colors.transparent,
       child: showErrorBadge
           ? ValueListenableBuilder<int>(
-              valueListenable: LogStore.instance.unseenErrorCount,
+              valueListenable: DevtrayLog.instance.unseenErrorCount,
               builder: (context, count, child) => Stack(
                 clipBehavior: Clip.none,
                 alignment: Alignment.topLeft,

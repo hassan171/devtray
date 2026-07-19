@@ -7,7 +7,7 @@ void main() {
   // The watchdog registers a timings callback, which needs a binding.
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  final watchdog = FreezeWatchdog.instance;
+  final watchdog = DevtrayJank.instance;
 
   setUp(() {
     watchdog
@@ -54,7 +54,7 @@ void main() {
       const interval = Duration(milliseconds: 100);
       const threshold = Duration(milliseconds: 250);
 
-      FreezeEvent? between(Duration elapsed) => FreezeWatchdog.freezeBetween(
+      FreezeEvent? between(Duration elapsed) => DevtrayJank.freezeBetween(
         last: at,
         now: at.add(elapsed),
         interval: interval,
@@ -158,9 +158,9 @@ void main() {
 
   group('on the timeline', () {
     setUp(() {
-      LogStore.instance.clear();
-      NetworkLogStore.instance.clear();
-      StateInspector.instance.clear();
+      DevtrayLog.instance.clear();
+      DevtrayNet.instance.clear();
+      DevtrayState.instance.clear();
     });
 
     test('a freeze becomes an error-marked span in the jank lane', () {
@@ -199,8 +199,8 @@ void main() {
     testWidgets('tapping a freeze opens a dialog showing what else was happening', (tester) async {
       // A request that was in flight when everything stopped — the shape of the
       // thing you actually go looking for.
-      final req = NetworkLogStore.instance.add(method: 'GET', uri: Uri.parse('https://api.test/huge'));
-      NetworkLogStore.instance.complete(req!.id, status: NetworkLogStatus.success, statusCode: 200);
+      final req = DevtrayNet.instance.add(method: 'GET', uri: Uri.parse('https://api.test/huge'));
+      DevtrayNet.instance.complete(req!.id, status: NetworkLogStatus.success, statusCode: 200);
 
       final start = DateTime.now();
       watchdog.recordFreezeForTesting(

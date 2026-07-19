@@ -14,7 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 ///
 /// These use an explicit gesture so logs really do land between moves.
 void main() {
-  final store = LogStore.instance;
+  final store = DevtrayLog.instance;
 
   setUp(() {
     store

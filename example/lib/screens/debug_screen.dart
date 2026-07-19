@@ -88,7 +88,7 @@ class DebugScreen extends StatelessWidget {
             _Btn('Write some logs', () {
               debugPrint('debugPrint — captured by the debugPrint hook');
               print('print — captured by the Zone'); // ignore: avoid_print
-              LogStore.instance.log('Tagged, levelled log', level: LogLevel.warning, tag: 'example');
+              Devtray.log('Tagged, levelled log', level: LogLevel.warning, tag: 'example');
               // `dart:developer`'s log() is `external` — it goes straight to the
               // VM service, so there is NO hook that could capture it. This
               // `log` is the package's drop-in: same signature, still reaches
@@ -130,21 +130,21 @@ class DebugScreen extends StatelessWidget {
           children: [
             // Ambient: nothing else changes, but every subsequent line differs.
             _Btn('Sign in (sets userId)', () {
-              LogStore.instance.setContext('userId', 'u-4821');
-              LogStore.instance.log('Signed in', level: LogLevel.info, tag: 'auth');
+              Devtray.setContext('userId', 'u-4821');
+              Devtray.log('Signed in', level: LogLevel.info, tag: 'auth');
             }),
             _Btn('Sign out', () {
-              LogStore.instance.setContext('userId', 'anonymous');
-              LogStore.instance.log('Signed out', level: LogLevel.info, tag: 'auth');
+              Devtray.setContext('userId', 'anonymous');
+              Devtray.log('Signed out', level: LogLevel.info, tag: 'auth');
             }),
             // The enricher picks this up on the next line without being told.
             _Btn('Navigate (moves the screen field)', () {
               currentScreen = currentScreen == 'checkout' ? 'settings' : 'checkout';
-              LogStore.instance.log('Navigated to $currentScreen', tag: 'nav');
+              Devtray.log('Navigated to $currentScreen', tag: 'nav');
             }),
             // Per-call: one line, fields nothing else has.
             _Btn('Log with per-call fields', () {
-              LogStore.instance.log(
+              Devtray.log(
                 'Checkout failed',
                 level: LogLevel.error,
                 tag: 'checkout',
@@ -153,19 +153,19 @@ class DebugScreen extends StatelessWidget {
             }),
             // Scoped: applies inside the block and is gone after it.
             _Btn('A scoped context (withContext)', () async {
-              await LogStore.instance.withContext({'orderId': 'ord-7731'}, () async {
-                LogStore.instance.log('Submitting order', tag: 'checkout');
+              await Devtray.withContext({'orderId': 'ord-7731'}, () async {
+                Devtray.log('Submitting order', tag: 'checkout');
                 await Future<void>.delayed(const Duration(milliseconds: 50));
-                LogStore.instance.log('Order confirmed', level: LogLevel.info, tag: 'checkout');
+                Devtray.log('Order confirmed', level: LogLevel.info, tag: 'checkout');
               });
               // No orderId on this one — the scope closed.
-              LogStore.instance.log('Back on the cart', tag: 'checkout');
+              Devtray.log('Back on the cart', tag: 'checkout');
             }),
             // The failure path: the line must survive its decoration breaking.
             _Btn('Break an enricher', () {
-              LogStore.instance.addEnricher('broken', () => throw StateError('this enricher is broken'));
-              LogStore.instance.log('First line after breaking it', tag: 'demo');
-              LogStore.instance.log('Second — enricher now disabled', tag: 'demo');
+              DevtrayLog.instance.addEnricher('broken', () => throw StateError('this enricher is broken'));
+              Devtray.log('First line after breaking it', tag: 'demo');
+              Devtray.log('Second — enricher now disabled', tag: 'demo');
             }),
           ],
         ),
@@ -177,8 +177,8 @@ class DebugScreen extends StatelessWidget {
             // Forces the batch out now rather than waiting for the interval, so
             // "start the generator, flush, open the picker" works immediately.
             _Btn('Flush to disk now', () async {
-              await LogExporter.instance.flush();
-              LogStore.instance.log(
+              await DevtrayExport.instance.flush();
+              Devtray.log(
                 'Flushed — ${UploadLogSink.batchesSent} batches to the simulated uploader '
                 '(${UploadLogSink.entriesSent} entries)',
                 level: LogLevel.info,
@@ -187,11 +187,11 @@ class DebugScreen extends StatelessWidget {
             }),
             _Btn('Where are the files?', () async {
               final dir = logSessions?.directory.path;
-              LogStore.instance.log(dir == null ? 'Log persistence is not installed' : 'Log files: $dir', tag: 'export');
+              Devtray.log(dir == null ? 'Log persistence is not installed' : 'Log files: $dir', tag: 'export');
             }),
             // The state a batched policy is meant to survive.
             _Btn('Simulate a crash (uncaught)', () {
-              LogStore.instance.log('About to throw — this line should survive in the file', level: LogLevel.warning, tag: 'export');
+              Devtray.log('About to throw — this line should survive in the file', level: LogLevel.warning, tag: 'export');
               Future<void>.error(StateError('Crash simulation — check the saved session'));
             }),
           ],

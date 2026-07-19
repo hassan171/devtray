@@ -11,7 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// the scroll anchor, a constant offset points at different content on every
 /// arrival, so an offset assertion passes while the list visibly scrolls.
 void main() {
-  final store = NetworkLogStore.instance;
+  final store = DevtrayNet.instance;
 
   setUp(store.clear);
   tearDown(() => store.maxEntries = 500);

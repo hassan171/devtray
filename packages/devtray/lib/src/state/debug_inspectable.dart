@@ -22,7 +22,7 @@
 /// }
 /// ```
 ///
-/// **Prefer [StateInspector.inspect] if you'd rather not import this package
+/// **Prefer [DevtrayState.inspect] if you'd rather not import this package
 /// from your production classes** — it does the same thing from the outside, and
 /// it wins over this interface when both are present.
 ///

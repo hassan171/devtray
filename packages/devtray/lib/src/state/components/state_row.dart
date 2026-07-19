@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/devtray_theme.dart';
 import '../../core/debug_text_styles.dart';
-import '../state_inspector.dart';
+import '../devtray_state.dart';
 
 /// The colour a source is spoken in — shared by the row's spine and its badges
 /// so the two can't drift apart.
@@ -121,7 +121,7 @@ class StateRow extends StatelessWidget {
                                   // formatter / pretty default applies; the row
                                   // keeps it to one line. Pass the source type so
                                   // a source-scoped formatter can match.
-                                  StateInspector.instance.display(source.state, sourceType: source.type),
+                                  DevtrayState.instance.display(source.state, sourceType: source.type),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: DebugTextStyles.debugMono(color: t.textMuted, fontSize: 11, height: 1.3),

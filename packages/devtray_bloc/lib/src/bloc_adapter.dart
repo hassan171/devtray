@@ -2,7 +2,7 @@ import 'package:devtray/devtray.dart';
 import 'package:bloc/bloc.dart';
 
 
-/// Feeds [StateInspector] from `package:bloc`. Install it once:
+/// Feeds [DevtrayState] from `package:bloc`. Install it once:
 ///
 /// ```dart
 /// Bloc.observer = DebugBlocObserver();
@@ -16,9 +16,9 @@ import 'package:bloc/bloc.dart';
 /// ```
 ///
 /// This is the **only** file in the package that imports `package:bloc`. The
-/// store itself ([StateInspector]) is library-agnostic — a non-bloc app never
+/// store itself ([DevtrayState]) is library-agnostic — a non-bloc app never
 /// touches this file, and it tree-shakes out of that app's release build. To
-/// hook a different state library, push into [StateInspector] directly (see
+/// hook a different state library, push into [DevtrayState] directly (see
 /// `state_bridge.dart`) instead of using this.
 class DebugBlocObserver extends BlocObserver {
   final BlocObserver? next;
@@ -38,7 +38,7 @@ class DebugBlocObserver extends BlocObserver {
 
   @override
   void onCreate(BlocBase<dynamic> bloc) {
-    StateInspector.instance.recordCreate(
+    DevtrayState.instance.recordCreate(
       identityHashCode(bloc),
       type: bloc.runtimeType.toString(),
       state: bloc.state,
@@ -53,7 +53,7 @@ class DebugBlocObserver extends BlocObserver {
     // Guarded like every other write path: the observer stays installed for the
     // process lifetime, so in a release build this map would otherwise keep
     // taking a strong reference to an event object per transition, for a
-    // StateInspector that is never going to read it.
+    // DevtrayState that is never going to read it.
     if (DevtrayKillSwitch.enabled) {
       // Stash the event for the onChange that immediately follows — recording
       // the change here as well would log every bloc transition twice.
@@ -69,7 +69,7 @@ class DebugBlocObserver extends BlocObserver {
     // Cubit — which has no events at all.
     final event = _pendingEvents.remove(identityHashCode(bloc));
 
-    StateInspector.instance.record(
+    DevtrayState.instance.record(
       identityHashCode(bloc),
       type: bloc.runtimeType.toString(),
       from: change.currentState,
@@ -83,7 +83,7 @@ class DebugBlocObserver extends BlocObserver {
 
   @override
   void onError(BlocBase<dynamic> bloc, Object error, StackTrace stackTrace) {
-    StateInspector.instance.recordError(identityHashCode(bloc), error, stackTrace);
+    DevtrayState.instance.recordError(identityHashCode(bloc), error, stackTrace);
     next?.onError(bloc, error, stackTrace);
     super.onError(bloc, error, stackTrace);
   }
@@ -92,7 +92,7 @@ class DebugBlocObserver extends BlocObserver {
   void onClose(BlocBase<dynamic> bloc) {
     // Don't leak a pending event for a bloc that's going away.
     _pendingEvents.remove(identityHashCode(bloc));
-    StateInspector.instance.recordClose(identityHashCode(bloc));
+    DevtrayState.instance.recordClose(identityHashCode(bloc));
     next?.onClose(bloc);
     super.onClose(bloc);
   }

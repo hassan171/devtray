@@ -42,7 +42,7 @@ Widget _wrap(Widget child) => MaterialApp(
     );
 
 void main() {
-  setUp(() => LogStore.instance.clear());
+  setUp(() => DevtrayLog.instance.clear());
 
   group('the Logs page without a session source', () {
     testWidgets('shows no session button — nothing to browse', (tester) async {
@@ -91,7 +91,7 @@ void main() {
     });
 
     testWidgets('a loaded session never mixes into the live buffer', (tester) async {
-      LogStore.instance.log('live line');
+      DevtrayLog.instance.log('live line');
 
       final source = _FakeSessions({
         'run-a': [_entry('session line', id: 99)],
@@ -105,14 +105,14 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        LogStore.instance.entries.map((e) => e.message),
+        DevtrayLog.instance.entries.map((e) => e.message),
         isNot(contains('session line')),
         reason: 'a past run must not be re-exported by the sinks as though it were new',
       );
     });
 
     testWidgets('going back to live restores the live stream', (tester) async {
-      LogStore.instance.log('live line');
+      DevtrayLog.instance.log('live line');
 
       final source = _FakeSessions({
         'run-a': [_entry('session line', id: 99)],

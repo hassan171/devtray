@@ -39,18 +39,18 @@ class _StatusDioAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 void main() {
-  late MockStore mocks;
-  late NetworkLogStore logs;
+  late DevtrayMocks mocks;
+  late DevtrayNet logs;
 
   setUp(() {
     // Fresh singletons per test.
-    mocks = MockStore.instance
+    mocks = DevtrayMocks.instance
       ..enable()
       ..clear()
       ..offline.value = false
       ..rulesEnabled.value = true;
-    logs = NetworkLogStore.instance..clear();
-    LogStore.instance.clear();
+    logs = DevtrayNet.instance..clear();
+    DevtrayLog.instance.clear();
   });
 
 
@@ -132,8 +132,8 @@ void main() {
 
       await dio.get<dynamic>('https://api.test/orders', options: Options(validateStatus: (_) => true));
 
-      expect(LogStore.instance.entries.single.source, ErrorSource.network);
-      expect(LogStore.instance.unseenErrorCount.value, 1);
+      expect(DevtrayLog.instance.entries.single.source, ErrorSource.network);
+      expect(DevtrayLog.instance.unseenErrorCount.value, 1);
     });
   });
 

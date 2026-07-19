@@ -12,12 +12,12 @@ Widget _host(DebugPage page) {
 
 void main() {
   setUp(() {
-    LogStore.instance.clear();
+    DevtrayLog.instance.clear();
   });
 
-  group('LogStore', () {
+  group('DevtrayLog', () {
     test('records, caps, and exposes tags', () {
-      final store = LogStore.instance;
+      final store = DevtrayLog.instance;
       store.maxEntries = 2;
       addTearDown(() => store.maxEntries = 1000);
 
@@ -43,7 +43,7 @@ void main() {
 
       debugPrint('hello');
 
-      expect(LogStore.instance.entries.single.message, 'hello');
+      expect(DevtrayLog.instance.entries.single.message, 'hello');
       // Observed, not swallowed — the original handler still ran.
       expect(printed, ['hello']);
     });
@@ -57,7 +57,7 @@ void main() {
     // be deferred and coalesced.
 
     test('value is synchronous, listener callback is deferred', () async {
-      final store = LogStore.instance;
+      final store = DevtrayLog.instance;
       var notified = 0;
       void listener() => notified++;
       store.unseenErrorCount.addListener(listener);
@@ -75,7 +75,7 @@ void main() {
     });
 
     test('many reports in one turn collapse into a single notification', () async {
-      final store = LogStore.instance;
+      final store = DevtrayLog.instance;
       var notified = 0;
       void listener() => notified++;
       store.tick.addListener(listener);
@@ -98,7 +98,7 @@ void main() {
         MaterialApp(
           home: Builder(
             builder: (context) {
-              LogStore.instance.report('reported during build');
+              DevtrayLog.instance.report('reported during build');
               return const SizedBox.shrink();
             },
           ),
@@ -107,7 +107,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
-      expect(LogStore.instance.entries, isNotEmpty);
+      expect(DevtrayLog.instance.entries, isNotEmpty);
     });
   });
 
@@ -119,7 +119,7 @@ void main() {
     test('records into the store, mapping severity and name', () {
       debugLog('signed in', level: 800, name: 'auth');
 
-      final entry = LogStore.instance.entries.single;
+      final entry = DevtrayLog.instance.entries.single;
       expect(entry.message, 'signed in');
       expect(entry.level, LogLevel.info); // 800 = INFO on the logging scale
       expect(entry.tag, 'auth');
@@ -127,7 +127,7 @@ void main() {
 
     test('an empty name is no tag, not an empty one', () {
       debugLog('no name given');
-      expect(LogStore.instance.entries.single.tag, isNull);
+      expect(DevtrayLog.instance.entries.single.tag, isNull);
     });
 
     test('carries the error and stack trace through', () {
@@ -135,7 +135,7 @@ void main() {
       final stack = StackTrace.current;
       debugLog('failed', level: 1000, error: err, stackTrace: stack);
 
-      final entry = LogStore.instance.entries.single;
+      final entry = DevtrayLog.instance.entries.single;
       expect(entry.level, LogLevel.error);
       expect(entry.error, same(err));
       expect(entry.stackTrace, same(stack));
@@ -165,9 +165,9 @@ void main() {
     });
   });
 
-  group('errors in the one LogStore', () {
+  group('errors in the one DevtrayLog', () {
     test('report() records an error-level entry and increments the badge', () {
-      final store = LogStore.instance;
+      final store = DevtrayLog.instance;
       expect(store.unseenErrorCount.value, 0);
 
       store.report(StateError('boom'), stackTrace: StackTrace.current);
@@ -180,7 +180,7 @@ void main() {
     });
 
     test('markErrorsSeen clears the badge but keeps the entries', () {
-      final store = LogStore.instance;
+      final store = DevtrayLog.instance;
       store.report('boom');
       store.markErrorsSeen();
 
@@ -189,14 +189,14 @@ void main() {
     });
 
     test('title is the first line only', () {
-      LogStore.instance.report('line one\nline two');
-      expect(LogStore.instance.entries.single.title, 'line one');
+      DevtrayLog.instance.report('line one\nline two');
+      expect(DevtrayLog.instance.entries.single.title, 'line one');
     });
   });
 
   group('LogsDebugPage', () {
     testWidgets('renders logs and filters by search', (tester) async {
-      LogStore.instance
+      DevtrayLog.instance
         ..log('alpha message')
         ..log('beta message');
 
@@ -222,14 +222,14 @@ void main() {
 
   group('errors in the combined Logs page', () {
     testWidgets('an error shows as a row, expands to its report, and clears the badge', (tester) async {
-      LogStore.instance.report(StateError('kaboom'), stackTrace: StackTrace.current);
-      expect(LogStore.instance.unseenErrorCount.value, 1);
+      DevtrayLog.instance.report(StateError('kaboom'), stackTrace: StackTrace.current);
+      expect(DevtrayLog.instance.unseenErrorCount.value, 1);
 
       await tester.pumpWidget(_host(const LogsDebugPage()));
       await tester.pumpAndSettle();
 
       // Opening the Logs page marks them seen — that's what drops the badge.
-      expect(LogStore.instance.unseenErrorCount.value, 0);
+      expect(DevtrayLog.instance.unseenErrorCount.value, 0);
       expect(find.textContaining('kaboom'), findsOneWidget);
 
       // Expand the error row inline (no separate detail screen anymore).
@@ -304,7 +304,7 @@ void main() {
 
   group('launcher error badge', () {
     testWidgets('appears on the launcher when an error is unseen', (tester) async {
-      await tester.pumpWidget(Devtray(
+      await tester.pumpWidget(DevtrayOverlay(
         pages: const [LogsDebugPage()],
         child: const MaterialApp(home: Scaffold(body: Text('app'))),
       ));
@@ -312,7 +312,7 @@ void main() {
 
       expect(find.text('1'), findsNothing);
 
-      LogStore.instance.report('boom');
+      DevtrayLog.instance.report('boom');
       await tester.pumpAndSettle();
 
       expect(find.text('1'), findsOneWidget);

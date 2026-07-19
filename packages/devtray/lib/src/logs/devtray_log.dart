@@ -4,7 +4,8 @@ import 'dart:collection';
 import 'package:flutter/foundation.dart';
 
 import '../core/devtray_kill_switch.dart';
-import 'log_sink.dart';
+import '../core/devtray_typedefs.dart';
+import 'devtray_export.dart';
 
 /// A [ValueNotifier] whose value updates **synchronously** but whose listener
 /// notifications are **coalesced onto a microtask**.
@@ -63,7 +64,7 @@ enum ErrorSource {
   /// A failed HTTP request, forwarded from the Network page.
   network,
 
-  /// Reported by the app via [LogStore.report].
+  /// Reported by the app via [DevtrayLog.report].
   reported,
 }
 
@@ -89,7 +90,7 @@ class LogEntry {
   final StackTrace? stackTrace;
 
   /// Error metadata — set only for error-level entries reported via
-  /// [LogStore.report]. Null for ordinary log lines.
+  /// [DevtrayLog.report]. Null for ordinary log lines.
   final ErrorSource? source;
 
   /// For Flutter errors: what the framework was doing ("building MyWidget").
@@ -103,9 +104,9 @@ class LogEntry {
   ///
   /// Three sources merge into this at capture time, later winning over earlier:
   ///
-  /// 1. [LogStore.context] — ambient values set once and attached to everything
-  /// 2. [LogStore.addEnricher] — callbacks computed per entry
-  /// 3. the `fields:` argument on the individual [LogStore.log] call
+  /// 1. [DevtrayLog.context] — ambient values set once and attached to everything
+  /// 2. [DevtrayLog.addEnricher] — callbacks computed per entry
+  /// 3. the `fields:` argument on the individual [DevtrayLog.log] call
   ///
   /// So a call-site field always beats an enricher, which always beats ambient
   /// context. That order is the useful one: the more specific the source, the
@@ -173,8 +174,8 @@ class LogEntry {
 /// [runDebugApp]), but you can always log or report directly:
 ///
 /// ```dart
-/// LogStore.instance.log('User signed in', level: LogLevel.info, tag: 'auth');
-/// LogStore.instance.report(someException, stackTrace: s);
+/// DevtrayLog.instance.log('User signed in', level: LogLevel.info, tag: 'auth');
+/// DevtrayLog.instance.report(someException, stackTrace: s);
 /// ```
 ///
 /// ## Carrying context
@@ -185,13 +186,13 @@ class LogEntry {
 ///
 /// ```dart
 /// // Ambient — set once, on everything after.
-/// LogStore.instance.setContext('userId', user.id);
+/// DevtrayLog.instance.setContext('userId', user.id);
 ///
 /// // Computed — fresh per entry, for values that must be current.
-/// LogStore.instance.addEnricher('nav', () => {'screen': router.current});
+/// DevtrayLog.instance.addEnricher('nav', () => {'screen': router.current});
 ///
 /// // Per-call — one line only.
-/// LogStore.instance.log('Checkout failed', fields: {'cartId': 42});
+/// DevtrayLog.instance.log('Checkout failed', fields: {'cartId': 42});
 /// ```
 ///
 /// All three land in [LogEntry.fields], are searchable, filterable, and are
@@ -200,11 +201,11 @@ class LogEntry {
 /// context is what makes that report say whose crash it was.
 ///
 /// See [context], [addEnricher] and [LogEntry.fields].
-class LogStore {
-  LogStore._() {
+class DevtrayLog {
+  DevtrayLog._() {
     DevtrayKillSwitch.addDisableListener(clear);
   }
-  static final LogStore instance = LogStore._();
+  static final DevtrayLog instance = DevtrayLog._();
 
   /// Oldest entries are dropped past this cap.
   int maxEntries = 1000;
@@ -246,8 +247,8 @@ class LogStore {
   /// every log line and error carries them, with no call site to remember:
   ///
   /// ```dart
-  /// LogStore.instance.setContext('userId', user.id);
-  /// LogStore.instance.setContext('build', '1.4.2+318');
+  /// DevtrayLog.instance.setContext('userId', user.id);
+  /// DevtrayLog.instance.setContext('build', '1.4.2+318');
   /// ```
   ///
   /// The point is errors you didn't anticipate. A crash report that says *who*
@@ -298,7 +299,7 @@ class LogStore {
   /// request, or inside one screen:
   ///
   /// ```dart
-  /// await LogStore.instance.withContext({'orderId': id}, () async {
+  /// await DevtrayLog.instance.withContext({'orderId': id}, () async {
   ///   await submitOrder();   // every line in here carries orderId
   /// });
   /// ```
@@ -329,7 +330,7 @@ class LogStore {
 
   /// Callbacks that compute fields at capture time, keyed by name so one can be
   /// replaced or removed.
-  final Map<String, Map<String, Object?> Function()> _enrichers = {};
+  final Map<String, DevtrayEnricher> _enrichers = {};
 
   /// Enrichers that threw and are no longer called.
   final Map<String, Object> _failedEnrichers = {};
@@ -347,8 +348,8 @@ class LogStore {
   /// *current* rather than whatever they were when you last set them:
   ///
   /// ```dart
-  /// LogStore.instance.addEnricher('route', () => {'route': currentRoute});
-  /// LogStore.instance.addEnricher('net', () => {'online': connectivity.isOnline});
+  /// DevtrayLog.instance.addEnricher('route', () => {'route': currentRoute});
+  /// DevtrayLog.instance.addEnricher('net', () => {'online': connectivity.isOnline});
   /// ```
   ///
   /// Runs on **every** log line, so keep it cheap — this is not the place for
@@ -359,7 +360,7 @@ class LogStore {
   /// decorating.
   ///
   /// Registering the same [name] twice replaces the first.
-  void addEnricher(String name, Map<String, Object?> Function() compute) {
+  void addEnricher(String name, DevtrayEnricher compute) {
     _enrichers[name] = compute;
     _failedEnrichers.remove(name);
     _enricherFailures.remove(name);
@@ -375,7 +376,7 @@ class LogStore {
   ///
   /// Mostly for tests — the store is a singleton, so a registration made in one
   /// would otherwise decorate every entry in the next. Mirrors
-  /// [StateInspector.clearInspectors].
+  /// [DevtrayState.clearInspectors].
   @visibleForTesting
   void clearEnrichers() {
     _enrichers.clear();
@@ -464,7 +465,7 @@ class LogStore {
     // Handed to the sinks BEFORE the ring buffer can evict anything, so a long
     // session writes every line to disk even though the page only ever holds
     // the last [maxEntries]. No-ops when no sink is configured.
-    LogExporter.instance.ingest(entry);
+    DevtrayExport.instance.ingest(entry);
 
     _entries.insert(0, entry);
     while (_entries.length > maxEntries) {
@@ -567,7 +568,7 @@ class LogStore {
 /// Original [debugPrint] handler, so capture can be undone.
 DebugPrintCallback? _originalDebugPrint;
 
-/// Routes [debugPrint] into [LogStore] — it keeps printing to the console too.
+/// Routes [debugPrint] into [DevtrayLog] — it keeps printing to the console too.
 ///
 /// Bare `print()` cannot be intercepted this way; it needs a custom Zone. Use
 /// [runDebugApp] (which installs one for you) if you want
@@ -577,7 +578,7 @@ void captureDebugPrint() {
   _originalDebugPrint = debugPrint;
 
   debugPrint = (String? message, {int? wrapWidth}) {
-    if (message != null) LogStore.instance.log(message);
+    if (message != null) DevtrayLog.instance.log(message);
     _originalDebugPrint!(message, wrapWidth: wrapWidth);
   };
 }
@@ -590,7 +591,7 @@ void stopCapturingDebugPrint() {
 
 bool _errorsCaptured = false;
 
-/// Routes framework and platform errors into [LogStore], while still forwarding
+/// Routes framework and platform errors into [DevtrayLog], while still forwarding
 /// them to whatever handler was already installed (so the red error screen and
 /// console output are unaffected).
 ///
@@ -603,7 +604,7 @@ void captureErrors() {
 
   final previousFlutterError = FlutterError.onError;
   FlutterError.onError = (FlutterErrorDetails details) {
-    LogStore.instance.report(
+    DevtrayLog.instance.report(
       details.exception,
       stackTrace: details.stack,
       source: ErrorSource.flutter,
@@ -615,7 +616,7 @@ void captureErrors() {
 
   final previousPlatformError = PlatformDispatcher.instance.onError;
   PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
-    LogStore.instance.report(error, stackTrace: stack, source: ErrorSource.uncaught);
+    DevtrayLog.instance.report(error, stackTrace: stack, source: ErrorSource.uncaught);
     // Returning false lets the error keep propagating to the default handler,
     // which prints it — we observe, we don't swallow.
     return previousPlatformError?.call(error, stack) ?? false;

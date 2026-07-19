@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/devtray_theme.dart';
 import '../../core/debug_text_styles.dart';
-import '../log_sink.dart';
+import '../devtray_export.dart';
 
 /// Picks a saved run to load into the Logs page.
 ///
@@ -186,7 +186,7 @@ class _LogSessionPickerState extends State<LogSessionPicker> {
         // Says what to do about it, rather than leaving an empty box. The usual
         // cause is that no sink was ever added.
         detail: 'Sessions appear here once a log sink is writing them —\n'
-            'LogExporter.instance.addSink(await FileLogSink.open()).',
+            'DevtrayExport.instance.addSink(await FileLogSink.open()).',
         color: t.textMuted,
       );
     }

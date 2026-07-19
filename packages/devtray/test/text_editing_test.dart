@@ -16,7 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   final controller = TextEditingController();
 
-  Widget host() => Devtray(
+  Widget host() => DevtrayOverlay(
         controller: DevtrayController(),
         presentation: DevtrayPresentation.fullscreen,
         pages: [
@@ -33,7 +33,7 @@ void main() {
     final overlay = host();
     await tester.pumpWidget(overlay);
 
-    (tester.widget<Devtray>(find.byType(Devtray)).controller!).open();
+    (tester.widget<DevtrayOverlay>(find.byType(DevtrayOverlay)).controller!).open();
     await tester.pumpAndSettle();
 
     await tester.tap(find.byType(TextField));

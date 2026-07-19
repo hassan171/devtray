@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/devtray_theme.dart';
 import '../../core/debug_text_styles.dart';
-import '../log_store.dart';
+import '../devtray_log.dart';
 
 Color logLevelColor(LogLevel level, DevtrayTheme t) => switch (level) {
   LogLevel.debug => t.textMuted,

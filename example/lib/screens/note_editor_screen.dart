@@ -49,14 +49,14 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
       // a level, next to the framework's own noise — which is the point: the
       // overlay captures what the app already says, it doesn't need special
       // instrumentation.
-      LogStore.instance.log('Created note $id: "$title"', tag: 'notes');
+      Devtray.log('Created note $id: "$title"', tag: 'notes');
     } else {
       await NotesDb.upsert(widget.note!.id, {
         'title': title,
         'body': _body.text.trim(),
         'pinned': widget.note!.pinned ? 1 : 0,
       });
-      LogStore.instance.log('Updated note ${widget.note!.id}', tag: 'notes');
+      Devtray.log('Updated note ${widget.note!.id}', tag: 'notes');
     }
 
     navigator.pop();

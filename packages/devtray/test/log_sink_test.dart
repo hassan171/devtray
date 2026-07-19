@@ -35,12 +35,12 @@ class _ThrowingSink extends LogSink {
 }
 
 void main() {
-  final exporter = LogExporter.instance;
+  final exporter = DevtrayExport.instance;
 
   setUp(() async {
     await exporter.dispose();
     exporter.policy = const FlushPolicy.batched();
-    LogStore.instance.clear();
+    DevtrayLog.instance.clear();
   });
 
   tearDown(() async {
@@ -48,9 +48,9 @@ void main() {
     exporter.policy = const FlushPolicy.batched();
   });
 
-  group('LogExporter', () {
+  group('DevtrayExport', () {
     test('does nothing at all until a sink is added', () async {
-      LogStore.instance.log('before any sink');
+      DevtrayLog.instance.log('before any sink');
       await exporter.flush();
 
       // The important half: no sink means no pending buffer. Otherwise an app
@@ -64,9 +64,9 @@ void main() {
         ..policy = const FlushPolicy.manual()
         ..addSink(sink);
 
-      LogStore.instance.log('first');
-      LogStore.instance.log('second');
-      LogStore.instance.log('third');
+      DevtrayLog.instance.log('first');
+      DevtrayLog.instance.log('second');
+      DevtrayLog.instance.log('third');
 
       expect(sink.batches, isEmpty, reason: 'manual means manual');
       expect(exporter.pendingCount, 3);
@@ -78,7 +78,7 @@ void main() {
         sink.allEntries.map((e) => e.message),
         ['first', 'second', 'third'],
         reason: 'chronological — a log file should read forwards in time, '
-            'which is the opposite of LogStore.entries',
+            'which is the opposite of DevtrayLog.entries',
       );
     });
 
@@ -88,12 +88,12 @@ void main() {
         ..policy = const FlushPolicy.batched(size: 3, interval: Duration(hours: 1))
         ..addSink(sink);
 
-      LogStore.instance.log('a');
-      LogStore.instance.log('b');
+      DevtrayLog.instance.log('a');
+      DevtrayLog.instance.log('b');
       await Future<void>.delayed(Duration.zero);
       expect(sink.batches, isEmpty, reason: 'still under the threshold');
 
-      LogStore.instance.log('c');
+      DevtrayLog.instance.log('c');
       await Future<void>.delayed(Duration.zero);
 
       expect(sink.allEntries.map((e) => e.message), ['a', 'b', 'c']);
@@ -106,7 +106,7 @@ void main() {
           ..policy = const FlushPolicy.batched(size: 1000, interval: Duration(seconds: 5))
           ..addSink(sink);
 
-        LogStore.instance.log('lonely');
+        DevtrayLog.instance.log('lonely');
         async.elapse(const Duration(seconds: 4));
         expect(sink.batches, isEmpty);
 
@@ -126,7 +126,7 @@ void main() {
         // each entry the deadline would keep moving and nothing would ever be
         // written.
         for (var i = 0; i < 8; i++) {
-          LogStore.instance.log('tick $i');
+          DevtrayLog.instance.log('tick $i');
           async.elapse(const Duration(seconds: 1));
         }
 
@@ -140,7 +140,7 @@ void main() {
         ..policy = const FlushPolicy.immediate()
         ..addSink(sink);
 
-      LogStore.instance.log('now');
+      DevtrayLog.instance.log('now');
       // Deferred by a microtask on purpose — ingest can be called mid-build.
       await Future<void>.delayed(Duration.zero);
 
@@ -155,13 +155,13 @@ void main() {
         ..addSink(bad)
         ..addSink(good);
 
-      LogStore.instance.log('one');
+      DevtrayLog.instance.log('one');
       await exporter.flush();
 
       expect(good.allEntries.map((e) => e.message), contains('one'), reason: 'the healthy sink still got it');
       expect(exporter.failedSinks.keys, contains('throwing'));
 
-      LogStore.instance.log('two');
+      DevtrayLog.instance.log('two');
       await exporter.flush();
 
       expect(bad.writeCount, 1, reason: 'a failed sink is not called again');
@@ -172,10 +172,10 @@ void main() {
         ..policy = const FlushPolicy.manual()
         ..addSink(_ThrowingSink());
 
-      LogStore.instance.log('trigger');
+      DevtrayLog.instance.log('trigger');
       await exporter.flush();
 
-      final reported = LogStore.instance.entries.where((e) => e.tag == 'devtray');
+      final reported = DevtrayLog.instance.entries.where((e) => e.tag == 'devtray');
       expect(reported, isNotEmpty, reason: 'a silently broken sink is worse than a noisy one');
       expect(reported.first.message, contains('disk full'));
     });
@@ -186,14 +186,14 @@ void main() {
         ..policy = const FlushPolicy.manual()
         ..addSink(bad);
 
-      LogStore.instance.log('one');
+      DevtrayLog.instance.log('one');
       await exporter.flush();
       expect(exporter.failedSinks, isNotEmpty);
 
       exporter.retrySink('throwing');
       expect(exporter.failedSinks, isEmpty);
 
-      LogStore.instance.log('two');
+      DevtrayLog.instance.log('two');
       await exporter.flush();
       expect(bad.writeCount, 2, reason: 'called again after the retry');
     });
@@ -204,7 +204,7 @@ void main() {
         ..policy = const FlushPolicy.manual()
         ..addSink(sink);
 
-      LogStore.instance.log('first');
+      DevtrayLog.instance.log('first');
 
       // Two flushes racing: the second must not clear the batch the first is
       // still writing.
@@ -224,7 +224,7 @@ void main() {
         ..addSink(toFile)
         ..addSink(toServer);
 
-      LogStore.instance.log('fan out');
+      DevtrayLog.instance.log('fan out');
       await exporter.flush();
 
       expect(toFile.allEntries.single.message, 'fan out');
@@ -249,7 +249,7 @@ void main() {
       DevtrayKillSwitch.enabled = false;
       addTearDown(() => DevtrayKillSwitch.enabled = true);
 
-      LogStore.instance.log('should not be persisted');
+      DevtrayLog.instance.log('should not be persisted');
       await exporter.flush();
 
       expect(sink.batches, isEmpty, reason: 'a disabled overlay must not write logs to disk');
@@ -258,8 +258,8 @@ void main() {
 
   group('the JSON-Lines format', () {
     test('round-trips an ordinary entry', () {
-      LogStore.instance.log('hello', level: LogLevel.warning, tag: 'auth');
-      final original = LogStore.instance.entries.single;
+      DevtrayLog.instance.log('hello', level: LogLevel.warning, tag: 'auth');
+      final original = DevtrayLog.instance.entries.single;
 
       final parsed = parseLogEntries(formatLogEntryAsJson(original)).single;
 
@@ -270,13 +270,13 @@ void main() {
     });
 
     test('round-trips an error entry, keeping what makes it an error', () {
-      LogStore.instance.report(
+      DevtrayLog.instance.report(
         StateError('boom'),
         stackTrace: StackTrace.current,
         context: 'while testing',
         library: 'devtray',
       );
-      final original = LogStore.instance.entries.first;
+      final original = DevtrayLog.instance.entries.first;
 
       final parsed = parseLogEntries(formatLogEntryAsJson(original)).single;
 
@@ -288,7 +288,7 @@ void main() {
       expect(parsed.stackTrace, isNotNull);
     });
 
-    test('parses newest-first, matching LogStore.entries', () {
+    test('parses newest-first, matching DevtrayLog.entries', () {
       final text = [
         for (final m in ['oldest', 'middle', 'newest'])
           formatLogEntryAsJson(

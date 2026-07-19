@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  final store = LogStore.instance;
+  final store = DevtrayLog.instance;
 
   setUp(() {
     // The store is a singleton, so every one of these leaks into the next test

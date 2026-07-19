@@ -1,6 +1,6 @@
 import '../../core/devtray_kill_switch.dart';
 import 'mock_rule.dart';
-import 'mock_store.dart';
+import 'devtray_mocks.dart';
 
 /// What an adapter should do with a request, decided once so dio and http can't
 /// drift apart.
@@ -43,9 +43,9 @@ class FailWith extends MockDecision {
 MockDecision decideMock({
   required String url,
   required String method,
-  MockStore? store,
+  DevtrayMocks? store,
 }) {
-  final s = store ?? MockStore.instance;
+  final s = store ?? DevtrayMocks.instance;
 
   // disable() must beat everything, including offline mode — it's the "I don't
   // want this feature" switch.

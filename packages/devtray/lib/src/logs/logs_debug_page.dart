@@ -13,12 +13,12 @@ import '../widgets/jump_to_latest_button.dart';
 import 'components/log_detail_dialog.dart';
 import 'components/log_row.dart';
 import 'components/log_session_picker.dart';
-import 'log_sink.dart';
-import 'log_store.dart';
+import 'devtray_export.dart';
+import 'devtray_log.dart';
 
 /// Captured logs **and** errors in one stream — `debugPrint`, `print` (under
-/// [runDebugApp]), [LogStore.log], plus every framework/uncaught
-/// error and forwarded network failure ([LogStore.report]).
+/// [runDebugApp]), [DevtrayLog.log], plus every framework/uncaught
+/// error and forwarded network failure ([DevtrayLog.report]).
 ///
 /// One store, one entry type: errors are [LogEntry]s with [LogEntry.isError]
 /// set, so `Source = network` (or `Level = ERR`) in the advanced filter isolates
@@ -106,7 +106,7 @@ class _LogsViewState extends State<_LogsView> {
 
   /// The past run being viewed, or null for the live stream.
   ///
-  /// A loaded session is held **separately** from [LogStore] rather than merged
+  /// A loaded session is held **separately** from [DevtrayLog] rather than merged
   /// into it. Merging would make "what is happening now" indistinguishable from
   /// "what happened in a run that already ended" — and would mean a loaded
   /// session got re-exported by the sinks as though it were new.
@@ -120,7 +120,7 @@ class _LogsViewState extends State<_LogsView> {
   void initState() {
     super.initState();
     // The errors are on screen now — drop the launcher's error badge.
-    LogStore.instance.markErrorsSeen();
+    DevtrayLog.instance.markErrorsSeen();
     _scroll.addListener(_onScroll);
   }
 
@@ -439,7 +439,7 @@ class _LogsViewState extends State<_LogsView> {
     // showing one would rebuild the page for entries it isn't displaying.
     if (_isViewingSession) return _buildSession(context);
 
-    final store = LogStore.instance;
+    final store = DevtrayLog.instance;
     return ValueListenableBuilder<int>(
       valueListenable: store.tick,
       builder: (context, _, _) => _buildBody(
@@ -479,7 +479,7 @@ class _LogsViewState extends State<_LogsView> {
   /// exactly like the live stream, and neither can drift from the other.
   Widget _buildBody(BuildContext context, {required List<LogEntry> entries, required List<String> tags}) {
     final t = DevtrayTheme.of(context);
-    final store = LogStore.instance;
+    final store = DevtrayLog.instance;
     final fields = _fields(tags, _fieldKeys(entries));
     final filtered = _filtered(entries, fields);
 
@@ -726,7 +726,7 @@ class _LogsEmptyState extends StatelessWidget {
                 (false, true) => 'The file was read, but held no readable entries.',
                 (false, false) => 'debugPrint, print and uncaught errors land here once\n'
                     'capture is installed — start the app with runDebugApp(),\n'
-                    'or bridge your own logger into LogStore.',
+                    'or bridge your own logger into DevtrayLog.',
               },
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 11, color: t.textMuted, height: 1.5),

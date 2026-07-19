@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/devtray_theme.dart';
 import '../../core/debug_text_styles.dart';
 import '../mocking/mock_interceptor.dart';
-import '../network_log_store.dart';
+import '../devtray_net.dart';
 import 'network_badges.dart';
 import 'network_formatters.dart';
 

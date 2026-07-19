@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  final logs = LogStore.instance;
-  final network = NetworkLogStore.instance;
-  final state = StateInspector.instance;
+  final logs = DevtrayLog.instance;
+  final network = DevtrayNet.instance;
+  final state = DevtrayState.instance;
 
   setUp(() {
     logs

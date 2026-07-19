@@ -14,7 +14,7 @@ forwarding · **log persistence** (sinks, rotating session files, a browser for 
 
 **Explicitly not doing:**
 - ~~**Persistence across restarts**~~ — **reversed, and shipped.** The reasoning was that the
-  crash-forensics case wasn't worth the machinery. It was: `LogSink`/`LogExporter` plus
+  crash-forensics case wasn't worth the machinery. It was: `LogSink`/`DevtrayExport` plus
   `devtray_log_file` write rotating session files, and the Logs page browses past runs. What
   made it worth building was that the machinery turned out to be small — the core defines the
   interface and owns the batching, and the one dependency lives in its own package.
@@ -41,7 +41,7 @@ Three real bugs surfaced while building it, all caught by tests:
 
 Opting out is a **two-level** switch, because hiding the UI doesn't stop the adapters:
 `NetworkDebugPage(enableMocking: false)` drops the button + banner, and
-`MockStore.instance.disable()` stops interception for real (beats offline mode, every rule,
+`DevtrayMocks.instance.disable()` stops interception for real (beats offline mode, every rule,
 and skips restoring persisted rules).
 
 Still open, if it ever bites:
@@ -68,7 +68,7 @@ at all** without a backend change.
 - **Replay / edit-and-resend** — tap a captured request, tweak the body, fire it again.
 
 ### Design sketch
-A rule list on `NetworkLogStore`, applied by the adapters — the same shape as the
+A rule list on `DevtrayNet`, applied by the adapters — the same shape as the
 `errorReporting` toggle we already shipped, so it inherits the live-toggle pattern.
 
 ```dart
@@ -87,7 +87,7 @@ class MockResponse {
   final Object? error;            // throw instead of responding (offline sim)
 }
 
-NetworkLogStore.instance.mockRules.value = [...];
+DevtrayNet.instance.mockRules.value = [...];
 ```
 
 `DebugDioInterceptor.onRequest` checks the rules; on a match it either delays, or
@@ -249,13 +249,13 @@ Built as the **jank lane on the Timeline** rather than its own page, because the
 question turned out not to be "what is the frame rate" but "what was the app doing when it
 stalled" — and that is only answerable next to the network, log and state lanes.
 
-Shipped: `FreezeWatchdog`, with `FreezeEvent` (the isolate stopped responding) and
+Shipped: `DevtrayJank`, with `FreezeEvent` (the isolate stopped responding) and
 `SlowFrameEvent` (a frame rendered, but late, with the build/raster split).
 
 Decisions taken on the open questions:
 
 - **Opt-in — yes.** `TimelineDebugPage(detectFreezes: true)`, or
-  `FreezeWatchdog.instance.start()` for the whole session. It is the only capture in the
+  `DevtrayJank.instance.start()` for the whole session. It is the only capture in the
   overlay with a steady-state cost, so it is the only one that is off by default.
 - **`addTimingsCallback` is not sufficient on its own.** It only fires for frames that
   *rendered*, so a three-second block produces no timings at all — the case you most want is
@@ -415,7 +415,7 @@ Things that apply to several of the above and should be decided once:
   Critically, the interceptor stays a **passthrough** — disabling the tools cannot break the
   app's networking, and there's a test for exactly that.
 
-  Side effect: `LogStore.log()` and `ErrorStore.report()` now return `void` instead of the
+  Side effect: `DevtrayLog.log()` and `ErrorStore.report()` now return `void` instead of the
   entry. Nothing used the return value, and a nullable one would have been noise.
 - **Per-feature opt-in cost.** Performance capture is the first feature with a real
   steady-state cost. Worth a consistent story: which hooks are on by default, which are opt-in.

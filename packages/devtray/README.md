@@ -19,18 +19,19 @@ compile the ones you use:
 
 ```yaml
 dependencies:
-  devtray: ^0.1.0          # the overlay, the pages, the stores
+  devtray: ^0.4.0          # the overlay, the pages, the stores
 
   # Add only what you need:
-  devtray_dio: ^0.1.0       # DebugDioInterceptor
-  devtray_http: ^0.1.0      # DebugHttpClient
-  devtray_bloc: ^0.1.0      # DebugBlocObserver     → the State page
-  devtray_riverpod: ^0.1.0  # DebugRiverpodObserver → the State page
-  devtray_prefs: ^0.1.0     # SharedPreferences adapter + mock persistence
-  devtray_hive: ^0.1.0      # browse and edit Hive boxes
-  devtray_sqflite: ^0.1.0   # every SQLite table, discovered from the schema
-  devtray_device: ^0.1.0    # real device/OS/app facts
-  devtray_html: ^0.1.0      # preview HTML response bodies
+  devtray_dio: ^0.4.0       # DebugDioInterceptor
+  devtray_http: ^0.4.0      # DebugHttpClient
+  devtray_bloc: ^0.4.0      # DebugBlocObserver     → the State page
+  devtray_riverpod: ^0.4.0  # DebugRiverpodObserver → the State page
+  devtray_prefs: ^0.4.0     # SharedPreferences adapter + mock persistence
+  devtray_hive: ^0.4.0      # browse and edit Hive boxes
+  devtray_sqflite: ^0.4.0   # every SQLite table, discovered from the schema
+  devtray_device: ^0.4.0    # real device/OS/app facts
+  devtray_html: ^0.4.0      # preview HTML response bodies
+  devtray_log_file: ^0.4.0  # write logs to rotating files, browse past runs
 ```
 
 A Riverpod app that uses `package:http` takes `devtray`,
@@ -75,9 +76,89 @@ second `enabled` flag to keep in sync.
 `enabled: false` it is exactly `runApp(app)`: no Zone, no hooks, no overlay in the tree —
 so it's safe to leave in a release build.
 
-It takes every option `Devtray` does — `presentation`, `theme`, `controller`,
+It takes every option `DevtrayOverlay` does — `presentation`, `theme`, `controller`,
 `showLauncher`, the launcher's corner/size/icon. See
 [Controlling when and how it opens](#controlling-when-and-how-it-opens).
+
+### Configuring the stores
+
+Everything the overlay captures is tuned in one place, through `configure:`:
+
+```dart
+void main() => runDebugApp(
+  app: const MyApp(),
+  enabled: kDebugMode,
+  configure: (devtray) => devtray
+    // Keep noisy background traffic out of the request list.
+    ..excludeUrls(['/health', '/metrics'])
+    // Ambient values carried by every log line and error.
+    ..context({'build': '1.4.2+318', 'flavor': 'staging'})
+    // Computed per entry, for values that must be current.
+    ..enrich('nav', () => {'screen': router.currentRoute})
+    // Fields a source holds outside its state.
+    ..inspect<CartCubit>((c) => {'items': c.items.length})
+    // Watch for UI freezes for the whole session.
+    ..detectFreezes(),
+  pages: const [...],
+);
+```
+
+**Why a callback and not more arguments.** `configure` runs at the one moment when
+everything is ready: after the kill switch is set, after the capture hooks are installed,
+and before your `setup` bootstrap. Configuring a store *before* the kill switch silently
+does nothing — a store that has been told it's disabled quietly refuses writes — and that
+was easy to hit when setup was spread across the singletons.
+
+It is also **skipped entirely** when `enabled` is false, so anything expensive inside it —
+an enricher that reads the filesystem, a sink that opens a socket — costs a release build
+nothing.
+
+| Method | Configures |
+|---|---|
+| `excludeUrls`, `network(...)` | Which requests are recorded, and how much of each body |
+| `disableMocking`, `persistMockRules` | Request mocking |
+| `logs(...)`, `context`, `enrich` | The log buffer and what every entry carries |
+| `logTo`, `logToAsync` | Where logs go when they leave memory |
+| `inspect<T>`, `inspectAll`, `formatState<T>`, `formatSource<S>`, `state(...)` | The State page |
+| `detectFreezes(...)` | UI-freeze and slow-frame detection |
+| `raw(() { ... })` | Anything not covered — reach straight for the stores |
+
+Registering several inspectors reads better as a list:
+
+```dart
+..inspectAll([
+  Inspect<CartCubit>((c) => {'items': c.items.length}),
+  Inspect<Session>((s) => {'signIns': s.signIns}),
+])
+```
+
+Each entry is an `Inspect<T>` rather than a bare callback because the registry is keyed by
+the source **type** — a list of plain functions would erase it, and your callback would
+receive an `Object` to cast. `inspect<T>` remains exactly right for a single one.
+
+Sinks that must be opened asynchronously — the file case — use `logToAsync`, which
+`runDebugApp` awaits before running your app, so lines logged during bootstrap still reach
+the sink:
+
+```dart
+..logToAsync(() => FileLogSink.open())
+```
+
+### Logging from your app
+
+Use the `Devtray` statics at call sites. They're no-ops when the overlay is disabled, so
+they're safe to leave in code that ships:
+
+```dart
+Devtray.log('User signed in', level: LogLevel.info, tag: 'auth');
+Devtray.report(error, stackTrace: stack);
+Devtray.setContext('userId', user.id);        // ambient, from here on
+await Devtray.withContext({'orderId': id}, () async => submitOrder());
+```
+
+The stores are still public for everything else — reading `DevtrayJank.instance.freezes`,
+feeding `DevtrayNet.instance` from a hand-rolled adapter. `Devtray` is the shorthand for
+the common path, not a wall around the rest.
 
 ### Already have a bootstrap?
 
@@ -111,12 +192,12 @@ void main() => runZonedGuarded(
     captureErrors();                             // framework + platform errors
     captureDebugPrint();                         // debugPrint
 
-    runApp(Devtray(pages: const [...], child: const MyApp()));
+    runApp(DevtrayOverlay(pages: const [...], child: const MyApp()));
   },
-  (error, stack) => LogStore.instance.report(error, stackTrace: stack, source: ErrorSource.uncaught),
+  (error, stack) => DevtrayLog.instance.report(error, stackTrace: stack, source: ErrorSource.uncaught),
   zoneSpecification: ZoneSpecification(
     print: (self, parent, zone, line) {          // bare print()
-      LogStore.instance.log(line);
+      DevtrayLog.instance.log(line);
       parent.print(zone, line);
     },
   ),
@@ -181,10 +262,11 @@ pages: [TimelineDebugPage(detectFreezes: true)],
 ```
 
 That scopes the watchdog to while the page is mounted. To watch the whole session — including
-freezes that happen while the overlay is closed — start it from your own bootstrap instead:
+freezes that happen while the overlay is closed, or while you're on another tab — start it
+from `configure` instead:
 
 ```dart
-FreezeWatchdog.instance.start();
+configure: (devtray) => devtray..detectFreezes(),
 ```
 
 Two different things land in the jank lane:
@@ -212,10 +294,11 @@ a 900ms freeze directly after a large response arrived is a strong hint about wh
 Tune it if the defaults don't fit:
 
 ```dart
-FreezeWatchdog.instance
-  ..freezeThreshold = const Duration(milliseconds: 500)  // default 250ms
-  ..slowFrameThreshold = const Duration(milliseconds: 50) // default 32ms
-  ..heartbeatInterval = const Duration(milliseconds: 50); // default 100ms
+..detectFreezes(
+  threshold: const Duration(milliseconds: 500),          // default 250ms
+  slowFrameThreshold: const Duration(milliseconds: 50),  // default 32ms
+  heartbeatInterval: const Duration(milliseconds: 50),   // default 100ms
+)
 ```
 
 The threshold has to stay well above ordinary timer jitter — timers routinely run a few
@@ -225,7 +308,7 @@ milliseconds late, and a threshold near zero reports constant phantom freezes.
 
 ## Network
 
-The overlay reads from a single transport-agnostic sink, `NetworkLogStore`. Three ways in:
+The overlay reads from a single transport-agnostic sink, `DevtrayNet`. Three ways in:
 
 **dio** — add the interceptor **last**, so it sees the final headers other interceptors set:
 
@@ -244,7 +327,7 @@ await client.get(Uri.parse('https://api.example.com/users'));
 **Anything else** — drive the store by hand. This is the whole API:
 
 ```dart
-final entry = NetworkLogStore.instance.add(
+final entry = DevtrayNet.instance.add(
   method: 'GET',
   uri: uri,
   requestHeaders: headers,
@@ -252,7 +335,7 @@ final entry = NetworkLogStore.instance.add(
 );
 
 // ...later, when the response lands (entry is null if the URL was excluded):
-NetworkLogStore.instance.complete(
+DevtrayNet.instance.complete(
   entry!.id,
   status: NetworkLogStatus.success,
   statusCode: 200,
@@ -264,7 +347,7 @@ NetworkLogStore.instance.complete(
 Keep noisy background traffic out of the list:
 
 ```dart
-NetworkLogStore.instance
+DevtrayNet.instance
   ..excludedUrlPatterns.addAll(['/health', '/log-error'])
   ..maxEntries = 300;   // default 500, oldest dropped first
 ```
@@ -272,7 +355,7 @@ NetworkLogStore.instance
 Attach transport-specific context as its own detail tab:
 
 ```dart
-NetworkLogStore.instance.attachExtra(entry.id, 'Proxy JS', generatedJs);
+DevtrayNet.instance.attachExtra(entry.id, 'Proxy JS', generatedJs);
 ```
 
 **Per request you get:** method, URL, status, duration, request/response headers and bodies
@@ -287,7 +370,7 @@ for one button — so it's opt-in:
 
 ```yaml
 dependencies:
-  devtray_html: ^0.1.0
+  devtray_html: ^0.4.0
 ```
 
 ```dart
@@ -314,7 +397,7 @@ pages: const [NetworkDebugPage()],
 ```
 
 Nothing else to wire up: the dio and http adapters already consult the rules. To drop mocking
-entirely, call `MockStore.instance.disable()` — that stops the interception *and* takes the
+entirely, call `DevtrayMocks.instance.disable()` — that stops the interception *and* takes the
 whole UI with it. See [Don't want mocking at all?](#dont-want-mocking-at-all).
 
 ### The workflow that matters
@@ -360,10 +443,10 @@ editor can't take down every request in flight.
 The UI is a front-end for a plain store, so you can drive it from a test or a script:
 
 ```dart
-MockStore.instance.offline.value = true;               // kill the network
+DevtrayMocks.instance.offline.value = true;               // kill the network
 
-MockStore.instance.add(MockRule(
-  id: MockStore.instance.nextId(),
+DevtrayMocks.instance.add(MockRule(
+  id: DevtrayMocks.instance.nextId(),
   urlPattern: '/orders',
   method: 'POST',
   statusCode: 500,
@@ -380,11 +463,11 @@ survive, and they're worth adding if you use mocks at all: otherwise you re-add 
 
 ```yaml
 dependencies:
-  devtray_prefs: ^0.1.0
+  devtray_prefs: ^0.4.0
 ```
 
 ```dart
-MockStore.instance.storage = SharedPreferencesMockRuleStorage();
+DevtrayMocks.instance.storage = SharedPreferencesMockRuleStorage();
 ```
 
 That's the whole opt-in — setting a backend *is* the switch, so there's no flag to keep in
@@ -394,7 +477,7 @@ not use.
 
 Only the rules are stored (a small JSON blob); no logs, no request bodies, so none of the PII
 concerns that make persisting the *data* a bad idea. Swap the backend by implementing
-`MockRuleStorage` and setting `MockStore.instance.storage` — that's the same seam
+`MockRuleStorage` and setting `DevtrayMocks.instance.storage` — that's the same seam
 `devtray_prefs` uses.
 
 ### Don't want mocking at all?
@@ -402,7 +485,7 @@ concerns that make persisting the *data* a bad idea. Swap the backend by impleme
 One line, and it's the real one:
 
 ```dart
-MockStore.instance.disable();
+DevtrayMocks.instance.disable();
 ```
 
 That stops the adapters intercepting — it beats offline mode, every rule, and skips restoring
@@ -410,7 +493,7 @@ persisted rules on the next launch. The Network page reads it too, so the Mocks 
 this request" and the interception warning all disappear with it.
 
 There's deliberately no separate flag for the UI. There used to be, and it was a trap: hiding
-the affordances while the adapters went on consulting `MockStore` meant a rule added **from
+the affordances while the adapters went on consulting `DevtrayMocks` meant a rule added **from
 code** could fake traffic with nothing on screen to reveal it. One switch, so the two can't
 disagree.
 
@@ -605,10 +688,10 @@ scope (`dart:math` exports one too), use `debugLog` — same function, unambiguo
 ### Hooking in your own logger
 
 If you already use `logger`, `talker`, `logging`, or something homegrown, keep it. The page
-reads from `LogStore` and nothing else, so bridging is one call:
+reads from `DevtrayLog` and nothing else, so bridging is one call:
 
 ```dart
-LogStore.instance.log(
+Devtray.log(
   'User signed in',
   level: LogLevel.info,
   tag: 'auth',
@@ -616,6 +699,9 @@ LogStore.instance.log(
   stackTrace: someStack,  // optional
 );
 ```
+
+(`Devtray.log` is shorthand for `DevtrayLog.instance.log` — either works. The examples below
+use the store directly where the surrounding code already holds a reference to it.)
 
 Use `debugLevelFromName('SEVERE')` / `debugLevelFromSeverity(1000)` to map a foreign level
 onto `LogLevel` — they understand the aliases the common packages use (`severe`, `wtf`,
@@ -627,7 +713,7 @@ untouched:
 ```dart
 class DevtrayLogOutput extends LogOutput {
   @override
-  void output(OutputEvent event) => LogStore.instance.log(
+  void output(OutputEvent event) => DevtrayLog.instance.log(
     event.lines.join('\n'),
     level: debugLevelFromName(event.level.name),
   );
@@ -639,7 +725,7 @@ final logger = Logger(output: MultiOutput([ConsoleOutput(), DevtrayLogOutput()])
 **package:logging**
 
 ```dart
-Logger.root.onRecord.listen((r) => LogStore.instance.log(
+Logger.root.onRecord.listen((r) => DevtrayLog.instance.log(
   r.message,
   tag: r.loggerName,
   level: debugLevelFromName(r.level.name),
@@ -651,7 +737,7 @@ Logger.root.onRecord.listen((r) => LogStore.instance.log(
 **talker**
 
 ```dart
-talker.stream.listen((d) => LogStore.instance.log(
+talker.stream.listen((d) => DevtrayLog.instance.log(
   d.message ?? '',
   level: debugLevelFromName(d.logLevel?.name),
   tag: d.title,
@@ -676,7 +762,7 @@ The point is the errors **nobody was watching the console for** — so the launc
 count badge when errors arrive, and opening the Logs page clears it:
 
 ```dart
-Devtray(showErrorBadge: false, ...)   // if you'd rather it didn't
+DevtrayOverlay(showErrorBadge: false, ...)   // if you'd rather it didn't
 ```
 
 Report your own caught errors — they show up as error rows just the same:
@@ -685,12 +771,12 @@ Report your own caught errors — they show up as error rows just the same:
 try {
   await risky();
 } catch (e, s) {
-  LogStore.instance.report(e, stackTrace: s);
+  DevtrayLog.instance.report(e, stackTrace: s);
   rethrow;
 }
 ```
 
-There is **one store**: `LogStore` holds ordinary logs and errors alike. An error is just an
+There is **one store**: `DevtrayLog` holds ordinary logs and errors alike. An error is just an
 error-level entry carrying the extra report fields (`source`, context, stack) — `report()`
 records it and bumps the badge; there's no separate error store or tab.
 
@@ -717,7 +803,7 @@ NetworkDebugPage(errorReporting: NetworkErrorReporting.none)                // s
 | `all` *(default)* | every failed request, 4xx included |
 
 The page sets this when it builds; you can still override it live from code at any time via
-`NetworkLogStore.instance.errorReporting.value = ...`.
+`DevtrayNet.instance.errorReporting.value = ...`.
 
 URLs in `excludedUrlPatterns` never reach either page.
 
@@ -755,7 +841,7 @@ the page itself, read live from the `MediaQuery`, so it stays correct across rot
 A page is a tab. Inline:
 
 ```dart
-Devtray(
+DevtrayOverlay(
   pages: [
     const NetworkDebugPage(),
     DebugPage.builder(
@@ -799,7 +885,7 @@ To make your page look native to the overlay, reuse its widgets — all exported
 ```dart
 final debug = DevtrayController();
 
-Devtray(controller: debug, pages: [...], child: ...);
+DevtrayOverlay(controller: debug, pages: [...], child: ...);
 
 // From a shake detector, a 5-tap on the logo, a hidden settings row, a test:
 debug.open();
@@ -833,14 +919,14 @@ debug.showLauncher.value = true;    // show
 
 That's how you ship a build with **no visible debug affordance** but a secret way in.
 
-> Note: `runDebugApp(showLauncher:)` / `Devtray(showLauncher:)` is ignored once you pass
+> Note: `runDebugApp(showLauncher:)` / `DevtrayOverlay(showLauncher:)` is ignored once you pass
 > a `controller` — the controller owns that flag, so it can be flipped while running. Set the
 > initial value on the controller instead, as above.
 
 ### Presentation
 
 ```dart
-Devtray(
+DevtrayOverlay(
   presentation: DevtrayPresentation.bottomSheet,  // dialog | fullscreen | bottomSheet | custom
   ...
 )
@@ -891,7 +977,7 @@ in memory**, with nothing to read it and no reason to exist.
 `DevtrayKillSwitch` closes that. It defaults to `kDebugMode`, so **a release build
 captures nothing out of the box** and you don't have to remember anything. When it's off:
 
-- `NetworkLogStore` and `LogStore` (which also holds errors) become no-ops.
+- `DevtrayNet` and `DevtrayLog` (which also holds errors) become no-ops.
 - Mock rules never intercept (it beats an active rule *and* offline mode).
 - Turning it off **clears** whatever was already captured.
 - The interceptor stays a passthrough, so **disabling the tools can't break your networking**.
@@ -909,7 +995,7 @@ DevtrayKillSwitch.enabled = user.isInternal;
 ### Launcher appearance
 
 ```dart
-Devtray(
+DevtrayOverlay(
   launcherCorner: DebugLauncherCorner.bottomLeft,
   launcherMargin: const EdgeInsets.all(24),
   launcherSize: 56,
@@ -922,7 +1008,7 @@ Devtray(
 ### Theming
 
 ```dart
-Devtray(
+DevtrayOverlay(
   theme: const DevtrayTheme.dark(),
   // or override any single color:
   // theme: const DevtrayTheme(accent: Color(0xFFAA00FF), background: Colors.black),

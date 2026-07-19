@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../core/debug_text_styles.dart';
 import '../../core/devtray_theme.dart';
-import '../freeze_watchdog.dart';
+import '../devtray_jank.dart';
 import '../timeline_event.dart';
 
 /// What happened during a freeze or a slow frame.
 ///
 /// A freeze has no stack trace — by the time the heartbeat can measure the gap,
-/// whatever caused it has already returned (see [FreezeWatchdog]). So the
+/// whatever caused it has already returned (see [DevtrayJank]). So the
 /// question this answers is not *what was running* but **what else was going on
 /// at the time**: which requests were in flight, what got logged, what state
 /// changed. That is circumstantial rather than conclusive, and the dialog says

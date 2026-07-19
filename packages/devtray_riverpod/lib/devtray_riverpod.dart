@@ -20,7 +20,7 @@
 /// — otherwise the page falls back to the runtime type.
 ///
 /// The State page itself lives in the core and knows nothing about Riverpod: it
-/// reads from `StateInspector`, which is library-agnostic. This package is the
+/// reads from `DevtrayState`, which is library-agnostic. This package is the
 /// ~50 lines of glue between the two, and `devtray_bloc` is the same
 /// glue for bloc. Both can be installed at once; the page shows both.
 library;

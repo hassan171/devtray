@@ -39,9 +39,14 @@ LogSessionLoader? logSessions;
 /// Starts writing captured logs to disk, and returns the source the Logs page
 /// browses them with.
 ///
-/// The whole opt-in is `addSink` — before it, [LogStore] behaves exactly as it
+/// The whole opt-in is `addSink` — before it, [DevtrayLog] behaves exactly as it
 /// always has and nothing is written anywhere.
-Future<LogSessionSource> installLogPersistence() async {
+/// Opens the rotating file sink, and remembers where it wrote so the Logs
+/// page's session picker can read those files back.
+///
+/// Called from `configure`'s `logToAsync`, which awaits it before the app runs
+/// — so a line logged during bootstrap still lands in the file.
+Future<LogSink> openFileLogSink() async {
   final sink = await FileLogSink.open(
     // Documents rather than the cache default: this example is *about* showing
     // the files, and cache directories can be evicted by the OS between runs.
@@ -53,49 +58,14 @@ Future<LogSessionSource> installLogPersistence() async {
     maxFiles: 8,
   );
 
-  LogExporter.instance
-    // Batched is the default; spelled out here because it's the setting worth
-    // knowing about. Short interval so the example's files fill visibly.
-    ..policy = const FlushPolicy.batched(size: 25, interval: Duration(seconds: 2))
-    ..addSink(sink)
-    // A second destination on the same buffer — the shape of shipping logs
-    // somewhere. It isn't a real upload: see UploadLogSink.
-    ..addSink(UploadLogSink());
-
-  final loader = LogSessionLoader(sink.directory);
-  logSessions = loader;
-  return DevtrayFileSessions(loader);
+  // The session browser reads from wherever the sink decided to write, so it
+  // can only be wired up once the sink is open.
+  logSessions = LogSessionLoader(sink.directory);
+  return sink;
 }
 
-/// Attaches context to every log line and error, three ways.
-///
-/// The three layers, least specific to most:
-///
-/// * **Ambient** — set once, carried by everything after. For facts true of a
-///   span of the session: who's signed in, which build.
-/// * **Enrichers** — computed per entry. For values that must be *current*
-///   rather than whatever they were when you last set them.
-/// * **Per-call** — passed at the call site, on one line only.
-///
-/// The payoff is errors nobody anticipated. A crash that says who it happened
-/// to, on which screen, on which build is a different object from one that
-/// doesn't — and you can't add that at a throw site you didn't write.
-void installLogContext() {
-  LogStore.instance
-    ..setContext('build', '1.4.2+318')
-    ..setContext('flavor', 'example')
-    // Nobody is signed in yet — set on sign-in, and every line after it carries
-    // the user without a single call site knowing about it.
-    ..setContext('userId', 'anonymous')
-    // Computed fresh per entry: `currentScreen` changes as you navigate, and an
-    // ambient value would go stale the moment you moved.
-    ..addEnricher('nav', () => {'screen': currentScreen})
-    // Enrichers run on EVERY log line, so they have to stay cheap — this is a
-    // field read, not a platform channel call.
-    ..addEnricher('session', () => {'uptime': '${DateTime.now().difference(_startedAt).inSeconds}s'});
-}
-
-final DateTime _startedAt = DateTime.now();
+/// When the app started, for the `session` enricher registered in main().
+final DateTime startedAt = DateTime.now();
 
 /// Which screen the app is on, read by the `nav` enricher above.
 ///

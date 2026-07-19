@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/devtray_theme.dart';
 import '../../core/debug_text_styles.dart';
-import '../mocking/mock_store.dart';
+import '../mocking/devtray_mocks.dart';
 
 /// A compact icon action sized for touch.
 ///
@@ -56,7 +56,7 @@ class _MocksButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = DevtrayTheme.of(context);
-    final store = MockStore.instance;
+    final store = DevtrayMocks.instance;
 
     return ListenableBuilder(
       listenable: Listenable.merge([store.offline, store.rulesEnabled, store.rules]),
@@ -172,7 +172,7 @@ class NetworkSearchBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = DevtrayTheme.of(context);
-    final store = MockStore.instance;
+    final store = DevtrayMocks.instance;
 
     return ListenableBuilder(
       listenable: Listenable.merge([store.offline, store.rulesEnabled, store.rules]),

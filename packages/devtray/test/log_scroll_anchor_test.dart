@@ -13,7 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 ///
 /// The only assertion that means anything here is which rows are on screen.
 void main() {
-  final store = LogStore.instance;
+  final store = DevtrayLog.instance;
 
   setUp(() {
     store

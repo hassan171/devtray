@@ -4,12 +4,12 @@ import 'dart:convert';
 import 'package:flutter/widgets.dart';
 
 import '../core/devtray_kill_switch.dart';
-import 'log_store.dart';
+import 'devtray_log.dart';
 
 /// Where captured logs go when they leave memory — a file, an upload, a
 /// database, your own crash reporter.
 ///
-/// [LogStore] is a ring buffer: 1000 entries, oldest dropped, gone at process
+/// [DevtrayLog] is a ring buffer: 1000 entries, oldest dropped, gone at process
 /// exit. That's the right default for a debug overlay (it costs nothing and
 /// leaks nothing), but it means the log of the crash you just saw dies with the
 /// app. A sink is how you keep it.
@@ -29,13 +29,13 @@ import 'log_store.dart';
 ///   }
 /// }
 ///
-/// LogExporter.instance.addSink(UploadSink());
+/// DevtrayExport.instance.addSink(UploadSink());
 /// ```
 ///
 /// ## What a sink must guarantee
 ///
 /// [write] is called with a batch and must not throw — a sink that throws is
-/// disabled for the rest of the session (see [LogExporter]) rather than being
+/// disabled for the rest of the session (see [DevtrayExport]) rather than being
 /// allowed to take down the app it's meant to be diagnosing. Handle your own
 /// failures; return normally when you've done what you can.
 ///
@@ -55,7 +55,7 @@ abstract class LogSink {
   Future<void> write(List<LogEntry> batch);
 
   /// Release anything held open. Called when the sink is removed, and on
-  /// [LogExporter.dispose].
+  /// [DevtrayExport.dispose].
   Future<void> close() async {}
 }
 
@@ -72,7 +72,7 @@ abstract class LogSink {
 /// A crash is exactly when the log matters most, which argues for [immediate];
 /// a debug tool that makes the app stutter is a debug tool people turn off,
 /// which argues against it. [batched] with a short interval is the compromise,
-/// and flushing on app-pause (which [LogExporter.flushOnPause] does) recovers
+/// and flushing on app-pause (which [DevtrayExport.flushOnPause] does) recovers
 /// most of what [immediate] would have bought.
 sealed class FlushPolicy {
   const FlushPolicy();
@@ -90,7 +90,7 @@ sealed class FlushPolicy {
   /// how much memory the pending buffer can hold when logging is fast.
   const factory FlushPolicy.batched({int size, Duration interval}) = BatchedFlush;
 
-  /// Never flush on your behalf — [LogExporter.flush] is the only trigger.
+  /// Never flush on your behalf — [DevtrayExport.flush] is the only trigger.
   ///
   /// For "write a file when the user taps Export" and nothing else.
   const factory FlushPolicy.manual() = ManualFlush;
@@ -117,24 +117,24 @@ final class ManualFlush extends FlushPolicy {
 /// Fans captured logs out to any number of [LogSink]s, on a [FlushPolicy].
 ///
 /// Nothing happens until you add a sink — an app that doesn't want persistence
-/// pays for none of it, and [LogStore] behaves exactly as before.
+/// pays for none of it, and [DevtrayLog] behaves exactly as before.
 ///
 /// ```dart
-/// LogExporter.instance
+/// DevtrayExport.instance
 ///   ..policy = const FlushPolicy.batched(size: 100, interval: Duration(seconds: 10))
 ///   ..addSink(await FileLogSink.open());
 /// ```
 ///
-/// ## Why this sits beside LogStore rather than inside it
+/// ## Why this sits beside DevtrayLog rather than inside it
 ///
 /// The store is a ring buffer with a cap; the exporter is a stream with none.
 /// Every entry passes through here exactly once, *before* the store's eviction
 /// can drop it — so a sink sees all 10,000 lines of a long session even though
 /// the page only ever shows the last 1000. Putting export inside the store would
 /// have tied what you keep on disk to what fits on screen.
-class LogExporter {
-  LogExporter._();
-  static final LogExporter instance = LogExporter._();
+class DevtrayExport {
+  DevtrayExport._();
+  static final DevtrayExport instance = DevtrayExport._();
 
   /// When pending entries are written. Changing it takes effect immediately;
   /// anything already pending is flushed under the new policy.
@@ -153,7 +153,7 @@ class LogExporter {
   /// On by default, and the reason [FlushPolicy.batched] is a reasonable
   /// default: backgrounding is the last moment before the OS may kill the
   /// process, so it's the cheapest opportunity to not lose the buffer. Requires
-  /// [LogExporter.observeLifecycle] to have been called — [runDebugApp] does it.
+  /// [DevtrayExport.observeLifecycle] to have been called — [runDebugApp] does it.
   bool flushOnPause = true;
 
   final List<LogSink> _sinks = [];
@@ -163,7 +163,7 @@ class LogExporter {
   final Map<String, Object> _failed = {};
 
   /// Entries captured but not yet written. Chronological (oldest first) —
-  /// the opposite of [LogStore.entries], because a file should read forwards.
+  /// the opposite of [DevtrayLog.entries], because a file should read forwards.
   final List<LogEntry> _pending = [];
 
   Timer? _timer;
@@ -189,8 +189,8 @@ class LogExporter {
     await sink.close();
   }
 
-  /// Called by [LogStore] for every recorded entry. Not part of the public API —
-  /// log through [LogStore.log] / [LogStore.report] as usual.
+  /// Called by [DevtrayLog] for every recorded entry. Not part of the public API —
+  /// log through [DevtrayLog.log] / [DevtrayLog.report] as usual.
   void ingest(LogEntry entry) {
     // No sinks means no buffer. Without this, an app that never configured
     // export would accumulate entries forever waiting for a flush that has
@@ -252,7 +252,7 @@ class LogExporter {
           // whatever triggered the flush. Disable it and carry on — logging the
           // failure to the store, where it's visible on the page.
           _failed[sink.name] = e;
-          LogStore.instance.log(
+          DevtrayLog.instance.log(
             'Log sink "${sink.name}" failed and was disabled: $e',
             level: LogLevel.error,
             tag: 'devtray',
@@ -304,7 +304,7 @@ class LogExporter {
 /// process, so they're the cheapest moment to not lose the pending buffer —
 /// which is what makes a batched policy safe enough to be the default.
 class _LifecycleFlusher extends WidgetsBindingObserver {
-  final LogExporter _exporter;
+  final DevtrayExport _exporter;
   _LifecycleFlusher(this._exporter);
 
   @override
@@ -352,7 +352,7 @@ abstract class LogSessionSource {
   /// Available sessions, newest first.
   Future<List<LogSessionInfo>> list();
 
-  /// That session's entries, newest first — matching [LogStore.entries], so the
+  /// That session's entries, newest first — matching [DevtrayLog.entries], so the
   /// page renders either without knowing which it has.
   Future<List<LogEntry>> load(LogSessionInfo session);
 
@@ -424,7 +424,7 @@ String formatLogEntryAsText(LogEntry e) {
 /// skipped rather than failing the load, so a truncated final line costs you
 /// that line and nothing else.
 ///
-/// Returns newest-first to match [LogStore.entries], so the same page can
+/// Returns newest-first to match [DevtrayLog.entries], so the same page can
 /// render either without knowing which it has.
 List<LogEntry> parseLogEntries(String contents) {
   final entries = <LogEntry>[];

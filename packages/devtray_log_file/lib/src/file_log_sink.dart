@@ -27,7 +27,7 @@ enum LogFileLocation {
 /// Writes captured logs to rotating files on disk.
 ///
 /// ```dart
-/// LogExporter.instance.addSink(await FileLogSink.open());
+/// DevtrayExport.instance.addSink(await FileLogSink.open());
 /// ```
 ///
 /// That's the whole setup. Each app run gets its own file, older files are

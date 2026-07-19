@@ -13,7 +13,7 @@ Widget _page() => MaterialApp(
     );
 
 void main() {
-  final store = LogStore.instance;
+  final store = DevtrayLog.instance;
 
   setUp(() {
     store

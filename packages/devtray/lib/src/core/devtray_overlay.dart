@@ -36,7 +36,7 @@ enum DebugLauncherCorner { topLeft, topRight, bottomLeft, bottomRight }
 /// Everything about *when* and *how* the tools appear is yours to decide:
 ///
 /// ```dart
-/// Devtray(
+/// DevtrayOverlay(
 ///   enabled: kDebugMode,                       // when it exists at all
 ///   showLauncher: true,                        // whether the button is drawn
 ///   presentation: DevtrayPresentation.dialog,
@@ -53,7 +53,7 @@ enum DebugLauncherCorner { topLeft, topRight, bottomLeft, bottomRight }
 /// With `showLauncher: false` there is no visible affordance at all — call
 /// `controller.open()` from your own trigger (shake, 5-tap on the logo, a
 /// hidden settings row).
-class Devtray extends StatefulWidget {
+class DevtrayOverlay extends StatefulWidget {
   /// The app. The overlay is stacked on top of it.
   final Widget child;
 
@@ -97,7 +97,7 @@ class Devtray extends StatefulWidget {
   /// draggable — you only supply the visuals.
   final Widget? launcherBuilder;
 
-  const Devtray({
+  const DevtrayOverlay({
     super.key,
     required this.child,
     this.pages = const [],
@@ -115,10 +115,10 @@ class Devtray extends StatefulWidget {
   });
 
   @override
-  State<Devtray> createState() => _DevtrayState();
+  State<DevtrayOverlay> createState() => _DevtrayState();
 }
 
-class _DevtrayState extends State<Devtray> {
+class _DevtrayState extends State<DevtrayOverlay> {
   late DevtrayController _controller = widget.controller ?? DevtrayController(showLauncher: widget.showLauncher);
   bool get _ownsController => widget.controller == null;
 
@@ -132,7 +132,7 @@ class _DevtrayState extends State<Devtray> {
   final ValueNotifier<Offset?> _pos = ValueNotifier<Offset?>(null);
 
   @override
-  void didUpdateWidget(Devtray oldWidget) {
+  void didUpdateWidget(DevtrayOverlay oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
       if (oldWidget.controller == null) oldWidget.controller?.dispose();

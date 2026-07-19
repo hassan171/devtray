@@ -7,8 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 ///
 /// ```dart
 /// void main() async {
-///   MockStore.instance.storage = SharedPreferencesMockRuleStorage();
-///   await MockStore.instance.load();
+///   DevtrayMocks.instance.storage = SharedPreferencesMockRuleStorage();
+///   await DevtrayMocks.instance.load();
 ///   runDebugApp(const MyApp(), pages: const [NetworkDebugPage()]);
 /// }
 /// ```

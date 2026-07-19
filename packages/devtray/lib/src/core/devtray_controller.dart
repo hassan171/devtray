@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 /// ```dart
 /// final debug = DevtrayController();
 ///
-/// Devtray(controller: debug, pages: [...], child: MaterialApp(...));
+/// DevtrayOverlay(controller: debug, pages: [...], child: MaterialApp(...));
 ///
 /// // …anywhere later:
 /// debug.open();

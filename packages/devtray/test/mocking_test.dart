@@ -3,17 +3,17 @@ import 'package:devtray/devtray.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  late MockStore mocks;
+  late DevtrayMocks mocks;
 
   setUp(() {
     // Fresh singletons per test.
-    mocks = MockStore.instance
+    mocks = DevtrayMocks.instance
       ..enable()
       ..clear()
       ..offline.value = false
       ..rulesEnabled.value = true;
-    NetworkLogStore.instance.clear();
-    LogStore.instance.clear();
+    DevtrayNet.instance.clear();
+    DevtrayLog.instance.clear();
   });
 
   group('MockRule.matches', () {

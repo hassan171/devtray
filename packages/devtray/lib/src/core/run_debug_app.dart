@@ -3,6 +3,12 @@ import 'dart:async';
 import 'package:devtray/devtray.dart';
 import 'package:flutter/material.dart';
 
+// Direct, not via the barrel: `applyDevtraySetup` is package-internal on
+// purpose. Exporting it would let an app build a Devtray outside
+// runDebugApp, which is exactly the ordering hazard the facade removes.
+import 'devtray_facade.dart';
+import 'devtray_typedefs.dart';
+
 /// Installs log/error capture, wraps [app] in a [Devtray], and runs it —
 /// the whole setup in one call.
 ///
@@ -82,6 +88,24 @@ void runDebugApp({
   /// Pass exactly one of [app] or [appBuilder].
   Widget Function()? appBuilder,
   Future<void> Function()? setup,
+
+  /// Configures the overlay's stores in one place — see [Devtray].
+  ///
+  /// ```dart
+  /// configure: (d) => d
+  ///   ..excludeUrls(['/health'])
+  ///   ..context({'build': '1.4.2'})
+  ///   ..detectFreezes(),
+  /// ```
+  ///
+  /// Called after [DevtrayKillSwitch] is set and the binding exists, which is
+  /// the ordering that makes it safe: configuring a store *before* the kill
+  /// switch silently does nothing, and that was easy to get wrong when setup
+  /// was scattered across the singletons.
+  ///
+  /// Skipped entirely when [enabled] is false, so anything expensive inside it
+  /// costs a release build nothing.
+  DevtrayConfigure? configure,
   bool enabled = true,
   List<DebugPage> pages = const [],
   DevtrayController? controller,
@@ -97,7 +121,7 @@ void runDebugApp({
 
   /// Route `FlutterError.onError` and `PlatformDispatcher.onError` into the Logs
   /// page (via [captureErrors]). Turn off if your app installs its own handlers
-  /// and forwards to [LogStore] itself, to avoid double-reporting.
+  /// and forwards to [DevtrayLog] itself, to avoid double-reporting.
   bool captureFlutterErrors = true,
 
   /// Route `debugPrint` into the Logs page (via [captureDebugPrint]). Framework
@@ -151,15 +175,24 @@ void runDebugApp({
       if (captureFlutterErrors) captureErrors();
       if (captureDebugPrints) captureDebugPrint();
 
-      // Lets LogExporter.flushOnPause work. Costs one observer and nothing else
+      // Lets DevtrayExport.flushOnPause work. Costs one observer and nothing else
       // when no log sink is configured, which is the default — so this doesn't
-      // need its own flag. See LogExporter.
-      LogExporter.instance.observeLifecycle();
+      // need its own flag. See DevtrayExport.
+      DevtrayExport.instance.observeLifecycle();
+
+      // The stores, configured in one place.
+      //
+      // Here specifically: after the kill switch (so nothing is silently
+      // dropped), after the capture hooks (so a log line written from inside
+      // `configure` is captured), and before `setup` — an app bootstrap may
+      // reasonably log or make requests, and the overlay should already be
+      // configured to record them.
+      if (configure != null) await applyDevtraySetup(configure);
 
       // Restore whatever the app's storage backend has, if any.
       //
       // No flag guards this, because installing a storage backend IS the opt-in:
-      // `MockStore.storage` defaults to InMemoryMockRuleStorage, which is always
+      // `DevtrayMocks.storage` defaults to InMemoryMockRuleStorage, which is always
       // empty at startup, so this is a no-op until you set one. A separate
       // `persistMockRules` switch could only ever disagree with the storage you
       // chose.
@@ -170,14 +203,14 @@ void runDebugApp({
       // Fire-and-forget: `rules` is a ValueNotifier, so the Mocks page picks
       // them up the moment they land. Awaiting here would mean holding up the
       // first frame for a debug tool's scratch file, which is a bad trade.
-      if (!MockStore.instance.isDisabled) MockStore.instance.load();
+      if (!DevtrayMocks.instance.isDisabled) DevtrayMocks.instance.load();
 
       // The app's own bootstrap — awaited inside the Zone so its logs and errors
       // are captured, and before `runApp` so the first frame sees a ready app.
       await setup?.call();
 
       runApp(
-        Devtray(
+        DevtrayOverlay(
           pages: pages,
           controller: controller,
           presentation: presentation,
@@ -195,7 +228,7 @@ void runDebugApp({
     },
     (error, stack) {
       if (captureUncaughtErrors) {
-        LogStore.instance.report(error, stackTrace: stack, source: ErrorSource.uncaught);
+        DevtrayLog.instance.report(error, stackTrace: stack, source: ErrorSource.uncaught);
       }
       // The app's own hook — e.g. forward to Crashlytics. Guarded so a throw in
       // the reporter can't cascade into the Zone's error handling.
@@ -215,7 +248,7 @@ void runDebugApp({
     zoneSpecification: captureZonePrints
         ? ZoneSpecification(
             print: (self, parent, zone, line) {
-              LogStore.instance.log(line);
+              DevtrayLog.instance.log(line);
               parent.print(zone, line);
             },
           )

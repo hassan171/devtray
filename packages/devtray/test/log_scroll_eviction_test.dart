@@ -11,7 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// slides by a row per arrival. Any correction measured in *pixels of growth*
 /// silently does nothing here; only a row count sees it.
 void main() {
-  final store = LogStore.instance;
+  final store = DevtrayLog.instance;
 
   setUp(() {
     store

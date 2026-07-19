@@ -8,7 +8,7 @@ Widget _app({
   bool showLauncher = true,
   List<DebugPage> pages = const [NetworkDebugPage()],
 }) {
-  return Devtray(
+  return DevtrayOverlay(
     controller: controller,
     enabled: enabled,
     showLauncher: showLauncher,
@@ -18,9 +18,9 @@ Widget _app({
 }
 
 void main() {
-  setUp(NetworkLogStore.instance.clear);
+  setUp(DevtrayNet.instance.clear);
 
-  group('Devtray', () {
+  group('DevtrayOverlay', () {
     testWidgets('renders the launcher and opens the tools on tap', (tester) async {
       await tester.pumpWidget(_app());
       expect(find.byIcon(Icons.bug_report), findsOneWidget);
@@ -101,9 +101,9 @@ void main() {
     });
   });
 
-  group('NetworkLogStore', () {
+  group('DevtrayNet', () {
     test('add/complete records an entry', () {
-      final store = NetworkLogStore.instance;
+      final store = DevtrayNet.instance;
       final entry = store.add(method: 'GET', uri: Uri.parse('https://x.test/a'));
 
       expect(entry, isNotNull);
@@ -117,7 +117,7 @@ void main() {
     });
 
     test('excluded URLs are not recorded', () {
-      final store = NetworkLogStore.instance;
+      final store = DevtrayNet.instance;
       store.excludedUrlPatterns.add('/health');
       addTearDown(store.excludedUrlPatterns.clear);
 
@@ -126,7 +126,7 @@ void main() {
     });
 
     test('drops the oldest entry past maxEntries', () {
-      final store = NetworkLogStore.instance;
+      final store = DevtrayNet.instance;
       store.maxEntries = 2;
       addTearDown(() => store.maxEntries = 500);
 

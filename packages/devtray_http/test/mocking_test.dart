@@ -16,18 +16,18 @@ class _ExplodingHttpClient extends http.BaseClient {
   }
 }
 void main() {
-  late MockStore mocks;
-  late NetworkLogStore logs;
+  late DevtrayMocks mocks;
+  late DevtrayNet logs;
 
   setUp(() {
     // Fresh singletons per test.
-    mocks = MockStore.instance
+    mocks = DevtrayMocks.instance
       ..enable()
       ..clear()
       ..offline.value = false
       ..rulesEnabled.value = true;
-    logs = NetworkLogStore.instance..clear();
-    LogStore.instance.clear();
+    logs = DevtrayNet.instance..clear();
+    DevtrayLog.instance.clear();
   });
 
 

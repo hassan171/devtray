@@ -4,7 +4,7 @@ import '../../core/devtray_theme.dart';
 import '../../core/debug_text_styles.dart';
 import 'components/mock_rule_editor.dart';
 import 'mock_rule.dart';
-import 'mock_store.dart';
+import 'devtray_mocks.dart';
 
 /// The mocking UI — intercept requests: force a response, inject latency, or
 /// simulate offline.
@@ -22,7 +22,7 @@ class MocksView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = DevtrayTheme.of(context);
-    final store = MockStore.instance;
+    final store = DevtrayMocks.instance;
 
     return ValueListenableBuilder<List<MockRule>>(
       valueListenable: store.rules,
@@ -110,7 +110,7 @@ class MockInterceptionBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = DevtrayTheme.of(context);
-    final store = MockStore.instance;
+    final store = DevtrayMocks.instance;
 
     // Rebuild on any of the three things that can turn interception on.
     return ListenableBuilder(
@@ -268,7 +268,7 @@ class _MasterSwitches extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final store = MockStore.instance;
+    final store = DevtrayMocks.instance;
 
     return Column(
       children: [
@@ -333,7 +333,7 @@ class _RuleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final store = MockStore.instance;
+    final store = DevtrayMocks.instance;
     final color = switch (rule.action) {
       MockAction.respond => rule.statusCode >= 400 ? theme.error : theme.success,
       MockAction.fail => theme.error,

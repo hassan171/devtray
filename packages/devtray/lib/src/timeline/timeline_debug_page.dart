@@ -8,15 +8,15 @@ import '../core/debug_page.dart';
 import '../core/debug_text_styles.dart';
 import '../core/devtray_theme.dart';
 import '../logs/components/log_detail_dialog.dart';
-import '../logs/log_store.dart';
+import '../logs/devtray_log.dart';
 import '../network/components/network_detail_pane.dart';
 import '../network/html_previewer.dart';
-import '../network/mocking/mock_store.dart';
-import '../network/network_log_store.dart';
+import '../network/mocking/devtray_mocks.dart';
+import '../network/devtray_net.dart';
 import '../state/components/state_detail_pane.dart';
-import '../state/state_inspector.dart';
+import '../state/devtray_state.dart';
 import 'components/jank_detail_dialog.dart';
-import 'freeze_watchdog.dart';
+import 'devtray_jank.dart';
 import 'timeline_event.dart';
 import 'timeline_painter.dart';
 
@@ -53,11 +53,11 @@ class TimelineDebugPage extends DebugPage {
   /// other page is passive.
   ///
   /// Detection is retrospective and has real limits — a frozen isolate cannot
-  /// report its own freeze while it is frozen. See [FreezeWatchdog].
+  /// report its own freeze while it is frozen. See [DevtrayJank].
   ///
   /// The watchdog runs only while this page is mounted, so the cost is paid
   /// while the panel is open and not otherwise. That also means a freeze while
-  /// the overlay is closed goes unrecorded; call [FreezeWatchdog.instance.start]
+  /// the overlay is closed goes unrecorded; call [DevtrayJank.instance.start]
   /// from your own bootstrap if you want it running for the whole session.
   final bool detectFreezes;
 
@@ -150,16 +150,16 @@ class _TimelineViewState extends State<_TimelineView> {
     super.initState();
     _startTicker();
 
-    if (widget.detectFreezes && !FreezeWatchdog.instance.isRunning) {
+    if (widget.detectFreezes && !DevtrayJank.instance.isRunning) {
       _ownsWatchdog = true;
-      FreezeWatchdog.instance.start();
+      DevtrayJank.instance.start();
     }
   }
 
   @override
   void dispose() {
     _ticker?.cancel();
-    if (_ownsWatchdog) FreezeWatchdog.instance.stop();
+    if (_ownsWatchdog) DevtrayJank.instance.stop();
     super.dispose();
   }
 
@@ -362,7 +362,7 @@ class _TimelineViewState extends State<_TimelineView> {
               child: switch (event.source) {
                 final NetworkLogEntry e => NetworkDetailPane(
                   entry: e,
-                  enableMocking: !MockStore.instance.isDisabled,
+                  enableMocking: !DevtrayMocks.instance.isDisabled,
                   onPreviewHtml: widget.onPreviewHtml,
                   // The panes render a back arrow for their master/detail
                   // layout; here it closes the dialog, which is the same
@@ -500,13 +500,13 @@ class _MultiStoreListener extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
-      valueListenable: NetworkLogStore.instance.tick,
+      valueListenable: DevtrayNet.instance.tick,
       builder: (context, _, _) => ValueListenableBuilder<int>(
-        valueListenable: LogStore.instance.tick,
+        valueListenable: DevtrayLog.instance.tick,
         builder: (context, _, _) => ValueListenableBuilder<int>(
-          valueListenable: StateInspector.instance.tick,
+          valueListenable: DevtrayState.instance.tick,
           builder: (context, _, _) => ValueListenableBuilder<int>(
-            valueListenable: FreezeWatchdog.instance.tick,
+            valueListenable: DevtrayJank.instance.tick,
             builder: (context, _, _) => builder(context),
           ),
         ),
