@@ -1,8 +1,9 @@
 import 'dart:async';
-import 'dart:math';
+import 'dart:math' as math;
 
 import 'package:devtray/devtray.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 
 import 'app_services.dart' show counter, dio, httpClient, todos;
 import 'counter_cubit.dart';
@@ -32,7 +33,7 @@ class LoadGenerator {
 
   /// Seeded, not `Random()`: a reproducible sequence means a stall you saw once
   /// is a stall you can see again.
-  final Random _random = Random(1337);
+  final math.Random _random = math.Random(1337);
 
   int _tick = 0;
 
@@ -205,4 +206,94 @@ class LoadGenerator {
   void _swallow(Future<Object?> future) {
     unawaited(future.catchError((Object _) => null));
   }
+
+  /// Blocks the UI isolate for [duration]. **Really** blocks it.
+  ///
+  /// The only way to know the freeze watchdog fires is to freeze something, and
+  /// no test can do it: blocking the isolate in a test blocks the test runner
+  /// too. So this exists to be triggered by hand and watched on the Timeline's
+  /// jank lane.
+  ///
+  /// A busy spin, not `sleep` — this is what a real freeze looks like from the
+  /// framework's side: a synchronous computation that never yields, so no
+  /// timer, no frame callback and no microtask runs until it returns. That is
+  /// precisely why the watchdog can only report it retrospectively.
+  ///
+  /// The work is deliberately un-optimisable: the result is written to
+  /// [lastJankResult] so the compiler cannot decide the loop is dead.
+  void freezeUi([Duration duration = const Duration(milliseconds: 900)]) {
+    LogStore.instance.log(
+      'About to block the UI isolate for ${duration.inMilliseconds}ms',
+      level: LogLevel.warning,
+      tag: 'jank',
+    );
+
+    final stopwatch = Stopwatch()..start();
+    var sink = 0.0;
+    while (stopwatch.elapsed < duration) {
+      // Enough arithmetic between clock reads that the check isn't the cost.
+      for (var i = 1; i < 20000; i++) {
+        sink += math.sqrt(i.toDouble()) * math.sin(i.toDouble());
+      }
+    }
+    lastJankResult = sink;
+
+    LogStore.instance.log(
+      'Unblocked after ${stopwatch.elapsedMilliseconds}ms — check the Timeline jank lane',
+      level: LogLevel.warning,
+      tag: 'jank',
+    );
+  }
+
+  /// A run of slow-but-rendering frames.
+  ///
+  /// Different from [freezeUi] and worth seeing separately: these frames *do*
+  /// render, just late, so `addTimingsCallback` reports them while the
+  /// heartbeat sees nothing. Between them the two cover both "we dropped 40
+  /// frames" and "we rendered nothing for a second".
+  Future<void> stutterUi({int frames = 30, Duration each = const Duration(milliseconds: 45)}) async {
+    LogStore.instance.log('Stuttering for $frames frames', level: LogLevel.warning, tag: 'jank');
+
+    for (var f = 0; f < frames; f++) {
+      // The burn has to happen INSIDE a frame to be a slow frame.
+      //
+      // Doing it between frames and yielding with `Future.delayed(Duration.zero)`
+      // does not work, and produces nothing on either lane: that yields to the
+      // microtask queue, not to the rasteriser, so Flutter never schedules and
+      // completes a frame in the gap. `addTimingsCallback` therefore reports
+      // no timings at all, and the heartbeat sees a series of short stalls each
+      // under its threshold. The result is a stutter you can feel and the tool
+      // cannot see — which is exactly how it was reported.
+      //
+      // A post-frame callback puts the work in the frame's own build phase,
+      // where it lands in `buildDuration` and the timings callback reports it.
+      final completer = Completer<void>();
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        final stopwatch = Stopwatch()..start();
+        var sink = 0.0;
+        while (stopwatch.elapsed < each) {
+          for (var i = 1; i < 5000; i++) {
+            sink += math.sqrt(i.toDouble());
+          }
+        }
+        lastJankResult = sink;
+        completer.complete();
+      });
+
+      // Ask for the next frame — without this, a settled app schedules none and
+      // the callback never runs.
+      SchedulerBinding.instance.scheduleFrame();
+      await completer.future;
+    }
+
+    LogStore.instance.log(
+      'Stutter done — check the Timeline jank lane for slow frames',
+      level: LogLevel.warning,
+      tag: 'jank',
+    );
+  }
 }
+
+/// Written to by the jank generators so the compiler can't eliminate their
+/// loops as dead code. Never read for its value.
+double lastJankResult = 0;

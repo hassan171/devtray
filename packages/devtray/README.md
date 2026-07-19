@@ -3,8 +3,9 @@
 An in-app debugging overlay for Flutter: a draggable floating button that opens a tabbed
 tools panel over your running app.
 
-Seven built-in pages — **Network** (with mocking), **Logs** (errors folded in), **State**,
-**Storage**, **Visual**, **Device** and **Export** — and every other tab is one you add.
+Eight built-in pages — **Timeline** (everything on one time axis, with UI-freeze detection),
+**Network** (with mocking), **Logs** (errors folded in), **State**, **Storage**, **Visual**,
+**Device** and **Export** — and every other tab is one you add.
 
 You decide **whether** it exists, **when** it opens, and **how** it's presented.
 
@@ -128,6 +129,97 @@ a widget that only exists inside it — a widget can't wrap its own `runApp` cal
 If you can't own `runApp` at all, call `captureErrors()` and `captureDebugPrint()` anywhere
 during startup. You'll still get `debugPrint` and framework errors; you'll miss bare `print()`
 and uncaught async errors, which genuinely require the Zone.
+
+---
+
+## Timeline
+
+Every other page answers *"what happened to **this**"*. `TimelineDebugPage` answers **"what
+just happened"** — requests, logs, state changes and UI freezes on one shared time axis.
+
+```dart
+pages: [TimelineDebugPage()],
+```
+
+That's the whole setup. **It owns no data.** Every store already timestamps its entries, so
+this is a *view* over the three existing stores rather than a fourth to keep in sync — and it
+costs nothing until you open it.
+
+```
+        14:32:01        :02        :03        :04        :05
+JANK                              ███████ 900ms
+NET     ▬▬▬▬▬▬ GET /items    ▬▬ POST /cart   ▬▬▬▬▬▬▬▬▬▬ GET /photos
+LOG     · ·  ··    ·        ▲              · ·   ▲▲
+STATE      ◆ CartCubit          ◆ CartCubit   ◆ SessionNotifier
+```
+
+Requests draw as **bars**, because they have duration. Logs and state changes draw as
+**marks**, because they're instants. The payoff is the vertical alignment: the 900ms freeze
+sitting directly above the request that landed a moment before it.
+
+**Tap anything** for its detail — the same dialog the owning page would show, so nothing
+drifts from the real thing.
+
+### Reading it
+
+| Control | What it does |
+|---|---|
+| **LIVE / PAUSED** | Follows the newest events, or holds still. Any drag pauses it — you can't read a window that's also sliding. |
+| **Drag the lanes**, or **‹ ›** | Scroll back through history. The buttons step half a window each. |
+| **Zoom slider** | 200ms to 10 minutes, logarithmic. The sub-second end is where you see ordering *inside* a frame's work. |
+| **Lane chips** | Mute a lane. Muted lanes are excluded from collection, not just hidden, so they cost nothing. |
+
+Zoom survives the live/paused toggle — pick a scale, pause to read, resume watching *at that
+scale*. The **reset** button beside the slider is the explicit way back.
+
+### Detecting UI freezes
+
+Opt-in, because it's the only capture in the overlay with a real steady-state cost:
+
+```dart
+pages: [TimelineDebugPage(detectFreezes: true)],
+```
+
+That scopes the watchdog to while the page is mounted. To watch the whole session — including
+freezes that happen while the overlay is closed — start it from your own bootstrap instead:
+
+```dart
+FreezeWatchdog.instance.start();
+```
+
+Two different things land in the jank lane:
+
+- **Freezes** — solid red bars. The UI isolate stopped responding entirely.
+- **Slow frames** — amber marks. The frame *rendered*, just late. Tapping one gives you the
+  build-vs-raster split: slow build points at widget work, slow raster at painting or shaders.
+
+> **What this can't do.** A frozen isolate cannot detect its own freeze — while it's blocked,
+> no timer, frame callback or microtask runs, including this one. So detection is
+> **retrospective**: the heartbeat notices on its *next* tick that far more wall-clock time
+> passed than it asked for. Three consequences worth knowing:
+>
+> - A freeze is only reported **once it ends**. A terminal hang is reported by nothing.
+> - There is **no stack trace**. By the time the gap is measurable, whatever caused it has
+>   returned.
+> - `addTimingsCallback` alone isn't enough — it only fires for frames that *rendered*, so a
+>   three-second block produces no timings at all. That's why both are used.
+
+Because there's no stack trace, tapping a freeze shows **what else was happening** in that
+window — the requests, logs and state changes from the other lanes. That's circumstantial,
+and the dialog says so rather than implying a cause it can't prove. It's usually enough:
+a 900ms freeze directly after a large response arrived is a strong hint about where to look.
+
+Tune it if the defaults don't fit:
+
+```dart
+FreezeWatchdog.instance
+  ..freezeThreshold = const Duration(milliseconds: 500)  // default 250ms
+  ..slowFrameThreshold = const Duration(milliseconds: 50) // default 32ms
+  ..heartbeatInterval = const Duration(milliseconds: 50); // default 100ms
+```
+
+The threshold has to stay well above ordinary timer jitter — timers routinely run a few
+milliseconds late, and a threshold near zero reports constant phantom freezes.
 
 ---
 

@@ -102,6 +102,29 @@ class DebugScreen extends StatelessWidget {
         ),
 
         _Section(
+          title: 'Jank',
+          subtitle: 'Freeze the UI on purpose — the jank lane on the Timeline is the only way to see it worked.',
+          children: [
+            // Short enough not to feel broken, long enough to clear the 250ms
+            // threshold comfortably.
+            _Btn('Freeze 500ms', () => LoadGenerator.instance.freezeUi(const Duration(milliseconds: 500))),
+            // Unmistakable. The app will not respond while this runs — that is
+            // the point, and the lane should show a fat red bar afterwards.
+            _Btn('Freeze 2s', () => LoadGenerator.instance.freezeUi(const Duration(seconds: 2))),
+            // Renders, but late: caught by the frame timings rather than the
+            // heartbeat, and drawn as a run of marks rather than one bar.
+            //
+            // 80ms per frame, comfortably over the 32ms threshold — a margin
+            // thin enough to sit near the line would make "did it work?"
+            // ambiguous, which is the wrong thing for a demo button.
+            _Btn(
+              'Stutter (slow frames)',
+              () => LoadGenerator.instance.stutterUi(frames: 20, each: const Duration(milliseconds: 80)),
+            ),
+          ],
+        ),
+
+        _Section(
           title: 'Log context',
           subtitle: 'Every line already carries build, flavor, userId and screen — open any row to see its Fields.',
           children: [
