@@ -70,8 +70,10 @@ class _LogsViewState extends State<_LogsView> {
   };
 
   List<LogEntry> _filtered(List<LogEntry> entries, Map<String, FilterField<LogEntry>> fields) {
+    // `searchable` is already lowercased and cached, so this is a plain
+    // substring test per entry — no per-keystroke string building.
     final q = _search.toLowerCase();
-    final searched = q.isEmpty ? entries : entries.where((e) => e.searchable.toLowerCase().contains(q)).toList();
+    final searched = q.isEmpty ? entries : entries.where((e) => e.searchable.contains(q)).toList();
     return applyFilter(searched, _conditions, fields);
   }
 
@@ -102,7 +104,13 @@ class _LogsViewState extends State<_LogsView> {
               actions: [
                 // Copies the *filtered* view, so a narrowed-down stream is what
                 // lands in the bug report.
-                CopyButton(tooltip: 'Copy all', icon: Icons.copy_all, size: 16, text: _asPlainText(filtered)),
+                CopyButton(
+                  tooltip: 'Copy all',
+                  icon: Icons.copy_all,
+                  size: 16,
+                  isEmpty: filtered.isEmpty,
+                  text: () => _asPlainText(filtered),
+                ),
                 IconButton(
                   tooltip: 'Clear all logs',
                   padding: EdgeInsets.zero,
@@ -139,7 +147,10 @@ class _LogsViewState extends State<_LogsView> {
                         itemCount: filtered.length,
                         itemBuilder: (context, i) {
                           final e = filtered[i];
-                          return LogRow(entry: e, onTap: () => LogDetailDialog.show(context, e));
+                          // Keyed by id — entries are inserted at index 0, so
+                          // every row would otherwise re-associate with a
+                          // different entry on each new line.
+                          return LogRow(key: ValueKey(e.id), entry: e, onTap: () => LogDetailDialog.show(context, e));
                         },
                       ),
                     ),

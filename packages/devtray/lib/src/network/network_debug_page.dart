@@ -96,7 +96,7 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
     if (_search.isEmpty) return entries;
     final q = _search.toLowerCase();
     return entries.where((e) {
-      return e.method.toLowerCase().contains(q) || e.uri.toString().toLowerCase().contains(q) || (e.statusCode?.toString().contains(q) ?? false);
+      return e.searchableTarget.contains(q) || (e.statusCode?.toString().contains(q) ?? false);
     }).toList();
   }
 
@@ -144,10 +144,8 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
             final mockingEnabled = !MockStore.instance.isDisabled;
             final entries = store.entries;
             final filtered = _filtered(entries);
-            NetworkLogEntry? selected;
-            for (final e in entries) {
-              if (e.id == _selectedId) selected = e;
-            }
+            // Indexed lookup rather than a scan of all 500 entries per tick.
+            final selected = _selectedId == null ? null : store.byId(_selectedId!);
 
             // Narrow: detail replaces the list entirely.
             if (!isWide && selected != null) {
@@ -185,6 +183,12 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
                           // and builder + itemExtent keeps scrolling flat.
                           itemCount: filtered.length,
                           itemBuilder: (context, i) => NetworkLogRow(
+                            // Keyed by id: entries are inserted at index 0, so
+                            // without this every row's element re-associates
+                            // with a different entry on each new request and
+                            // the status/selection animations replay on rows
+                            // that never changed.
+                            key: ValueKey(filtered[i].id),
                             entry: filtered[i],
                             isSelected: filtered[i].id == _selectedId,
                             onTap: () => setState(() => _selectedId = filtered[i].id),

@@ -44,6 +44,14 @@ abstract class DebugStorageAdapter {
   /// Set false for stores you only want to look at. The page hides its edit and
   /// delete controls for this section.
   bool get writable => true;
+
+  /// A caveat about what [readAll] just returned, shown above the list.
+  ///
+  /// For anything that makes the view less than the whole truth — most obviously
+  /// a row cap. A store that quietly returns a subset reads as complete, and
+  /// "the key isn't there" is then indistinguishable from "the key is past the
+  /// limit". Read after [readAll]; null when there's nothing to say.
+  String? get notice => null;
 }
 
 class DebugStorageAdapterInLine extends DebugStorageAdapter {

@@ -171,7 +171,9 @@ class _NetworkDetailPaneState extends State<NetworkDetailPane> with TickerProvid
               tooltip: 'Copy as cURL',
               icon: Icons.code,
               size: 16,
-              text: buildCurl(method: e.method, uri: e.uri, headers: e.requestHeaders, data: e.requestBody),
+              // Built on press: this JSON-encodes the whole request body, and
+              // the pane rebuilds whenever any *other* request completes.
+              text: () => buildCurl(method: e.method, uri: e.uri, headers: e.requestHeaders, data: e.requestBody),
             ),
           ],
         ),

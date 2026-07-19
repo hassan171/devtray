@@ -89,16 +89,42 @@ class _ExportViewState extends State<_ExportView> {
     }
   }
 
-  String _buildReport() => DebugReport.build(
+  /// The rendered report, memoised against the toggles it was built from.
+  ///
+  /// Building it walks 200 log entries and 50 network entries, `jsonEncode`ing
+  /// four fields per request — and it was running on *every* rebuild, including
+  /// ones that had nothing to do with the report (a copy button flashing its
+  /// checkmark, a rebuild from the parent). Now it's recomputed only when the
+  /// selection or the loaded device info actually changes.
+  String? _cachedReport;
+  Object? _cacheKey;
+
+  String get _report {
+    final key = Object.hash(_device, _errors, _network, _logs, _deviceInfo);
+    if (_cacheKey != key || _cachedReport == null) {
+      _cacheKey = key;
+      _cachedReport = DebugReport.build(
         sections: DebugReportSections(device: _device, errors: _errors, network: _network, logs: _logs),
         deviceInfo: _deviceInfo,
       );
+    }
+    return _cachedReport!;
+  }
+
+  /// How much of the report the preview renders.
+  ///
+  /// `SelectableText` lays out every character it's given, so handing it a
+  /// multi-hundred-KB report meant a visible stall on a page whose whole job is
+  /// to show you the blob before you send it. The full string is still what
+  /// gets copied and shared — only the preview is clipped.
+  static const _previewLimit = 20000;
 
   @override
   Widget build(BuildContext context) {
     final t = DevtrayTheme.of(context);
-    final report = _buildReport();
+    final report = _report;
     final anySelected = _device || _errors || _network || _logs;
+    final isTruncated = report.length > _previewLimit;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -170,7 +196,13 @@ class _ExportViewState extends State<_ExportView> {
               ),
               const SizedBox(width: 8),
             ],
-            CopyButton(tooltip: 'Copy report', icon: Icons.copy_all, size: 18, text: anySelected ? report : ''),
+            CopyButton(
+              tooltip: 'Copy report',
+              icon: Icons.copy_all,
+              size: 18,
+              isEmpty: !anySelected,
+              text: () => report,
+            ),
           ],
         ),
         const SizedBox(height: 8),
@@ -185,9 +217,24 @@ class _ExportViewState extends State<_ExportView> {
             ),
             child: SingleChildScrollView(
               // Preview it. Nobody should share a blob they haven't seen.
-              child: SelectableText(
-                report,
-                style: DebugTextStyles.debugMono(color: t.text, fontSize: 10, height: 1.4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SelectableText(
+                    isTruncated ? report.substring(0, _previewLimit) : report,
+                    style: DebugTextStyles.debugMono(color: t.text, fontSize: 10, height: 1.4),
+                  ),
+                  // Say so, rather than letting the preview just stop and look
+                  // like the report itself was cut short.
+                  if (isTruncated) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '… preview truncated at $_previewLimit of ${report.length} characters. '
+                      'Copy or share sends the full report.',
+                      style: TextStyle(fontSize: 10, color: t.warning, fontStyle: FontStyle.italic),
+                    ),
+                  ],
+                ],
               ),
             ),
           ),

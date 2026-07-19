@@ -3,9 +3,27 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../core/devtray_kill_switch.dart';
+import '../logs/log_store.dart' show CoalescingValueNotifier, LogStore;
 import 'debug_inspectable.dart';
 
 /// One recorded change to a tracked state source.
+///
+/// ### What this holds, and why it matters
+///
+/// [from] and [to] are whatever the app emitted. History is capped
+/// ([StateInspector.maxChangesPerSource]), but a cap on *count* is not a cap on
+/// *size*: 100 changes to a cubit holding a 5000-item list meant 100 lists the
+/// GC couldn't touch. [TrackedSource.ref] is deliberately weak so the inspector
+/// never keeps a source alive — retaining its whole history strongly defeated
+/// exactly that.
+///
+/// So non-trivial [from]/[to] values are **snapshotted to a string at capture
+/// time** and the object itself is dropped (see
+/// [StateInspector.retainStateObjects]). Primitives — `num`, `bool`, `String`,
+/// `enum`, `null` — are kept as-is: they don't retain object graphs, and keeping
+/// them means equality assertions and registered formatters still work on the
+/// common case. [event] is always kept: it's a small command object, not
+/// accumulated state.
 class StateChangeEntry {
   final int id;
   final DateTime time;
@@ -15,7 +33,11 @@ class StateChangeEntry {
   /// `emit`, a `ValueNotifier` set).
   final Object? event;
 
+  /// The value before the change — the object itself when it was a primitive,
+  /// otherwise a [StateSnapshot] of it.
   final Object? from;
+
+  /// The value after the change. Same treatment as [from].
   final Object? to;
 
   const StateChangeEntry({
@@ -25,6 +47,24 @@ class StateChangeEntry {
     required this.to,
     this.event,
   });
+}
+
+/// A rendered stand-in for a state object the inspector chose not to retain.
+///
+/// Carries the text the page would have shown and the original runtime type, so
+/// the detail pane reads the same as before while the object it came from stays
+/// collectable.
+class StateSnapshot {
+  /// What the value rendered to at capture time.
+  final String text;
+
+  /// The original value's `runtimeType`, for the type label on the row.
+  final String type;
+
+  const StateSnapshot({required this.text, required this.type});
+
+  @override
+  String toString() => text;
 }
 
 /// A live state source the inspector has seen — a cubit, a bloc, a Riverpod
@@ -215,6 +255,11 @@ class StateInspector {
   String display(Object? value, {String? sourceType}) {
     if (value == null) return 'null';
 
+    // Already rendered at capture time — the object it came from is gone, so
+    // there is nothing left to format. Checked before the formatter lookups so
+    // a formatter registered for the *snapshot's* type can't fire on it.
+    if (value is StateSnapshot) return value.text;
+
     // 1 — a source-scoped override (this cubit/bloc only).
     final scoped = sourceType == null ? null : _sourceFormatters[sourceType];
     if (scoped != null) {
@@ -272,21 +317,51 @@ class StateInspector {
   /// went away — but not forever.
   int maxClosedSources = 20;
 
-  final ValueNotifier<int> tick = ValueNotifier<int>(0);
+  /// Keep the actual state objects in the change history instead of snapshotting
+  /// them to strings.
+  ///
+  /// Off by default. On, the history holds every `from`/`to` value strongly,
+  /// which means the inspector can keep large state objects alive long after
+  /// your app has dropped them — see [StateChangeEntry]. Turn it on only when
+  /// you need the real objects (a custom formatter registered *after* the change
+  /// was recorded, or reading fields off a historical value), and expect the
+  /// memory cost.
+  bool retainStateObjects = false;
+
+  /// A "something changed" signal for the State page.
+  ///
+  /// Coalesced, matching [LogStore.tick]: an animation-driven cubit emits per
+  /// frame, and a plain notifier fired a synchronous notification on each.
+  final CoalescingValueNotifier<int> tick = CoalescingValueNotifier<int>(0);
 
   final Map<int, TrackedSource> _sources = {};
   int _nextChangeId = 0;
 
+  /// Cached result of [sources]. Invalidated whenever the *set* of sources
+  /// changes — not when their contents do, since the order doesn't depend on
+  /// that.
+  List<TrackedSource>? _sortedSources;
+
   /// Live sources first, then recently closed ones. Oldest-created first within
   /// each group, so the list doesn't reshuffle as you watch it.
+  ///
+  /// Cached: this is read from `build()`, which runs on every tick, and it was
+  /// re-sorting the whole list on each one.
   List<TrackedSource> get sources {
+    final cached = _sortedSources;
+    if (cached != null) return cached;
+
     final all = _sources.values.toList()
       ..sort((a, b) {
         if (a.isClosed != b.isClosed) return a.isClosed ? 1 : -1;
         return a.created.compareTo(b.created);
       });
-    return List.unmodifiable(all);
+    return _sortedSources = List.unmodifiable(all);
   }
+
+  /// Call whenever a source is added, removed, or changes closed-state — the
+  /// three things [sources]' ordering depends on.
+  void _invalidateSources() => _sortedSources = null;
 
   /// The source's non-state fields, read **live** from the instance.
   ///
@@ -311,7 +386,8 @@ class StateInspector {
       state: state,
       ref: instance == null ? null : WeakReference(instance),
     );
-    tick.value++;
+    _invalidateSources();
+    tick.bump();
   }
 
   /// Record a state change. This is the core of the push API: any adapter calls
@@ -329,27 +405,52 @@ class StateInspector {
   }) {
     if (!DevtrayKillSwitch.enabled) return;
 
-    final tracked = _sources.putIfAbsent(
-      id,
-      () => TrackedSource(
+    final tracked = _sources.putIfAbsent(id, () {
+      // Lazily registering a source changes the set `sources` sorts over.
+      _invalidateSources();
+      return TrackedSource(
         id: id,
         type: type,
         created: DateTime.now(),
         state: from,
         ref: instance == null ? null : WeakReference(instance),
-      ),
-    );
+      );
+    });
 
+    // `state` holds the *current* value strongly — that's the live view, and
+    // it's one object per source, not one per change. The history is what gets
+    // snapshotted.
     tracked.state = to;
     tracked.changes.insert(
       0,
-      StateChangeEntry(id: _nextChangeId++, time: DateTime.now(), from: from, to: to, event: event),
+      StateChangeEntry(
+        id: _nextChangeId++,
+        time: DateTime.now(),
+        from: _retainable(from, type),
+        to: _retainable(to, type),
+        // Events are kept as-is. They're small, short-lived value objects
+        // (`Decrement()`, `LoadPage(2)`) rather than the accumulated state
+        // graphs that caused the leak — and callers legitimately pattern-match
+        // on their real type.
+        event: event,
+      ),
     );
 
     while (tracked.changes.length > maxChangesPerSource) {
       tracked.changes.removeLast();
     }
-    tick.value++;
+    tick.bump();
+  }
+
+  /// What to store in the history for [value].
+  ///
+  /// Primitives pass through untouched. Anything else is rendered now and the
+  /// object dropped, so a capped history can't pin an uncapped amount of memory
+  /// — see [StateChangeEntry].
+  Object? _retainable(Object? value, String sourceType) {
+    if (retainStateObjects) return value;
+    if (value == null || value is num || value is bool || value is String || value is Enum) return value;
+    return StateSnapshot(text: display(value, sourceType: sourceType), type: value.runtimeType.toString());
   }
 
   /// Attach an error to an already-tracked source.
@@ -362,7 +463,7 @@ class StateInspector {
     tracked
       ..error = error
       ..stackTrace = stackTrace;
-    tick.value++;
+    tick.bump();
   }
 
   /// Mark a source closed. It's kept (past-tense) so you can see what it did
@@ -375,20 +476,32 @@ class StateInspector {
 
     tracked.closed = DateTime.now();
     _evictOldClosed();
-    tick.value++;
+    // Closing re-groups the source (live sources sort before closed ones).
+    _invalidateSources();
+    tick.bump();
   }
 
   void _evictOldClosed() {
+    // Cheap guard: the sort below only matters once we're actually over the cap,
+    // and this runs on every close — including the mass disposal of a route pop.
+    var closedCount = 0;
+    for (final s in _sources.values) {
+      if (s.isClosed) closedCount++;
+    }
+    if (closedCount <= maxClosedSources) return;
+
     final closed = _sources.values.where((b) => b.isClosed).toList()..sort((a, b) => a.closed!.compareTo(b.closed!));
 
     for (var i = 0; i < closed.length - maxClosedSources; i++) {
       _sources.remove(closed[i].id);
     }
+    _invalidateSources();
   }
 
   void clear() {
     _sources.clear();
-    tick.value++;
+    _invalidateSources();
+    tick.bump();
   }
 
   /// Drops every [inspect] and [format] registration. Mostly for tests — the
@@ -404,6 +517,7 @@ class StateInspector {
   /// Drops the closed ones, keeping what's live.
   void clearClosed() {
     _sources.removeWhere((_, b) => b.isClosed);
-    tick.value++;
+    _invalidateSources();
+    tick.bump();
   }
 }

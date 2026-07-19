@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
@@ -96,7 +97,9 @@ class LogEntry {
   /// For Flutter errors: the widget ownership chain.
   final String? library;
 
-  const LogEntry({
+  // Not `const`: [searchable] memoises into a mutable field. Nothing
+  // constructed these as constants — the store is the only producer.
+  LogEntry({
     required this.id,
     required this.time,
     required this.level,
@@ -119,8 +122,17 @@ class LogEntry {
     return newline == -1 ? message : message.substring(0, newline);
   }
 
-  /// Everything a search should look at, lowercased once at match time.
-  String get searchable => '$message ${tag ?? ''} ${error ?? ''} ${errorContext ?? ''}';
+  /// Everything a search should look at, already lowercased.
+  ///
+  /// Computed once, lazily, and cached — a search pass touches every entry in
+  /// the buffer, so building this string per entry per keystroke meant up to
+  /// 1000 interpolations (each calling `toString()` on the error object, which
+  /// for a `NetworkError` re-formats its method and URI) on every character
+  /// typed. Lazy rather than eager so entries nobody ever searches don't pay.
+  ///
+  /// Safe to cache because every field it reads is final.
+  String get searchable => _searchable ??= '$message ${tag ?? ''} ${error ?? ''} ${errorContext ?? ''}'.toLowerCase();
+  String? _searchable;
 }
 
 /// In-memory ring buffer of log lines — the **single** store behind the Logs
@@ -158,13 +170,20 @@ class LogStore {
   int _nextId = 0;
 
   /// Newest first.
-  List<LogEntry> get entries => List.unmodifiable(_entries);
+  ///
+  /// An unmodifiable *view*, not a copy — this is read inside a build, so
+  /// `List.unmodifiable` was duplicating up to 1000 elements on every tick and
+  /// every keystroke. The view wraps without allocating per element.
+  List<LogEntry> get entries => UnmodifiableListView(_entries);
 
-  /// Distinct tags seen so far — drives the tag filter suggestions.
-  Set<String> get tags => {
-        for (final e in _entries)
-          if (e.tag != null) e.tag!,
-      };
+  /// Distinct tags currently in the buffer — drives the tag filter suggestions.
+  ///
+  /// Maintained incrementally instead of recomputed by walking all 1000 entries
+  /// on every build. It's a *reference count*, not a plain set, so a tag still
+  /// disappears once its last entry is evicted — suggesting a filter that
+  /// cannot match anything would be worse than the walk it replaces.
+  Set<String> get tags => UnmodifiableSetView(_tagCounts.keys.toSet());
+  final Map<String, int> _tagCounts = {};
 
   void log(
     String message, {
@@ -221,6 +240,7 @@ class LogStore {
     // ever read — and badging a launcher that isn't there.
     if (!DevtrayKillSwitch.enabled) return false;
 
+    if (tag != null) _tagCounts.update(tag, (n) => n + 1, ifAbsent: () => 1);
     _entries.insert(
       0,
       LogEntry(
@@ -237,7 +257,15 @@ class LogStore {
       ),
     );
     while (_entries.length > maxEntries) {
-      _entries.removeLast();
+      final evicted = _entries.removeLast().tag;
+      if (evicted != null) {
+        final remaining = (_tagCounts[evicted] ?? 1) - 1;
+        if (remaining > 0) {
+          _tagCounts[evicted] = remaining;
+        } else {
+          _tagCounts.remove(evicted);
+        }
+      }
     }
     // Never fire `tick`'s listeners inline — the report may be happening during
     // a build. `bump` coalesces into one deferred notification.
@@ -257,6 +285,7 @@ class LogStore {
 
   void clear() {
     _entries.clear();
+    _tagCounts.clear();
     unseenErrorCount.value = 0;
     tick.bump();
   }

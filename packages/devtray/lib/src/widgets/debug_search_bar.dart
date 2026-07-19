@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/devtray_theme.dart';
@@ -9,10 +11,19 @@ import '../core/debug_text_styles.dart';
 /// Drawn as one grouped surface — field, count and actions inside a single
 /// frame — rather than a stock `TextField` flanked by loose `IconButton`s.
 /// Drawing them as one object is what separates a tool from a form.
-class DebugSearchBar extends StatelessWidget {
+///
+/// [onChanged] is **debounced** — see [debounce]. Filtering here means a linear
+/// pass over a full ring buffer (1000 log lines, 500 requests), so firing it on
+/// every keystroke was dropping frames while typing. The field itself stays
+/// uncontrolled, so typing is still instant; only the filtering waits.
+class DebugSearchBar extends StatefulWidget {
   final String hintText;
   final int total;
   final ValueChanged<String> onChanged;
+
+  /// How long typing must pause before [onChanged] fires. [Duration.zero]
+  /// disables debouncing — used by tests that assert on filtering synchronously.
+  final Duration debounce;
 
   /// Trailing icon buttons (clear, copy-all, …).
   final List<Widget> actions;
@@ -22,12 +33,40 @@ class DebugSearchBar extends StatelessWidget {
     required this.total,
     required this.onChanged,
     this.hintText = 'Search',
+    this.debounce = const Duration(milliseconds: 200),
     this.actions = const [],
   });
 
   @override
+  State<DebugSearchBar> createState() => _DebugSearchBarState();
+}
+
+class _DebugSearchBarState extends State<DebugSearchBar> {
+  Timer? _debounceTimer;
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    super.dispose();
+  }
+
+  void _onChanged(String value) {
+    _debounceTimer?.cancel();
+    if (widget.debounce == Duration.zero) {
+      widget.onChanged(value);
+      return;
+    }
+    _debounceTimer = Timer(widget.debounce, () {
+      if (mounted) widget.onChanged(value);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final t = DevtrayTheme.of(context);
+    final hintText = widget.hintText;
+    final total = widget.total;
+    final actions = widget.actions;
 
     return Container(
       decoration: BoxDecoration(
@@ -57,7 +96,7 @@ class DebugSearchBar extends StatelessWidget {
                 focusedBorder: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 10),
               ),
-              onChanged: onChanged,
+              onChanged: _onChanged,
             ),
           ),
           // A live readout of the filter, so it sits with the field rather than

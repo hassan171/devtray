@@ -95,7 +95,7 @@ class LogDetailDialog extends StatelessWidget {
                     ),
                   ),
                   // The whole line as text — the reason you opened this.
-                  CopyButton(tooltip: 'Copy report', size: 16, text: isError ? errorAsPlainText(entry) : entry.message),
+                  CopyButton(tooltip: 'Copy report', size: 16, text: () => isError ? errorAsPlainText(entry) : entry.message),
                   IconButton(
                     tooltip: 'Close',
                     padding: EdgeInsets.zero,

@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'package:flutter/foundation.dart';
 
 import '../core/devtray_kill_switch.dart';
@@ -66,15 +68,42 @@ class NetworkLogEntry {
 
   Duration? get duration => completedAt?.difference(startedAt);
 
+  /// Method + URL, lowercased, for the search box.
+  ///
+  /// Cached because `uri.toString()` rebuilds the string from its components
+  /// every call, and a search pass touches all 500 entries on every keystroke.
+  /// Status code is matched separately — it changes when the request completes.
+  String get searchableTarget => _searchableTarget ??= '${method.toLowerCase()} ${uri.toString().toLowerCase()}';
+  String? _searchableTarget;
+
   String? get responseBodyString {
     final body = responseBody;
     if (body == null) return null;
     return body is String ? body : body.toString();
   }
 
+  /// How much of the body the HTML sniff looks at. A document's opening tag is
+  /// in the first few bytes; scanning further only costs.
+  static const _sniffLimit = 1024;
+
   /// True when the response looks like HTML — by `content-type` header, or by
   /// sniffing the start of the body (servers don't always set the header).
+  ///
+  /// Cached: this is read from `build()`, and it used to stringify, trim and
+  /// lowercase the *entire* body each time — roughly 3× the body size in
+  /// allocations per rebuild, for a multi-MB response.
+  ///
+  /// Only cached once the request has finished. A pending entry has no body
+  /// yet, and caching that `false` would leave the preview button permanently
+  /// hidden on a response that turns out to be HTML.
   bool get isHtmlResponse {
+    if (status == NetworkLogStatus.pending) return _sniffHtml();
+    return _isHtmlResponse ??= _sniffHtml();
+  }
+
+  bool? _isHtmlResponse;
+
+  bool _sniffHtml() {
     final contentType = responseHeaders.entries
         .firstWhere((e) => e.key.toLowerCase() == 'content-type', orElse: () => const MapEntry('', <String>[]))
         .value
@@ -82,10 +111,18 @@ class NetworkLogEntry {
         .toLowerCase();
     if (contentType.contains('text/html')) return true;
 
-    final body = responseBodyString;
-    if (body == null) return false;
-    final trimmed = body.trimLeft().toLowerCase();
-    return trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html') || (trimmed.startsWith('<') && trimmed.contains('</html>'));
+    final body = responseBody;
+    // Only sniff strings. A non-String body means the transport already decoded
+    // it into an object, which is by definition not an HTML document — and
+    // `toString()`ing it here just to look for '<html' was materialising the
+    // whole graph.
+    if (body is! String || body.isEmpty) return false;
+
+    final head = (body.length > _sniffLimit ? body.substring(0, _sniffLimit) : body).trimLeft().toLowerCase();
+    if (head.startsWith('<!doctype html') || head.startsWith('<html')) return true;
+    // A fragment that opens with a tag: still worth previewing. The closing
+    // </html> may be past the sniff window, so accept any leading tag.
+    return head.startsWith('<') && (head.contains('</html>') || head.contains('<body') || head.contains('<div'));
   }
 }
 
@@ -143,12 +180,34 @@ class NetworkLogStore {
   /// ```
   final ValueNotifier<NetworkErrorReporting> errorReporting = ValueNotifier(NetworkErrorReporting.all);
 
+  /// The largest response body kept, in characters.
+  ///
+  /// Bodies are retained for the life of the entry, so 500 entries × an
+  /// unbounded body is unbounded memory — a handful of large responses (or one
+  /// file download) was enough to dwarf the app itself. Oversized bodies are
+  /// truncated with a marker naming the original size. Raise it if you need to
+  /// inspect big payloads; lower it on a memory-tight device.
+  int maxBodyChars = 256 * 1024;
+
   final List<NetworkLogEntry> _entries = [];
-  final ValueNotifier<int> tick = ValueNotifier<int>(0);
+
+  /// Id → entry, so [complete] and [attachExtra] don't linear-scan 500 entries
+  /// on every response.
+  final Map<int, NetworkLogEntry> _byIdIndex = {};
+
+  /// A "something changed" signal for the Network page.
+  ///
+  /// Coalesced, matching [LogStore.tick]: `complete()` is called from inside a
+  /// transport interceptor, which can run during any phase of the frame, and a
+  /// burst of concurrent requests would otherwise fire a synchronous
+  /// notification each. See [CoalescingValueNotifier].
+  final CoalescingValueNotifier<int> tick = CoalescingValueNotifier<int>(0);
 
   int _nextId = 0;
 
-  List<NetworkLogEntry> get entries => List.unmodifiable(_entries);
+  /// Newest first. An unmodifiable *view*, not a copy — this is read inside a
+  /// build, so copying 500 elements per tick and per keystroke was pure waste.
+  List<NetworkLogEntry> get entries => UnmodifiableListView(_entries);
 
   bool isExcluded(Uri uri) {
     if (excludedUrlPatterns.isEmpty) return false;
@@ -181,10 +240,11 @@ class NetworkLogStore {
       startedAt: DateTime.now(),
     );
     _entries.insert(0, entry);
+    _byIdIndex[entry.id] = entry;
     while (_entries.length > maxEntries) {
-      _entries.removeLast();
+      _byIdIndex.remove(_entries.removeLast().id);
     }
-    tick.value++;
+    tick.bump();
     return entry;
   }
 
@@ -196,15 +256,15 @@ class NetworkLogStore {
     dynamic responseBody,
     String? errorMessage,
   }) {
-    final entry = _byId(id);
+    final entry = byId(id);
     if (entry == null) return;
     entry.statusCode = statusCode;
     entry.responseHeaders = responseHeaders;
-    entry.responseBody = responseBody;
+    entry.responseBody = _capBody(responseBody);
     entry.errorMessage = errorMessage;
     entry.completedAt = DateTime.now();
     entry.status = status;
-    tick.value++;
+    tick.bump();
 
     // Every adapter funnels through complete(), so hooking here forwards
     // failures from dio, http and any hand-rolled client alike.
@@ -232,21 +292,31 @@ class NetworkLogStore {
 
   /// Attaches a named extra section to an entry; it becomes its own detail tab.
   void attachExtra(int id, String label, String content) {
-    final entry = _byId(id);
+    final entry = byId(id);
     if (entry == null) return;
     entry.extras[label] = content;
-    tick.value++;
+    tick.bump();
+  }
+
+  /// Truncates an oversized body so the buffer can't retain unbounded memory.
+  ///
+  /// Only `String` bodies are truncated. A structured body (dio hands over the
+  /// already-decoded object) is left alone: measuring it means stringifying it,
+  /// which is the very cost we're avoiding, and cutting an object graph in half
+  /// would produce something that no longer round-trips.
+  dynamic _capBody(dynamic body) {
+    if (body is! String || body.length <= maxBodyChars) return body;
+    return '${body.substring(0, maxBodyChars)}\n\n'
+        '[devtray] truncated — ${body.length} characters total, kept $maxBodyChars. '
+        'Raise NetworkLogStore.instance.maxBodyChars to keep more.';
   }
 
   void clear() {
     _entries.clear();
-    tick.value++;
+    _byIdIndex.clear();
+    tick.bump();
   }
 
-  NetworkLogEntry? _byId(int id) {
-    for (final e in _entries) {
-      if (e.id == id) return e;
-    }
-    return null;
-  }
+  /// The entry with this id, or null once it's been evicted. O(1).
+  NetworkLogEntry? byId(int id) => _byIdIndex[id];
 }
