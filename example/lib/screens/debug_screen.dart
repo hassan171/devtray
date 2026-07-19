@@ -2,8 +2,9 @@ import 'package:devtray/devtray.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
-import '../app_services.dart' show counter, debug, dio, httpClient, todos;
+import '../app_services.dart' show UploadLogSink, counter, currentScreen, debug, dio, httpClient, logSessions, todos;
 import '../counter_cubit.dart';
+import '../load_generator.dart';
 import '../users_box.dart';
 
 /// The demo harness — every overlay feature, on demand.
@@ -26,6 +27,8 @@ class DebugScreen extends StatelessWidget {
       children: [
         const _Intro(),
         const SizedBox(height: 12),
+
+        const _LoadSection(),
 
         _Section(
           title: 'Network',
@@ -99,6 +102,79 @@ class DebugScreen extends StatelessWidget {
         ),
 
         _Section(
+          title: 'Log context',
+          subtitle: 'Every line already carries build, flavor, userId and screen — open any row to see its Fields.',
+          children: [
+            // Ambient: nothing else changes, but every subsequent line differs.
+            _Btn('Sign in (sets userId)', () {
+              LogStore.instance.setContext('userId', 'u-4821');
+              LogStore.instance.log('Signed in', level: LogLevel.info, tag: 'auth');
+            }),
+            _Btn('Sign out', () {
+              LogStore.instance.setContext('userId', 'anonymous');
+              LogStore.instance.log('Signed out', level: LogLevel.info, tag: 'auth');
+            }),
+            // The enricher picks this up on the next line without being told.
+            _Btn('Navigate (moves the screen field)', () {
+              currentScreen = currentScreen == 'checkout' ? 'settings' : 'checkout';
+              LogStore.instance.log('Navigated to $currentScreen', tag: 'nav');
+            }),
+            // Per-call: one line, fields nothing else has.
+            _Btn('Log with per-call fields', () {
+              LogStore.instance.log(
+                'Checkout failed',
+                level: LogLevel.error,
+                tag: 'checkout',
+                fields: {'cartId': 991, 'step': 'payment', 'amount': 42.50},
+              );
+            }),
+            // Scoped: applies inside the block and is gone after it.
+            _Btn('A scoped context (withContext)', () async {
+              await LogStore.instance.withContext({'orderId': 'ord-7731'}, () async {
+                LogStore.instance.log('Submitting order', tag: 'checkout');
+                await Future<void>.delayed(const Duration(milliseconds: 50));
+                LogStore.instance.log('Order confirmed', level: LogLevel.info, tag: 'checkout');
+              });
+              // No orderId on this one — the scope closed.
+              LogStore.instance.log('Back on the cart', tag: 'checkout');
+            }),
+            // The failure path: the line must survive its decoration breaking.
+            _Btn('Break an enricher', () {
+              LogStore.instance.addEnricher('broken', () => throw StateError('this enricher is broken'));
+              LogStore.instance.log('First line after breaking it', tag: 'demo');
+              LogStore.instance.log('Second — enricher now disabled', tag: 'demo');
+            }),
+          ],
+        ),
+
+        _Section(
+          title: 'Log persistence',
+          subtitle: 'Logs are written to disk as they happen — the folder icon on the Logs page opens past runs.',
+          children: [
+            // Forces the batch out now rather than waiting for the interval, so
+            // "start the generator, flush, open the picker" works immediately.
+            _Btn('Flush to disk now', () async {
+              await LogExporter.instance.flush();
+              LogStore.instance.log(
+                'Flushed — ${UploadLogSink.batchesSent} batches to the simulated uploader '
+                '(${UploadLogSink.entriesSent} entries)',
+                level: LogLevel.info,
+                tag: 'export',
+              );
+            }),
+            _Btn('Where are the files?', () async {
+              final dir = logSessions?.directory.path;
+              LogStore.instance.log(dir == null ? 'Log persistence is not installed' : 'Log files: $dir', tag: 'export');
+            }),
+            // The state a batched policy is meant to survive.
+            _Btn('Simulate a crash (uncaught)', () {
+              LogStore.instance.log('About to throw — this line should survive in the file', level: LogLevel.warning, tag: 'export');
+              Future<void>.error(StateError('Crash simulation — check the saved session'));
+            }),
+          ],
+        ),
+
+        _Section(
           title: 'The overlay itself',
           children: [
             _Btn('Toggle the floating launcher', () => debug.showLauncher.value = !debug.showLauncher.value),
@@ -106,6 +182,101 @@ class DebugScreen extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// The load generator's controls.
+///
+/// Its own widget rather than another [_Section] because it's the one control
+/// here with *state* — it has to show whether it's running and how much it has
+/// produced. Everything else on this screen is a fire-and-forget button.
+class _LoadSection extends StatelessWidget {
+  const _LoadSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final load = LoadGenerator.instance;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'Continuous load',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: scheme.onSurface),
+                  ),
+                  const Spacer(),
+                  // The live readout. Rebuilds on its own notifier, so the rest
+                  // of this screen isn't rebuilt several times a second by it.
+                  ValueListenableBuilder<bool>(
+                    valueListenable: load.isRunning,
+                    builder: (context, running, _) => ValueListenableBuilder<int>(
+                      valueListenable: load.emitted,
+                      builder: (context, count, _) => Row(
+                        children: [
+                          if (running)
+                            Container(
+                              width: 7,
+                              height: 7,
+                              decoration: BoxDecoration(color: scheme.error, shape: BoxShape.circle),
+                            ),
+                          if (running) const SizedBox(width: 6),
+                          Text(
+                            running ? '$count events' : 'idle',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontFeatures: const [FontFeature.tabularFigures()],
+                              color: scheme.onSurface.withValues(alpha: 0.55),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Timers driving requests, logs and state changes at once — what the '
+                'overlay looks like under real traffic rather than one button press.',
+                style: TextStyle(fontSize: 11, height: 1.35, color: scheme.onSurface.withValues(alpha: 0.5)),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ValueListenableBuilder<bool>(
+                    valueListenable: load.isRunning,
+                    builder: (context, running, _) => FilledButton.tonal(
+                      onPressed: load.toggle,
+                      style: FilledButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        textStyle: const TextStyle(fontSize: 12),
+                        backgroundColor: running ? scheme.errorContainer : null,
+                        foregroundColor: running ? scheme.onErrorContainer : null,
+                      ),
+                      child: Text(running ? 'Stop' : 'Start'),
+                    ),
+                  ),
+                  // Fills past the 1000-line log cap in one go, so eviction and
+                  // searching a full buffer are both reachable immediately.
+                  _Btn('Burst (1200 logs)', () => LoadGenerator.instance.burst()),
+                  _Btn('Flood logs only', () => LoadGenerator.instance.burst(requests: 0, logs: 2000)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

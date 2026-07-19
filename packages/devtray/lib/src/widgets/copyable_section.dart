@@ -35,7 +35,7 @@ class CopyableSection extends StatelessWidget {
                 style: DebugTextStyles.label(color: titleColor ?? t.textMuted, fontSize: 10),
               ),
             ),
-            CopyButton(text: body, tooltip: 'Copy'),
+            CopyButton(text: () => body, isEmpty: isEmpty, tooltip: 'Copy'),
           ],
         ),
         const SizedBox(height: 2),
@@ -76,12 +76,33 @@ class CopyableSection extends StatelessWidget {
 /// copied cURL command is meant to be replayable, which it wouldn't be with the
 /// auth header scrubbed.
 class CopyButton extends StatefulWidget {
-  final String text;
+  /// Built lazily, on press.
+  ///
+  /// Callers hand over whole-page serialisations here — every filtered log line
+  /// joined, a full cURL command with its JSON-encoded body. Materialising that
+  /// on every rebuild, for a button that may never be pressed, was costing more
+  /// than the page it sits on. Same reasoning as [DebugCopyButton.text].
+  final String Function() text;
+
+  /// Whether there is anything to copy — the button disables when true.
+  ///
+  /// Separate from [text] so the disabled state stays free: answering "is there
+  /// anything here" must not require building the string we were trying to
+  /// avoid building.
+  final bool isEmpty;
+
   final String tooltip;
   final IconData icon;
   final double size;
 
-  const CopyButton({super.key, required this.text, this.tooltip = 'Copy', this.icon = Icons.copy, this.size = 14});
+  const CopyButton({
+    super.key,
+    required this.text,
+    this.isEmpty = false,
+    this.tooltip = 'Copy',
+    this.icon = Icons.copy,
+    this.size = 14,
+  });
 
   @override
   State<CopyButton> createState() => _CopyButtonState();
@@ -99,9 +120,11 @@ class _CopyButtonState extends State<CopyButton> {
     super.dispose();
   }
 
-  Future<void> _copy() async {
-    await Clipboard.setData(ClipboardData(text: widget.text));
-    if (!mounted) return;
+  void _copy() {
+    // Not awaited, deliberately — see the note in DebugCopyButton._copy. A
+    // platform channel with no handler (widget test, unsupported embedder)
+    // never returns, and the button would sit there looking broken.
+    Clipboard.setData(ClipboardData(text: widget.text()));
 
     setState(() => _copied = true);
     _resetTimer?.cancel();
@@ -118,7 +141,7 @@ class _CopyButtonState extends State<CopyButton> {
       tooltip: _copied ? 'Copied' : widget.tooltip,
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-      onPressed: widget.text.isEmpty ? null : _copy,
+      onPressed: widget.isEmpty ? null : _copy,
       icon: Icon(_copied ? Icons.check : widget.icon, size: widget.size, color: _copied ? t.success : t.textMuted),
     );
   }

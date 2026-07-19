@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/devtray_theme.dart';
 import '../core/debug_page.dart';
 import '../core/debug_text_styles.dart';
+import '../widgets/jump_to_latest_button.dart';
 import 'components/network_detail_pane.dart';
 import 'html_previewer.dart';
 import 'components/network_log_row.dart';
@@ -92,11 +95,173 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
   /// registered page.
   bool _showMocks = false;
 
+  /// Drives the scroll anchoring below. Owned by the State so it survives the
+  /// rebuilds that arriving requests cause.
+  final ScrollController _scroll = ScrollController();
+
+  /// Entry id → row index, for the list's `findChildIndexCallback`.
+  final Map<int, int> _indexOfId = {};
+
+  /// Newest entry id at the moment the reader scrolled away from the bottom.
+  /// Null while pinned to the newest request.
+  int? _anchorId;
+
+  /// Whether the reader has scrolled away from the newest request.
+  ///
+  /// Mirrors `_anchorId != null`, but as a notifier so the jump-to-latest button
+  /// can appear and disappear without rebuilding the list behind it. Kept in
+  /// step by [_setAnchor] — a plain field can't drive a ValueListenableBuilder,
+  /// which is why the button never showed on the first attempt.
+  final ValueNotifier<bool> _held = ValueNotifier<bool>(false);
+
+  /// Sets or clears the anchor, keeping [_held] and the counters in step.
+  void _setAnchor(int? id) {
+    _anchorId = id;
+    _correctedForCount = 0;
+    _missed.value = 0;
+    _held.value = id != null;
+  }
+
+  /// Arrivals already compensated for, so each new row shifts the offset once.
+  int _correctedForCount = 0;
+
+  /// Requests that arrived while the reader was scrolled back — the count on
+  /// the jump-to-latest button.
+  ///
+  /// A notifier rather than plain state so the button can appear, update and
+  /// disappear without rebuilding the list behind it.
+  final ValueNotifier<int> _missed = ValueNotifier<int>(0);
+
+  /// True while [_jumpToLatest] is animating, so the scroll events its own
+  /// animation generates don't clear the anchor it is trying to release.
+  bool _jumping = false;
+
+  /// How close to the newest entry still counts as "pinned".
+  ///
+  /// Not zero: a few pixels of overscroll shouldn't silently switch the list
+  /// into held mode, because that stops it following for no visible reason.
+  static const double _followThreshold = 40;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scroll
+      ..removeListener(_onScroll)
+      ..dispose();
+    _missed.dispose();
+    _held.dispose();
+    super.dispose();
+  }
+
+  /// Scrolls back to the newest request and resumes following.
+  ///
+  /// Releases the anchor up front rather than waiting for the scroll to arrive:
+  /// requests landing during the animation keep extending the list, so
+  /// inferring "am I at the newest?" from the resulting offset would leave the
+  /// anchor set and the button on screen — needing a second press.
+  void _jumpToLatest() {
+    if (!_scroll.hasClients) return;
+
+    _setAnchor(null);
+    _jumping = true;
+
+    // The newest request is at offset 0 (`reverse: true`). Animated rather than
+    // jumped: a teleport to the end of a busy list is disorienting.
+    _scroll.animateTo(0, duration: const Duration(milliseconds: 200), curve: Curves.easeOut).whenComplete(() {
+      _jumping = false;
+    });
+  }
+
+  /// Tracks whether the reader has scrolled away from the newest request.
+  ///
+  /// `reverse: true`, so offset 0 is the newest and scrolling back through
+  /// history increases the offset.
+  void _onScroll() {
+    if (!_scroll.hasClients) return;
+
+    // A jump-to-latest in flight is an explicit intent to follow again, and must
+    // not be second-guessed by the scroll events its own animation generates.
+    if (_jumping) return;
+
+    final atNewest = _scroll.offset <= _followThreshold;
+    if (atNewest && _anchorId != null) {
+      // Caught up — resume following, nothing to hold.
+      _setAnchor(null);
+    } else if (!atNewest && _anchorId == null) {
+      // Mark the high-water line the moment the reader looks away, so
+      // "arrived since" is measured from here.
+      _setAnchor(_newestVisibleId);
+    }
+  }
+
+  /// Newest id that survived the filter, captured per build.
+  int? _newestVisibleId;
+
+  /// Holds the reader's place as requests arrive.
+  ///
+  /// The store inserts at index 0, which under `reverse: true` is the scroll
+  /// anchor — so every arrival adds a row between the origin and a scrolled-back
+  /// reader and slides them one row further from it. Same problem, same shape of
+  /// fix as the Logs page; see the long note there.
+  void _holdPosition(List<NetworkLogEntry> filtered) {
+    _newestVisibleId = filtered.isEmpty ? null : filtered.first.id;
+    _indexOfId
+      ..clear()
+      ..addEntries([for (var i = 0; i < filtered.length; i++) MapEntry(filtered[i].id, i)]);
+
+    final anchor = _anchorId;
+    if (anchor == null || filtered.isEmpty || !_scroll.hasClients) return;
+
+    var arrived = 0;
+    for (final e in filtered) {
+      if (e.id <= anchor) break;
+      arrived++;
+    }
+
+    // Deferred: this runs during build, and firing a notifier inline would mark
+    // a listening widget dirty mid-frame.
+    if (arrived != _missed.value) {
+      scheduleMicrotask(() {
+        if (mounted) _missed.value = arrived;
+      });
+    }
+
+    if (arrived <= _correctedForCount) return;
+
+    final newRows = arrived - _correctedForCount;
+
+    // Never fight a scroll in progress — correcting mid-drag reads as the list
+    // refusing to stay where you put it.
+    final position = _scroll.position;
+    if (position.isScrollingNotifier.value) return;
+
+    // Rows are a fixed height, so this is exact. Measuring the growth in
+    // maxScrollExtent instead would silently do nothing once the buffer is at
+    // its cap: one request in, one evicted out, extent unchanged.
+    final target = (position.pixels + newRows * NetworkLogRow.extent).clamp(0.0, position.maxScrollExtent);
+
+    // Consumed only once the correction is going to be applied, so one skipped
+    // mid-drag isn't silently forgotten.
+    _correctedForCount = arrived;
+    if (target == position.pixels) return;
+
+    // Corrected during build rather than post-frame: a post-frame jumpTo paints
+    // one frame at the stale offset and then snaps, which is visible as a
+    // flicker. correctPixels adjusts for a content change without notifying
+    // listeners or starting a scroll activity.
+    position.correctPixels(target);
+  }
+
   List<NetworkLogEntry> _filtered(List<NetworkLogEntry> entries) {
     if (_search.isEmpty) return entries;
     final q = _search.toLowerCase();
     return entries.where((e) {
-      return e.method.toLowerCase().contains(q) || e.uri.toString().toLowerCase().contains(q) || (e.statusCode?.toString().contains(q) ?? false);
+      return e.searchableTarget.contains(q) || (e.statusCode?.toString().contains(q) ?? false);
     }).toList();
   }
 
@@ -144,10 +309,14 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
             final mockingEnabled = !MockStore.instance.isDisabled;
             final entries = store.entries;
             final filtered = _filtered(entries);
-            NetworkLogEntry? selected;
-            for (final e in entries) {
-              if (e.id == _selectedId) selected = e;
-            }
+
+            // Keeps a scrolled-back reader in place, and feeds the list's
+            // findChildIndexCallback. Runs in build because that is where the
+            // index shift becomes visible — and because correcting the offset
+            // before layout is what avoids a flicker.
+            _holdPosition(filtered);
+            // Indexed lookup rather than a scan of all 500 entries per tick.
+            final selected = _selectedId == null ? null : store.byId(_selectedId!);
 
             // Narrow: detail replaces the list entirely.
             if (!isWide && selected != null) {
@@ -180,15 +349,69 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
                 Expanded(
                   child: filtered.isEmpty
                       ? _NetworkEmptyState(searching: entries.isNotEmpty)
-                      : ListView.builder(
-                          // The list is the hot path — a chatty app fills it fast,
-                          // and builder + itemExtent keeps scrolling flat.
+                      : Stack(
+                          children: [
+                            Positioned.fill(
+                              child: ListView.builder(
+                          controller: _scroll,
+                          // The list is the hot path — a chatty app fills it fast.
+                          //
+                          // `itemExtent` is what makes it cheap. Rows are a fixed
+                          // height (see NetworkLogRow.extent), so the viewport
+                          // computes scroll geometry arithmetically instead of
+                          // laying rows out to discover it — which is what stops a
+                          // full buffer from being O(buffer) to open.
+                          //
+                          // `reverse: true` is about CORRECTNESS, not speed.
+                          // Measured both ways with itemExtent set and the open
+                          // times overlap (430-590ms either way). What it changes
+                          // is which end of the list eviction happens at: the store
+                          // inserts at index 0 and evicts from the end, so
+                          // unreversed the newest request sits at maxScrollExtent
+                          // and every eviction shifts the content *below* a
+                          // scrolled-back reader. Reversed, eviction happens at the
+                          // far end where it cannot move the viewport, leaving only
+                          // insertion to compensate for (see _holdPosition).
+                          reverse: true,
+                          itemExtent: NetworkLogRow.extent,
                           itemCount: filtered.length,
+                          // Lets the viewport re-find an already-laid-out row by
+                          // key after arrivals shift every index, rather than
+                          // re-anchoring on whatever now occupies the same slot.
+                          findChildIndexCallback: (Key key) => _indexOfId[(key as ValueKey<int>).value],
                           itemBuilder: (context, i) => NetworkLogRow(
+                            // Keyed by id: entries are inserted at index 0, so
+                            // without this every row's element re-associates
+                            // with a different entry on each new request and
+                            // the status/selection animations replay on rows
+                            // that never changed.
+                            key: ValueKey(filtered[i].id),
                             entry: filtered[i],
                             isSelected: filtered[i].id == _selectedId,
                             onTap: () => setState(() => _selectedId = filtered[i].id),
                           ),
+                              ),
+                            ),
+
+                            // Offered only while the reader has scrolled back —
+                            // pinned to the newest request there is nothing to
+                            // jump to, and nothing being missed.
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: 8,
+                              child: ValueListenableBuilder<bool>(
+                                valueListenable: _held,
+                                builder: (context, held, _) => !held
+                                    ? const SizedBox.shrink()
+                                    : ValueListenableBuilder<int>(
+                                        valueListenable: _missed,
+                                        builder: (context, missed, _) =>
+                                            Center(child: JumpToLatestButton(missed: missed, onTap: _jumpToLatest)),
+                                      ),
+                              ),
+                            ),
+                          ],
                         ),
                 ),
               ],

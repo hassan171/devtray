@@ -46,6 +46,17 @@ class NetworkLogRow extends StatelessWidget {
 
   const NetworkLogRow({super.key, required this.entry, required this.isSelected, required this.onTap});
 
+  /// Height of one row, and the list's `itemExtent`.
+  ///
+  /// Every row is the same shape — two single-line texts in fixed padding — so
+  /// this is a fact about the layout rather than a guess. Declaring it lets the
+  /// list compute its scroll geometry arithmetically instead of laying rows out
+  /// to discover it, which is what keeps a 500-entry buffer from stalling the
+  /// frame.
+  ///
+  /// Must stay in step with the `height:` in [build].
+  static const double extent = 50;
+
   @override
   Widget build(BuildContext context) {
     final t = DevtrayTheme.of(context);
@@ -74,74 +85,85 @@ class NetworkLogRow extends StatelessWidget {
                 ? t.error.withValues(alpha: 0.05)
                 : null,
           ),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // The spine. Widens when selected, so the current row is anchored
-                // by shape and not only by a faint background tint.
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 120),
-                  curve: Curves.easeOut,
-                  width: 2,
-                  color: isSelected ? t.accent : spine.withValues(alpha: failed || isSelected ? 0.9 : 0.55),
-                ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-                    child: Row(
-                      children: [
-                        MethodBadge(method: entry.method),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                entry.uri.path.isEmpty ? entry.uri.toString() : entry.uri.path,
-                                style: DebugTextStyles.debugMono(color: t.text, fontSize: 12, fontWeight: FontWeight.w500, height: 1.3),
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
-                              ),
-                              const SizedBox(height: 1),
-                              Row(
-                                children: [
-                                  // Never let a faked response pass for a real one.
-                                  if (entry.extras.containsKey(kMockedExtraLabel)) ...[const _MockedBadge(), const SizedBox(width: 4)],
-                                  Flexible(
-                                    child: Text(
-                                      entry.uri.host,
-                                      style: DebugTextStyles.debugMono(color: t.textMuted, fontSize: 11, height: 1.3),
-                                      overflow: TextOverflow.ellipsis,
-                                      maxLines: 1,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // Status and timing read as one column on the right edge.
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
+          // A fixed height rather than IntrinsicHeight.
+          //
+          // Every row is the same two single-line texts inside fixed padding, so
+          // the intrinsic pass was measuring a height that never varies — and
+          // paying for a second layout walk of the whole subtree on every row,
+          // every frame. It is also what lets the list set `itemExtent`, which
+          // is worth far more: with it the viewport can compute scroll geometry
+          // arithmetically instead of laying out rows to find out where things
+          // are.
+          //
+          // If the row ever gains a variable-height element, this constant and
+          // NetworkLogRow.extent must change together.
+          height: NetworkLogRow.extent,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // The spine. Widens when selected, so the current row is anchored
+              // by shape and not only by a faint background tint.
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                curve: Curves.easeOut,
+                width: 2,
+                color: isSelected ? t.accent : spine.withValues(alpha: failed || isSelected ? 0.9 : 0.55),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+                  child: Row(
+                    children: [
+                      MethodBadge(method: entry.method),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            if (pending)
-                              SizedBox(width: 11, height: 11, child: CircularProgressIndicator(strokeWidth: 1.5, color: t.textMuted))
-                            else
-                              StatusBadge(code: entry.statusCode, failed: failed),
+                            Text(
+                              entry.uri.path.isEmpty ? entry.uri.toString() : entry.uri.path,
+                              style: DebugTextStyles.debugMono(color: t.text, fontSize: 12, fontWeight: FontWeight.w500, height: 1.3),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
                             const SizedBox(height: 1),
-                            Text(formatDuration(entry.duration), style: DebugTextStyles.debugMono(color: t.textMuted, fontSize: 11, height: 1.3)),
+                            Row(
+                              children: [
+                                // Never let a faked response pass for a real one.
+                                if (entry.extras.containsKey(kMockedExtraLabel)) ...[const _MockedBadge(), const SizedBox(width: 4)],
+                                Flexible(
+                                  child: Text(
+                                    entry.uri.host,
+                                    style: DebugTextStyles.debugMono(color: t.textMuted, fontSize: 11, height: 1.3),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Status and timing read as one column on the right edge.
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (pending)
+                            SizedBox(width: 11, height: 11, child: CircularProgressIndicator(strokeWidth: 1.5, color: t.textMuted))
+                          else
+                            StatusBadge(code: entry.statusCode, failed: failed),
+                          const SizedBox(height: 1),
+                          Text(formatDuration(entry.duration), style: DebugTextStyles.debugMono(color: t.textMuted, fontSize: 11, height: 1.3)),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

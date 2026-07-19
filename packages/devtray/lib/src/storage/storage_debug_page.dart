@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/devtray_theme.dart';
@@ -90,33 +92,67 @@ class _StorageViewState extends State<_StorageView> {
     super.dispose();
   }
 
-  Future<List<_Section>> _read() {
+  /// Reads one adapter, turning a failure into a section that reports it rather
+  /// than taking the whole page down.
+  Future<_Section> _readOne(DebugStorageAdapter adapter) async {
+    try {
+      return _Section(adapter: adapter, values: await adapter.readAll());
+    } catch (e) {
+      return _Section(adapter: adapter, values: const {}, error: e.toString());
+    }
+  }
+
+  /// Loads the adapters that actually need loading.
+  ///
+  /// Only the *selected* store is read. `readAll()` can be genuinely expensive —
+  /// the sqflite adapter runs a `SELECT *` per table, Hive decodes every value —
+  /// so eagerly reading all of them meant opening the tab pulled the entire
+  /// database into memory on the UI isolate, including stores you never looked
+  /// at. Unselected adapters get an empty placeholder; the store list only needs
+  /// their names.
+  Future<List<_Section>> _read() async {
+    final selected = _selectedName;
+
     return Future.wait(
       widget.adapters.map((a) async {
-        try {
-          return _Section(adapter: a, values: await a.readAll());
-        } catch (e) {
-          return _Section(adapter: a, values: const {}, error: e.toString());
-        }
+        if (selected != null && a.name != selected) return _Section(adapter: a, values: const {}, loaded: false);
+        return _readOne(a);
       }),
     );
   }
 
-  /// Re-reads every adapter and swaps the data in place — no spinner between the
-  /// write and the reload. The scroll offset is kept by [_scroll].
+  /// Re-reads the selected adapter and swaps the data in place — no spinner
+  /// between the write and the reload. The scroll offset is kept by [_scroll].
   Future<void> _refresh() async {
     final next = await _read();
     if (mounted) setState(() => _sections = next);
   }
 
+  /// Re-reads a single adapter after a write to it, leaving the others alone.
+  ///
+  /// A write only invalidates the store it touched, so re-reading all of them
+  /// (which is what this used to do) re-ran every `SELECT *` on every keystroke
+  /// of an edit dialog's save.
+  Future<void> _refreshOne(DebugStorageAdapter adapter) async {
+    final updated = await _readOne(adapter);
+    if (!mounted) return;
+
+    setState(() {
+      final sections = _sections;
+      if (sections == null) return;
+      final i = sections.indexWhere((s) => s.adapter.name == adapter.name);
+      if (i != -1) sections[i] = updated;
+    });
+  }
+
   Future<void> _write(DebugStorageAdapter adapter, String key, Object? value) async {
     await adapter.write(key, value);
-    await _refresh();
+    await _refreshOne(adapter);
   }
 
   Future<void> _delete(DebugStorageAdapter adapter, String key) async {
     await adapter.delete(key);
-    await _refresh();
+    await _refreshOne(adapter);
   }
 
   void _open(String name) {
@@ -125,6 +161,11 @@ class _StorageViewState extends State<_StorageView> {
     _search = '';
     if (_scroll.hasClients) _scroll.jumpTo(0);
     setState(() => _selectedName = name);
+
+    // Stores are read on open, not up front, so this is where the newly
+    // selected one actually gets loaded.
+    final adapter = widget.adapters.where((a) => a.name == name).firstOrNull;
+    if (adapter != null) unawaited(_refreshOne(adapter));
   }
 
   void _back() => setState(() => _selectedName = null);
@@ -296,10 +337,10 @@ class _StoreDetail extends StatelessWidget {
     final q = search.toLowerCase();
     if (q.isEmpty) return section.values.keys.toList()..sort();
 
-    return section.values.keys
-        .where((k) => storageSearchableText(k, section.values[k]).toLowerCase().contains(q))
-        .toList()
-      ..sort();
+    // Against the cached index — see [_Section.searchIndex]. Rendering each
+    // value to text here meant re-encoding every Map-shaped value per keystroke.
+    final index = section.searchIndex;
+    return section.values.keys.where((k) => (index[k] ?? '').contains(q)).toList()..sort();
   }
 
   @override
@@ -349,6 +390,21 @@ class _StoreDetail extends StatelessWidget {
             ),
           ],
         ),
+        // What the adapter wants said about this read — a row cap, most often.
+        // Sits under the search bar so it's read before the list is trusted as
+        // complete.
+        if (section.adapter.notice case final notice?) ...[
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(Icons.info_outline, size: 12, color: theme.warning),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(notice, style: TextStyle(fontSize: 10, color: theme.warning)),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 4),
         Expanded(
           child: section.error != null
@@ -466,5 +522,20 @@ class _Section {
   final Map<String, Object?> values;
   final String? error;
 
-  const _Section({required this.adapter, required this.values, this.error});
+  /// False for an adapter that hasn't been read yet — it exists in the store
+  /// list but its contents were never fetched. See [_StorageViewState._read].
+  final bool loaded;
+
+  _Section({required this.adapter, required this.values, this.error, this.loaded = true});
+
+  /// `"key value"`, lowercased, per key — what the search box matches against.
+  ///
+  /// Built once per load and cached. Rendering a value to text means a
+  /// `JsonEncoder.withIndent` pass for anything Map-shaped, and the search ran
+  /// it for every key on every keystroke: a 1000-row SQLite table meant 1000
+  /// pretty-printed JSON encodes per character typed.
+  Map<String, String> get searchIndex => _searchIndex ??= {
+        for (final e in values.entries) e.key: storageSearchableText(e.key, e.value).toLowerCase(),
+      };
+  Map<String, String>? _searchIndex;
 }

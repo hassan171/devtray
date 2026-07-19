@@ -20,6 +20,7 @@ workspace:
   - packages/devtray_bloc
   - packages/devtray_riverpod
   - packages/devtray_prefs
+  - packages/devtray_log_file
   - packages/devtray_device
   - packages/devtray_html
   - packages/devtray_hive

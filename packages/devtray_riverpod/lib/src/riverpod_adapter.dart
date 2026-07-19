@@ -81,28 +81,38 @@ base class DebugRiverpodObserver extends ProviderObserver {
 
   @override
   void didAddProvider(ProviderObserverContext context, Object? value) {
-    StateInspector.instance.recordCreate(
-      _idOf(context),
-      type: _typeOf(context),
-      state: value,
-      instance: _notifierOf(context),
-    );
+    // Checked here, not just inside StateInspector: _notifierOf() below does a
+    // dynamic read that throws NoSuchMethodError for every plain Provider and
+    // FutureProvider, and constructing a thrown exception (with its stack) on
+    // every provider event is not something a release build should pay for.
+    // The observer stays installed for the process lifetime, so without this
+    // an app that ships it keeps paying.
+    if (DevtrayKillSwitch.enabled) {
+      StateInspector.instance.recordCreate(
+        _idOf(context),
+        type: _typeOf(context),
+        state: value,
+        instance: _notifierOf(context),
+      );
+    }
     next?.didAddProvider(context, value);
   }
 
   @override
   void didUpdateProvider(ProviderObserverContext context, Object? previousValue, Object? newValue) {
-    StateInspector.instance.record(
-      _idOf(context),
-      type: _typeOf(context),
-      from: previousValue,
-      to: newValue,
-      instance: _notifierOf(context),
-      // Riverpod 3 attributes a change to the mutation that caused it, when
-      // there is one — the closest thing it has to bloc's event, and worth
-      // showing for exactly the same reason.
-      event: context.mutation?.toString(),
-    );
+    if (DevtrayKillSwitch.enabled) {
+      StateInspector.instance.record(
+        _idOf(context),
+        type: _typeOf(context),
+        from: previousValue,
+        to: newValue,
+        instance: _notifierOf(context),
+        // Riverpod 3 attributes a change to the mutation that caused it, when
+        // there is one — the closest thing it has to bloc's event, and worth
+        // showing for exactly the same reason.
+        event: context.mutation?.toString(),
+      );
+    }
     next?.didUpdateProvider(context, previousValue, newValue);
   }
 

@@ -49,8 +49,28 @@ String errorAsPlainText(LogEntry e) {
     e.error?.toString() ?? e.message,
     if (e.errorContext != null) '\nContext: ${e.errorContext}',
     if (e.library != null) 'Library: ${e.library}',
+    // Above the stack: on a pasted bug report, who and where beats the frames.
+    if (e.fields.isNotEmpty) '\nFields:\n${e.fields.entries.map((f) => '  ${f.key}: ${f.value}').join('\n')}',
     if (e.stackTrace != null) '\n${e.stackTrace}',
   ].join('\n');
+}
+
+/// [LogEntry.fields] as a copyable block.
+///
+/// One widget rather than the same three lines in both callers: the error
+/// report and the plain-log dialog both show fields, and having written it
+/// twice I promptly rendered it twice on the same entry. Shared, that can't
+/// happen — and the two can't drift apart either.
+class LogFieldsSection extends StatelessWidget {
+  final Map<String, Object?> fields;
+
+  const LogFieldsSection({super.key, required this.fields});
+
+  @override
+  Widget build(BuildContext context) => CopyableSection(
+        title: 'Fields',
+        body: fields.entries.map((f) => '${f.key}: ${f.value}').join('\n'),
+      );
 }
 
 /// The copyable sections that make up an error report: exception, context,
@@ -70,6 +90,11 @@ class ErrorDetailSections extends StatelessWidget {
         CopyableSection(title: 'Exception', body: entry.error?.toString() ?? entry.message, titleColor: t.error),
         if (entry.errorContext != null) CopyableSection(title: 'Context', body: entry.errorContext!),
         if (entry.library != null) CopyableSection(title: 'Library', body: entry.library!),
+
+        // Ambient context and enrichers — on an unanticipated error these are
+        // often the most useful thing on screen, since nobody chose to capture
+        // them at the throw site.
+        if (entry.fields.isNotEmpty) LogFieldsSection(fields: entry.fields),
 
         // A failed request has no useful Dart stack — the throw site is deep
         // inside the HTTP client. Show the request instead; that's the actual

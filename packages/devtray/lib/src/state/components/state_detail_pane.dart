@@ -83,89 +83,107 @@ class _StateDetailPaneState extends State<StateDetailPane> {
         const SizedBox(height: 6),
         Container(height: 2, color: accent.withValues(alpha: 0.5)),
         Expanded(
-          child: ListView(
-            padding: const EdgeInsets.only(top: 12),
-            children: [
-              CopyableSection(
-                title: 'Current state',
-                body: StateInspector.instance.display(source.state, sourceType: source.type),
+          // A CustomScrollView, not a ListView, so the change history can be a
+          // lazy sliver. As a plain `children:` list every one of the (up to
+          // 100) tiles was built on open, and each renders two values through
+          // `display()` — up to 200 formatter calls, some of them full JSON
+          // encodes, before the pane could show anything.
+          child: CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.only(top: 12),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    CopyableSection(
+                      title: 'Current state',
+                      body: StateInspector.instance.display(source.state, sourceType: source.type),
+                    ),
+
+                    // The error, if any, sits directly under the state — you
+                    // want the failure next to the value that caused it, not
+                    // below the history.
+                    if (source.error != null) ...[
+                      const SizedBox(height: 12),
+                      CopyableSection(
+                        title: 'Error',
+                        titleColor: t.error,
+                        body: '${source.error}\n\n${source.stackTrace ?? ''}',
+                      ),
+                    ],
+
+                    // Fields the source holds OUTSIDE its state — a sync queue,
+                    // a lookup map, a retry counter. Read live from the instance
+                    // on every rebuild, so they're current. See
+                    // StateInspector.inspect.
+                    if (fields.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      _SectionHeader(
+                        title: 'Fields',
+                        // These change WITHOUT an emit — a queue gets pushed, a
+                        // counter ticks — and the page only rebuilds on emits.
+                        // So there has to be a way to re-read them.
+                        action: IconButton(
+                          tooltip: 'Re-read fields',
+                          padding: EdgeInsets.zero,
+                          // 44px hit area on a 14px glyph — the icon is small
+                          // because it's secondary, but the target can't be.
+                          constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                          icon: Icon(Icons.refresh, size: 14, color: t.textMuted),
+                          onPressed: widget.onRefresh,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      _FieldTable(fields: fields),
+                    ],
+
+                    const SizedBox(height: 12),
+                    _SectionHeader(
+                      title: 'Changes',
+                      trailing: Text(
+                        '${source.changes.length}',
+                        style: DebugTextStyles.debugMono(color: t.textMuted, fontSize: 11, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    if (source.changes.isEmpty)
+                      // An empty state that says what to do, not just that
+                      // there's nothing here.
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: t.surface,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: t.border.withValues(alpha: 0.6)),
+                        ),
+                        child: Text(
+                          'No changes yet — this source is still on its initial state.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 11, color: t.textMuted, height: 1.4),
+                        ),
+                      ),
+                  ]),
+                ),
               ),
 
-              // The error, if any, sits directly under the state — you want the
-              // failure next to the value that caused it, not below the history.
-              if (source.error != null) ...[
-                const SizedBox(height: 12),
-                CopyableSection(
-                  title: 'Error',
-                  titleColor: t.error,
-                  body: '${source.error}\n\n${source.stackTrace ?? ''}',
-                ),
-              ],
-
-              // Fields the source holds OUTSIDE its state — a sync queue, a
-              // lookup map, a retry counter. Read live from the instance on every
-              // rebuild, so they're current. See StateInspector.inspect.
-              if (fields.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                _SectionHeader(
-                  title: 'Fields',
-                  // These change WITHOUT an emit — a queue gets pushed, a counter
-                  // ticks — and the page only rebuilds on emits. So there has to
-                  // be a way to re-read them.
-                  action: IconButton(
-                    tooltip: 'Re-read fields',
-                    padding: EdgeInsets.zero,
-                    // 44px hit area on a 14px glyph — the icon is small because
-                    // it's secondary, but the target can't be.
-                    constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-                    icon: Icon(Icons.refresh, size: 14, color: t.textMuted),
-                    onPressed: widget.onRefresh,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                _FieldTable(fields: fields),
-              ],
-
-              const SizedBox(height: 12),
-              _SectionHeader(
-                title: 'Changes',
-                trailing: Text(
-                  '${source.changes.length}',
-                  style: DebugTextStyles.debugMono(color: t.textMuted, fontSize: 11, fontWeight: FontWeight.w600),
+              // The history, built lazily — only the tiles actually on screen
+              // pay for their `display()` calls.
+              SliverList.builder(
+                itemCount: source.changes.length,
+                itemBuilder: (context, i) => _ChangeTile(
+                  key: ValueKey(source.changes[i].id),
+                  change: source.changes[i],
+                  formatTime: _formatTime,
+                  sourceType: source.type,
+                  // Newest first — mark it, so "what just happened" is findable
+                  // without reading timestamps.
+                  isLatest: i == 0,
+                  // The last tile shouldn't draw a rail into empty space.
+                  isLast: i == source.changes.length - 1,
                 ),
               ),
-              const SizedBox(height: 6),
-              if (source.changes.isEmpty)
-                // An empty state that says what to do, not just that there's
-                // nothing here.
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-                  decoration: BoxDecoration(
-                    color: t.surface,
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: t.border.withValues(alpha: 0.6)),
-                  ),
-                  child: Text(
-                    'No changes yet — this source is still on its initial state.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 11, color: t.textMuted, height: 1.4),
-                  ),
-                )
-              else
-                for (var i = 0; i < source.changes.length; i++)
-                  _ChangeTile(
-                    change: source.changes[i],
-                    formatTime: _formatTime,
-                    sourceType: source.type,
-                    // Newest first — mark it, so "what just happened" is findable
-                    // without reading timestamps.
-                    isLatest: i == 0,
-                    // The last tile shouldn't draw a rail into empty space.
-                    isLast: i == source.changes.length - 1,
-                  ),
 
-              const SizedBox(height: 8),
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
             ],
           ),
         ),
@@ -261,6 +279,7 @@ class _ChangeTile extends StatelessWidget {
   final bool isLast;
 
   const _ChangeTile({
+    super.key,
     required this.change,
     required this.formatTime,
     required this.sourceType,

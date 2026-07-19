@@ -50,9 +50,15 @@ class DebugBlocObserver extends BlocObserver {
 
   @override
   void onTransition(Bloc<dynamic, dynamic> bloc, Transition<dynamic, dynamic> transition) {
-    // Stash the event for the onChange that immediately follows — recording the
-    // change here as well would log every bloc transition twice.
-    _pendingEvents[identityHashCode(bloc)] = transition.event;
+    // Guarded like every other write path: the observer stays installed for the
+    // process lifetime, so in a release build this map would otherwise keep
+    // taking a strong reference to an event object per transition, for a
+    // StateInspector that is never going to read it.
+    if (DevtrayKillSwitch.enabled) {
+      // Stash the event for the onChange that immediately follows — recording
+      // the change here as well would log every bloc transition twice.
+      _pendingEvents[identityHashCode(bloc)] = transition.event;
+    }
     next?.onTransition(bloc, transition);
     super.onTransition(bloc, transition);
   }

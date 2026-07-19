@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import 'debug_launcher_button.dart';
 import 'devtray_controller.dart';
+import 'devtray_kill_switch.dart';
 import 'devtray_theme.dart';
 import 'debug_page.dart';
 import 'debug_tools_screen.dart';
@@ -59,7 +61,13 @@ class Devtray extends StatefulWidget {
   final List<DebugPage> pages;
 
   /// Master switch. When false the overlay renders nothing and never captures
-  /// gestures — pass `kDebugMode`, an env flag, a remote flag, whatever.
+  /// gestures — pass an env flag, a remote flag, whatever.
+  ///
+  /// Defaults to [kDebugMode], matching [DevtrayKillSwitch]'s own default: the
+  /// stores already refuse to record in release, so defaulting this to `true`
+  /// meant the one thing that *did* survive into production was the floating
+  /// bug button. Pass `true` explicitly if you want the tools in a release
+  /// build (a staging or dogfood flavour).
   final bool enabled;
 
   /// Whether the floating launcher button is drawn. Ignored when a [controller]
@@ -93,7 +101,7 @@ class Devtray extends StatefulWidget {
     super.key,
     required this.child,
     this.pages = const [],
-    this.enabled = true,
+    this.enabled = kDebugMode,
     this.showLauncher = true,
     this.controller,
     this.presentation = DevtrayPresentation.dialog,
@@ -114,35 +122,29 @@ class _DevtrayState extends State<Devtray> {
   late DevtrayController _controller = widget.controller ?? DevtrayController(showLauncher: widget.showLauncher);
   bool get _ownsController => widget.controller == null;
 
-  /// Null until first drag — the button then sits wherever it was dropped.
-  Offset? _pos;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller.isOpenListenable.addListener(_onOpenChanged);
-  }
+  /// Where the launcher sits. Null until first drag — the button then stays
+  /// wherever it was dropped.
+  ///
+  /// A [ValueNotifier] rather than plain state on purpose: dragging fires on
+  /// every pointer move, and `setState` here would rebuild this widget — whose
+  /// child is the entire host app. Driving the position through a listenable
+  /// scoped to the [Positioned] keeps the app out of the drag path entirely.
+  final ValueNotifier<Offset?> _pos = ValueNotifier<Offset?>(null);
 
   @override
   void didUpdateWidget(Devtray oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
-      _controller.isOpenListenable.removeListener(_onOpenChanged);
       if (oldWidget.controller == null) oldWidget.controller?.dispose();
       _controller = widget.controller ?? DevtrayController(showLauncher: widget.showLauncher);
-      _controller.isOpenListenable.addListener(_onOpenChanged);
     }
   }
 
   @override
   void dispose() {
-    _controller.isOpenListenable.removeListener(_onOpenChanged);
     if (_ownsController) _controller.dispose();
+    _pos.dispose();
     super.dispose();
-  }
-
-  void _onOpenChanged() {
-    if (mounted) setState(() {});
   }
 
   Offset _defaultPos(double maxX, double maxY) {
@@ -175,11 +177,25 @@ class _DevtrayState extends State<Devtray> {
       child: Stack(
         alignment: Alignment.topLeft,
         children: [
-          widget.child,
-          if (_controller.isOpen && widget.presentation != DevtrayPresentation.custom)
-            Positioned.fill(child: _buildTools())
-          else
-            Positioned.fill(child: _buildLauncher()),
+          // The host app is a direct child of the Stack — never inside a
+          // builder — so no overlay state change can rebuild it. The
+          // RepaintBoundary is the other half of that guarantee: without it the
+          // app and the overlay share one paint layer, and a moving launcher
+          // (or a badge count changing) repaints the whole app with it.
+          RepaintBoundary(child: widget.child),
+          // Only this layer reacts to open/close. Its own RepaintBoundary keeps
+          // overlay repaints from dirtying the app's layer.
+          Positioned.fill(
+            child: RepaintBoundary(
+              child: ValueListenableBuilder<bool>(
+                valueListenable: _controller.isOpenListenable,
+                builder: (context, isOpen, _) {
+                  if (isOpen && widget.presentation != DevtrayPresentation.custom) return _buildTools();
+                  return _buildLauncher();
+                },
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -256,31 +272,40 @@ class _DevtrayState extends State<Devtray> {
           builder: (context, constraints) {
             final maxX = constraints.maxWidth - widget.launcherSize;
             final maxY = constraints.maxHeight - widget.launcherSize;
-            final pos = _pos ?? _defaultPos(maxX, maxY);
-            final clamped = Offset(pos.dx.clamp(0.0, maxX), pos.dy.clamp(0.0, maxY));
 
-            return Stack(
-              alignment: Alignment.topLeft,
-              children: [
-                Positioned(
-                  left: clamped.dx,
-                  top: clamped.dy,
-                  child: GestureDetector(
-                    onTap: _controller.open,
-                    onPanUpdate: (d) => setState(() {
-                      final next = (_pos ?? clamped) + d.delta;
-                      _pos = Offset(next.dx.clamp(0.0, maxX), next.dy.clamp(0.0, maxY));
-                    }),
-                    child: widget.launcherBuilder ??
-                        DebugLauncherButton(
-                          theme: widget.theme,
-                          size: widget.launcherSize,
-                          icon: widget.launcherIcon,
-                          showErrorBadge: widget.showErrorBadge,
-                        ),
+            // Built once per layout, not once per pointer move — the button
+            // itself is identical at every drag position, so hoisting it out of
+            // the builder below means dragging only re-runs `Positioned`.
+            final button = GestureDetector(
+              onTap: _controller.open,
+              onPanUpdate: (d) {
+                final current = _pos.value ?? _defaultPos(maxX, maxY);
+                final next = current + d.delta;
+                _pos.value = Offset(next.dx.clamp(0.0, maxX), next.dy.clamp(0.0, maxY));
+              },
+              child: widget.launcherBuilder ??
+                  DebugLauncherButton(
+                    theme: widget.theme,
+                    size: widget.launcherSize,
+                    icon: widget.launcherIcon,
+                    showErrorBadge: widget.showErrorBadge,
                   ),
-                ),
-              ],
+            );
+
+            return ValueListenableBuilder<Offset?>(
+              valueListenable: _pos,
+              child: RepaintBoundary(child: button),
+              builder: (context, pos, child) {
+                final resolved = pos ?? _defaultPos(maxX, maxY);
+                final clamped = Offset(resolved.dx.clamp(0.0, maxX), resolved.dy.clamp(0.0, maxY));
+
+                return Stack(
+                  alignment: Alignment.topLeft,
+                  children: [
+                    Positioned(left: clamped.dx, top: clamped.dy, child: child!),
+                  ],
+                );
+              },
             );
           },
         );

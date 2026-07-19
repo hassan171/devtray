@@ -44,6 +44,9 @@ export 'src/network/mocking/mock_store.dart';
 export 'src/network/mocking/mocks_view.dart';
 export 'src/network/network_debug_page.dart';
 export 'src/network/network_log_store.dart';
+// The row, mostly for its `extent` — a custom page rendering the same list
+// needs the same fixed height to set `itemExtent`.
+export 'src/network/components/network_log_row.dart';
 
 // Logs page
 export 'src/logs/log_bridge.dart';
@@ -51,10 +54,16 @@ export 'src/logs/components/log_detail_dialog.dart';
 export 'src/logs/log_store.dart';
 export 'src/logs/logs_debug_page.dart';
 
+// Log persistence — the shape of a sink, the batching, and the file format.
+// The transports themselves live outside the core (see devtray_log_file), which
+// carries no dependencies and cannot reach dart:io or the filesystem.
+export 'src/logs/log_sink.dart';
+export 'src/logs/components/log_session_picker.dart';
+
 // Errors — no separate store or page. Errors live in the one LogStore as
 // error-level entries (LogStore.report / captureErrors, ErrorSource, the badge)
 // and render in the Logs page. This is just the shared detail renderer.
-export 'src/logs/error_log_detail.dart' show ErrorDetailSections, errorSourceLabel, errorAsPlainText, requestSummary;
+export 'src/logs/error_log_detail.dart' show ErrorDetailSections, LogFieldsSection, errorSourceLabel, errorAsPlainText, requestSummary;
 
 // Advanced filtering — the JQL-style condition builder, reusable on any page.
 export 'src/filter/debug_filter.dart';
@@ -87,4 +96,5 @@ export 'src/storage/storage_debug_page.dart';
 export 'src/widgets/copyable_section.dart';
 export 'src/widgets/debug_copy_button.dart';
 export 'src/widgets/debug_search_bar.dart';
+export 'src/widgets/jump_to_latest_button.dart';
 export 'src/widgets/debug_tab_bar.dart';

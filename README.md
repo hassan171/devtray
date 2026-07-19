@@ -39,6 +39,7 @@ one, so an app that uses `http` and Riverpod never compiles dio or bloc.
 | [`devtray_prefs`](packages/devtray_prefs) | `shared_preferences` browsing + mock-rule persistence |
 | [`devtray_hive`](packages/devtray_hive) | Browse and edit Hive boxes |
 | [`devtray_sqflite`](packages/devtray_sqflite) | Every SQLite table, discovered from the schema |
+| [`devtray_log_file`](packages/devtray_log_file) | Write logs to disk, and load a past run back |
 | [`devtray_device`](packages/devtray_device) | Real device, OS and app facts |
 | [`devtray_html`](packages/devtray_html) | Preview HTML response bodies |
 

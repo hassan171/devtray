@@ -95,7 +95,7 @@ class LogDetailDialog extends StatelessWidget {
                     ),
                   ),
                   // The whole line as text — the reason you opened this.
-                  CopyButton(tooltip: 'Copy report', size: 16, text: isError ? errorAsPlainText(entry) : entry.message),
+                  CopyButton(tooltip: 'Copy report', size: 16, text: () => isError ? errorAsPlainText(entry) : entry.message),
                   IconButton(
                     tooltip: 'Close',
                     padding: EdgeInsets.zero,
@@ -123,6 +123,13 @@ class LogDetailDialog extends StatelessWidget {
                       // stack — a bridged logger's `error:`/`stackTrace:`.
                       if (entry.error != null) CopyableSection(title: 'Error', body: '${entry.error}', titleColor: t.error),
                       if (entry.stackTrace != null) CopyableSection(title: 'Stack Trace', body: '${entry.stackTrace}'),
+                      // Inside the else, NOT after the branch: ErrorDetailSections
+                      // renders its own Fields section, so an error entry would
+                      // otherwise show two.
+                      // Inside the else, NOT after the branch: ErrorDetailSections
+                      // renders its own Fields section, so an error entry would
+                      // otherwise show two.
+                      if (entry.fields.isNotEmpty) LogFieldsSection(fields: entry.fields),
                     ],
                   ],
                 ),

@@ -1,5 +1,6 @@
 import 'package:devtray/devtray.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 
 const String _logIdKey = '__devtray_netlog_id';
 
@@ -23,6 +24,25 @@ class DebugDioInterceptor extends Interceptor {
 
   @override
   Future<void> onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
+    // Added twice to the same Dio, this would run twice per request: two
+    // entries created, the second overwriting the first's id in `extra` — so
+    // entry #1 could never be completed and would spin as "pending" until it
+    // was evicted. Mock delays would apply twice over, too.
+    //
+    // Easy to do by accident: a shared Dio configured in two places, or a
+    // factory that re-adds interceptors on every call.
+    if (options.extra.containsKey(_logIdKey)) {
+      assert(() {
+        debugPrint(
+          '[devtray] DebugDioInterceptor appears to be installed more than once on this Dio '
+          '— skipping the duplicate capture. Add it only once, last in the chain.',
+        );
+        return true;
+      }());
+      handler.next(options);
+      return;
+    }
+
     final entry = _store.add(
       method: options.method,
       uri: options.uri,

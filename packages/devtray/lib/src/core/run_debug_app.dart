@@ -151,6 +151,11 @@ void runDebugApp({
       if (captureFlutterErrors) captureErrors();
       if (captureDebugPrints) captureDebugPrint();
 
+      // Lets LogExporter.flushOnPause work. Costs one observer and nothing else
+      // when no log sink is configured, which is the default — so this doesn't
+      // need its own flag. See LogExporter.
+      LogExporter.instance.observeLifecycle();
+
       // Restore whatever the app's storage backend has, if any.
       //
       // No flag guards this, because installing a storage backend IS the opt-in:

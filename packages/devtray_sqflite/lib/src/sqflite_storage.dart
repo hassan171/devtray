@@ -120,7 +120,8 @@ class _SqfliteTableAdapter extends DebugStorageAdapter {
   @override
   final bool writable;
 
-  const _SqfliteTableAdapter({
+  // Not const: the adapter tracks whether its last read was truncated.
+  _SqfliteTableAdapter({
     required this.db,
     required this.table,
     required this.columns,
@@ -142,18 +143,43 @@ class _SqfliteTableAdapter extends DebugStorageAdapter {
 
   String get _keyColumn => _pk?.name ?? 'rowid';
 
+  /// Most rows read into the browser at once.
+  ///
+  /// An unbounded `SELECT *` on a real table (a sync log, a cache, an events
+  /// table) pulls every row into memory on the UI isolate and builds a Map per
+  /// row — enough to freeze the panel for seconds. The browser is for
+  /// *inspecting* a table, not dumping it, so it reads a window instead.
+  ///
+  /// Raise it if you need to see further, or narrow the adapter to the rows you
+  /// care about with your own query.
+  int maxRows = 500;
+
+  /// True when the last [readAll] hit [maxRows] and stopped short.
+  bool get isTruncated => _truncated;
+  bool _truncated = false;
+
+  @override
+  String? get notice => _truncated ? 'Showing the first $maxRows rows — this table has more.' : null;
+
   @override
   Future<Map<String, Object?>> readAll() async {
     final key = _keyColumn;
+    // One over the limit, so hitting it is distinguishable from a table that
+    // happens to have exactly maxRows.
+    final limit = maxRows + 1;
+
     // `rowid, *` when there's no declared key — `*` alone doesn't include it.
     final rows = await db.rawQuery(
       _pk == null
-          ? 'SELECT rowid, * FROM ${SqfliteStorage._quote(table)} ORDER BY rowid'
-          : 'SELECT * FROM ${SqfliteStorage._quote(table)} ORDER BY ${SqfliteStorage._quote(key)}',
+          ? 'SELECT rowid, * FROM ${SqfliteStorage._quote(table)} ORDER BY rowid LIMIT $limit'
+          : 'SELECT * FROM ${SqfliteStorage._quote(table)} ORDER BY ${SqfliteStorage._quote(key)} LIMIT $limit',
     );
 
+    _truncated = rows.length > maxRows;
+    final visible = _truncated ? rows.take(maxRows) : rows;
+
     return {
-      for (final row in rows)
+      for (final row in visible)
         row[key].toString(): {
           for (final e in row.entries)
             // The key is already the row's name — showing it inside the value

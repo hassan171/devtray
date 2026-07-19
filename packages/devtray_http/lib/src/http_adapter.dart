@@ -142,10 +142,31 @@ class DebugHttpClient extends http.BaseClient {
     return null;
   }
 
+  /// How many bytes of a response body are worth decoding for the log.
+  ///
+  /// The bytes have to be buffered regardless — the stream is drained here and
+  /// replayed to the caller, so there's no avoiding that. What this avoids is
+  /// *also* holding a decoded String copy of a large download: `utf8.decode` of
+  /// a 50 MB body allocates a second 50 MB, on the UI isolate, for a log line
+  /// nobody can read. Past the limit only the head is decoded.
+  ///
+  /// [NetworkLogStore.maxBodyChars] caps what's ultimately retained; this caps
+  /// what's built in the first place.
+  static const int _maxDecodedBytes = 256 * 1024;
+
   String _decode(List<int> bytes) {
     if (bytes.isEmpty) return '';
+
+    final oversized = bytes.length > _maxDecodedBytes;
+    final slice = oversized ? bytes.sublist(0, _maxDecodedBytes) : bytes;
+
     try {
-      return utf8.decode(bytes);
+      // `allowMalformed` so a multi-byte character straddling the cut point
+      // degrades to a replacement char instead of throwing and mislabelling the
+      // whole body as binary.
+      final text = utf8.decode(slice, allowMalformed: oversized);
+      if (!oversized) return text;
+      return '$text\n\n[devtray] truncated — ${bytes.length} bytes total, decoded $_maxDecodedBytes.';
     } catch (_) {
       return '<${bytes.length} bytes of binary data>';
     }
