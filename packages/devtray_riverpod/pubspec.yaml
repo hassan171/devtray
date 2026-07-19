@@ -1,6 +1,6 @@
 name: devtray_riverpod
 description: "Riverpod adapter for devtray — feeds the overlay's State page from providers."
-version: 0.2.0
+version: 0.3.0
 repository: https://github.com/hassan171/devtray/tree/main/packages/devtray_riverpod
 issue_tracker: https://github.com/hassan171/devtray/issues
 
@@ -13,7 +13,7 @@ resolution: workspace
 dependencies:
   flutter:
     sdk: flutter
-  devtray: ^0.2.0
+  devtray: ^0.3.0
   flutter_riverpod: ^3.0.0
 
 dev_dependencies:

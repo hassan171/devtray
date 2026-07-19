@@ -93,6 +93,14 @@ Future<void> _openStores() async {
   // an error carries who and where without the throw site knowing about it.
   installLogContext();
 
+  // Watch for UI freezes for the whole session, not just while the Timeline is
+  // on screen — the Debug tab's jank buttons freeze the UI from a different
+  // tab, and a watchdog scoped to the Timeline page would miss them.
+  //
+  // Opt-in on purpose: a heartbeat timer plus a per-frame callback is the only
+  // capture in the overlay with a real steady-state cost.
+  FreezeWatchdog.instance.start();
+
   // Start persisting logs to disk. Everything captured from here on is written
   // as well as buffered, so the Logs page's session picker has past runs to
   // offer — including this one, once it ends.
@@ -174,6 +182,18 @@ void main() {
       // `onPreviewHtml` is what turns the HTML preview button on. The core has
       // no HTML renderer — it doesn't depend on flutter_html — so without a
       // previewer the button isn't drawn at all. devtray_html supplies one.
+      // Requests, logs and state on one axis. First, because it's the page that
+      // answers "what just happened" — the others answer "what happened to
+      // *this*". Owns no data: it reads the same three stores the tabs below
+      // read, so adding it costs nothing until you open it.
+      //
+      // Pair it with the load generator on the Debug tab — that's what makes
+      // the lanes worth looking at.
+      // Note `detectFreezes` is NOT set here: the watchdog is started for the
+      // whole session in _openStores instead. The flag scopes it to while this
+      // page is mounted, which would miss a freeze triggered from another tab —
+      // exactly what the Debug tab's jank buttons do.
+      const TimelineDebugPage(onPreviewHtml: HtmlPreviewDialog.show),
       const NetworkDebugPage(onPreviewHtml: HtmlPreviewDialog.show),
       // Combined logs + errors. Errors fold in as error-level rows (expand one
       // for its full report); the advanced filter's `Source`/`Level` fields

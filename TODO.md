@@ -6,14 +6,18 @@ writing code.
 
 Ordered by value-per-effort. Nothing here is committed.
 
-**Shipped so far:** Network, **Mocks**, **Visual**, Logs, Errors, Device, **Export**, **Storage** pages · **kill switch** · pluggable
+**Shipped so far:** **Timeline** (with **jank/freeze detection**), Network, **Mocks**,
+**Visual**, Logs, Errors, Device, **Export**, **Storage** pages · **kill switch** · pluggable
 `DebugPage` system · `runDebugApp` one-call setup · dio + http adapters · network→errors
-forwarding.
+forwarding · **log persistence** (sinks, rotating session files, a browser for past runs) ·
+**structured log context** (ambient / enricher / per-call).
 
 **Explicitly not doing:**
-- **Persistence across restarts** (except mock rules). In-memory only is a defensible default,
-  and the crash-forensics case isn't worth the machinery. Revisit only if "what killed it last
-  time" actually bites.
+- ~~**Persistence across restarts**~~ — **reversed, and shipped.** The reasoning was that the
+  crash-forensics case wasn't worth the machinery. It was: `LogSink`/`LogExporter` plus
+  `devtray_log_file` write rotating session files, and the Logs page browses past runs. What
+  made it worth building was that the machinery turned out to be small — the core defines the
+  interface and owns the batching, and the one dependency lives in its own package.
 - **Redaction.** Built, then removed — see §3. This is a personal tool; the data is yours and
   goes to your own terminal. A scrubbed cURL can't be replayed, which is the point of copying
   one.
@@ -239,30 +243,43 @@ Small. It's the natural payoff of the copy-all buttons already there.
 
 ---
 
-## 4. Performance / FPS page
+## 4. ~~Performance / FPS page~~ ✅ MOSTLY SHIPPED, as a Timeline lane
 
-Self-capturing, zero integration cost, answers "is this screen janking" without a desktop.
+Built as the **jank lane on the Timeline** rather than its own page, because the interesting
+question turned out not to be "what is the frame rate" but "what was the app doing when it
+stalled" — and that is only answerable next to the network, log and state lanes.
 
-### What it does
-- Frame **build** and **raster** times via `SchedulerBinding.instance.addTimingsCallback`
-- A rolling sparkline of the last N frames
-- A **jank counter** (frames over 16ms / 33ms), and worst-frame stats
-- Optionally: a live FPS number
+Shipped: `FreezeWatchdog`, with `FreezeEvent` (the isolate stopped responding) and
+`SlowFrameEvent` (a frame rendered, but late, with the build/raster split).
 
-### Design sketch
-A `PerformanceStore` in the same mold as the others — ring buffer of `FrameTiming`s, fed by a
-timings callback registered in `DevtrayCapture.installHooks()`. Page renders a
-`CustomPainter` sparkline.
+Decisions taken on the open questions:
 
-### Cost
-Low-medium. The capture is a few lines. The sparkline is a small `CustomPainter`.
+- **Opt-in — yes.** `TimelineDebugPage(detectFreezes: true)`, or
+  `FreezeWatchdog.instance.start()` for the whole session. It is the only capture in the
+  overlay with a steady-state cost, so it is the only one that is off by default.
+- **`addTimingsCallback` is not sufficient on its own.** It only fires for frames that
+  *rendered*, so a three-second block produces no timings at all — the case you most want is
+  the one it is blind to. A heartbeat timer covers that, and the two together cover both
+  "we dropped 40 frames" and "we rendered nothing for a second".
 
-### Open questions
-- The callback fires **every frame**, so the store must be cheap — a fixed-size circular
-  buffer of raw microsecond ints, no allocation per frame, and the *page* does the math only
-  while it's visible. Worth being disciplined here or the profiler becomes the jank.
-- Should capture be opt-in (a flag on `installHooks`)? Leaning yes — it's the only feature
-  with a real steady-state cost.
+The hard constraint, learned while building it: **a frozen isolate cannot detect its own
+freeze.** No timer, frame callback or microtask runs while it is blocked. So detection is
+retrospective, terminal hangs are reported by nothing, and there is no stack trace. Tapping a
+freeze shows what else was happening in that window instead — labelled circumstantial, because
+that is what it is.
+
+Also worth recording, because it cost time: **the demo's stutter button did not work at
+first.** It burned CPU between frames and yielded with `Future.delayed(Duration.zero)`, which
+yields to the microtask queue rather than the rasteriser — so no frame ever rendered in the
+gap. The result was a stutter you could feel and the tool could not see. The work has to run
+inside a post-frame callback to land in `buildDuration`.
+
+Still open, if it ever bites:
+- **A sparkline / live FPS number.** The lane shows *when* jank happened; it does not show a
+  rolling frame-rate. Nobody has wanted it yet.
+- **Watchdog isolate.** The only way to catch a freeze *while it is happening*, including a
+  terminal one. Real complexity (isolate lifecycle, spawn cost) and no web support, so not
+  done until the retrospective version proves insufficient.
 
 ---
 
@@ -410,6 +427,25 @@ Things that apply to several of the above and should be decided once:
 1. ~~**Network mocking**~~ ✅ done.
 2. ~~**Visual debug toggles (flags only)**~~ ✅ done.
 3. ~~**Share/export**~~ ✅ done (redaction built then removed — not wanted).
-4. **Performance page** — self-capturing, no integration cost. ← next
+4. ~~**Performance page**~~ ✅ done, as the Timeline's jank lane rather than its own page.
 5. ~~**Storage inspector**~~ ✅ done.
 6. Feature flags / BLoC inspector — both still need a decision on host-app coupling.
+
+Not on the original list, built anyway:
+
+- ~~**Timeline**~~ ✅ done. Requests, logs, state and jank on one time axis. It owns no data —
+  every store already timestamps its entries, so it is a view over the existing three rather
+  than a fourth to maintain. The idea came from noticing that nothing correlated the pages
+  despite every one of them having the timestamps to do it.
+
+Known gaps, recorded rather than fixed:
+
+- **No cross-page navigation.** Tapping a request on the Timeline opens its detail *inline*
+  rather than jumping to the Network tab, because there is no mechanism to jump: the
+  `TabController` is private state and `DebugPage` has no identity. Adding one would unblock
+  several other ideas (a failed request in the Logs page linking to the request that caused
+  it, most obviously).
+- **Slow-frame capture is untested end to end.** The widget-test environment reports no frame
+  timings at all, so nothing in the suite can verify it. The arithmetic is tested and the
+  example's jank buttons are the real verification — which is why it mattered that one of
+  them was silently broken.

@@ -3,8 +3,9 @@
 An in-app debugging overlay for Flutter: a draggable floating button that opens a tabbed
 tools panel over your running app.
 
-Seven built-in pages — **Network** (with mocking), **Logs** (errors folded in), **State**,
-**Storage**, **Visual**, **Device** and **Export** — and every other tab is one you add.
+Eight built-in pages — **Timeline** (everything on one time axis, with UI-freeze detection),
+**Network** (with mocking), **Logs** (errors folded in), **State**, **Storage**, **Visual**,
+**Device** and **Export** — and every other tab is one you add.
 
 You decide **whether** it exists, **when** it opens, and **how** it's presented.
 

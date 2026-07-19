@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.3.0
+
+The Timeline page, and UI-freeze detection. No breaking changes.
+
+### Added
+
+- **`TimelineDebugPage`** — requests, logs and state changes on one shared time axis. Every
+  other page answers "what happened to *this*"; this one answers "what just happened", which
+  is the question you have when a screen breaks and you don't yet know which subsystem to
+  blame.
+
+  It owns no data. Every store already timestamps its entries, so this is a view over the
+  three existing stores rather than a fourth to keep in sync, and it costs nothing until you
+  open it. Requests draw as bars (they have duration), logs and state as marks. Tapping
+  anything opens the same detail dialog its owning page would show.
+
+  Live-following by default; any drag pauses it. Pan by dragging or with step buttons, zoom
+  from 200ms to 10 minutes on a logarithmic slider. Zoom survives the live/paused toggle —
+  the reset button is the explicit way back to the default.
+
+- **`FreezeWatchdog`** — detects periods where the UI isolate stopped responding, and frames
+  that rendered too slowly, drawn as a fourth lane on the timeline. **Opt-in** via
+  `TimelineDebugPage(detectFreezes: true)` or `FreezeWatchdog.instance.start()`, because it
+  is the only capture in the overlay with a real steady-state cost.
+
+  Detection is **retrospective and cannot be otherwise**: a blocked isolate runs no timer,
+  frame callback or microtask, including the one watching it. So a freeze is reported once it
+  ends, a terminal hang is reported by nothing, and there is no stack trace — by the time the
+  gap is measurable, whatever caused it has returned. Tapping a freeze instead shows what
+  else was happening in that window, which the dialog labels as circumstantial rather than
+  implying a cause it cannot prove.
+
+  Both a heartbeat and `addTimingsCallback` are used, because neither is sufficient alone:
+  the timings callback only fires for frames that *rendered*, so a three-second block
+  produces no timings at all.
+
+- `JumpToLatestButton` moved to `widgets/` and is now exported — the Logs and Network pages
+  share it rather than each carrying a copy.
+
 ## 0.2.0
 
 Performance, log persistence, and structured log context.

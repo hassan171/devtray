@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0
+
+No changes. Versioned in step with the rest of the set, and requires
+`devtray ^0.3.0` — see the core's changelog for the new Timeline page.
+
 ## 0.2.0
 
 - `onTransition` now checks the kill switch before stashing the pending event. Without it,

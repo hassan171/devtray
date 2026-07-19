@@ -76,6 +76,16 @@ export 'src/device/device_info_provider.dart';
 // Visual debug flags page
 export 'src/visual/visual_debug_page.dart';
 
+// Timeline — requests, logs and state on one shared time axis. Owns no data of
+// its own; it reads the three existing stores.
+export 'src/timeline/timeline_debug_page.dart';
+export 'src/timeline/timeline_event.dart';
+export 'src/timeline/freeze_watchdog.dart';
+export 'src/timeline/components/jank_detail_dialog.dart';
+// The painter and its geometry, so a custom page can draw the same lanes —
+// and so the hit-testing is testable against the layout it shares.
+export 'src/timeline/timeline_painter.dart';
+
 // Export — bundle everything captured into one shareable bug report.
 export 'src/export/debug_report.dart';
 export 'src/export/export_debug_page.dart';
