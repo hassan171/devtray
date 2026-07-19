@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../app_services.dart' show counter, debug, dio, httpClient, todos;
 import '../counter_cubit.dart';
+import '../load_generator.dart';
 import '../users_box.dart';
 
 /// The demo harness — every overlay feature, on demand.
@@ -26,6 +27,8 @@ class DebugScreen extends StatelessWidget {
       children: [
         const _Intro(),
         const SizedBox(height: 12),
+
+        const _LoadSection(),
 
         _Section(
           title: 'Network',
@@ -106,6 +109,101 @@ class DebugScreen extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// The load generator's controls.
+///
+/// Its own widget rather than another [_Section] because it's the one control
+/// here with *state* — it has to show whether it's running and how much it has
+/// produced. Everything else on this screen is a fire-and-forget button.
+class _LoadSection extends StatelessWidget {
+  const _LoadSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final load = LoadGenerator.instance;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'Continuous load',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: scheme.onSurface),
+                  ),
+                  const Spacer(),
+                  // The live readout. Rebuilds on its own notifier, so the rest
+                  // of this screen isn't rebuilt several times a second by it.
+                  ValueListenableBuilder<bool>(
+                    valueListenable: load.isRunning,
+                    builder: (context, running, _) => ValueListenableBuilder<int>(
+                      valueListenable: load.emitted,
+                      builder: (context, count, _) => Row(
+                        children: [
+                          if (running)
+                            Container(
+                              width: 7,
+                              height: 7,
+                              decoration: BoxDecoration(color: scheme.error, shape: BoxShape.circle),
+                            ),
+                          if (running) const SizedBox(width: 6),
+                          Text(
+                            running ? '$count events' : 'idle',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontFeatures: const [FontFeature.tabularFigures()],
+                              color: scheme.onSurface.withValues(alpha: 0.55),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Timers driving requests, logs and state changes at once — what the '
+                'overlay looks like under real traffic rather than one button press.',
+                style: TextStyle(fontSize: 11, height: 1.35, color: scheme.onSurface.withValues(alpha: 0.5)),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ValueListenableBuilder<bool>(
+                    valueListenable: load.isRunning,
+                    builder: (context, running, _) => FilledButton.tonal(
+                      onPressed: load.toggle,
+                      style: FilledButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        textStyle: const TextStyle(fontSize: 12),
+                        backgroundColor: running ? scheme.errorContainer : null,
+                        foregroundColor: running ? scheme.onErrorContainer : null,
+                      ),
+                      child: Text(running ? 'Stop' : 'Start'),
+                    ),
+                  ),
+                  // Fills past the 1000-line log cap in one go, so eviction and
+                  // searching a full buffer are both reachable immediately.
+                  _Btn('Burst (1200 logs)', () => LoadGenerator.instance.burst()),
+                  _Btn('Flood logs only', () => LoadGenerator.instance.burst(requests: 0, logs: 2000)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
