@@ -51,6 +51,11 @@ export 'src/logs/components/log_detail_dialog.dart';
 export 'src/logs/log_store.dart';
 export 'src/logs/logs_debug_page.dart';
 
+// Log persistence — the shape of a sink, the batching, and the file format.
+// The transports themselves live outside the core (see devtray_log_file), which
+// carries no dependencies and cannot reach dart:io or the filesystem.
+export 'src/logs/log_sink.dart';
+
 // Errors — no separate store or page. Errors live in the one LogStore as
 // error-level entries (LogStore.report / captureErrors, ErrorSource, the badge)
 // and render in the Logs page. This is just the shared detail renderer.

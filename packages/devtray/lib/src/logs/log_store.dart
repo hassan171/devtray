@@ -4,6 +4,7 @@ import 'dart:collection';
 import 'package:flutter/foundation.dart';
 
 import '../core/devtray_kill_switch.dart';
+import 'log_sink.dart';
 
 /// A [ValueNotifier] whose value updates **synchronously** but whose listener
 /// notifications are **coalesced onto a microtask**.
@@ -241,21 +242,26 @@ class LogStore {
     if (!DevtrayKillSwitch.enabled) return false;
 
     if (tag != null) _tagCounts.update(tag, (n) => n + 1, ifAbsent: () => 1);
-    _entries.insert(
-      0,
-      LogEntry(
-        id: _nextId++,
-        time: DateTime.now(),
-        level: level,
-        message: message,
-        tag: tag,
-        error: error,
-        stackTrace: stackTrace,
-        source: source,
-        errorContext: errorContext,
-        library: library,
-      ),
+
+    final entry = LogEntry(
+      id: _nextId++,
+      time: DateTime.now(),
+      level: level,
+      message: message,
+      tag: tag,
+      error: error,
+      stackTrace: stackTrace,
+      source: source,
+      errorContext: errorContext,
+      library: library,
     );
+
+    // Handed to the sinks BEFORE the ring buffer can evict anything, so a long
+    // session writes every line to disk even though the page only ever holds
+    // the last [maxEntries]. No-ops when no sink is configured.
+    LogExporter.instance.ingest(entry);
+
+    _entries.insert(0, entry);
     while (_entries.length > maxEntries) {
       final evicted = _entries.removeLast().tag;
       if (evicted != null) {

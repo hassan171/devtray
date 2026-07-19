@@ -1,0 +1,25 @@
+name: devtray_log_file
+description: "Write devtray's captured logs to rotating files on disk, and load a past session back into the Logs page."
+version: 0.1.0
+repository: https://github.com/hassan171/devtray/tree/main/packages/devtray_log_file
+issue_tracker: https://github.com/hassan171/devtray/issues
+
+
+environment:
+  sdk: ">=3.12.0 <4.0.0"
+
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  devtray: ^0.1.0
+  # The one dependency this package exists to own. The core can't take it —
+  # path_provider has no web implementation, and the core is meant to work
+  # everywhere Flutter does.
+  path_provider: ^2.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
