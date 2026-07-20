@@ -24,7 +24,7 @@ class _Counter {
 
 void main() {
   setUp(() {
-    DevtrayKillSwitch.reset();
+    Devtray.reset();
     DevtrayState.instance.clear();
   });
 
@@ -75,8 +75,8 @@ void main() {
   test('the kill switch stops recording, whatever is pushing', () {
     // The page is debug-only, so a release build must buffer nothing — no matter
     // which library (or none) is feeding it.
-    DevtrayKillSwitch.enabled = false;
-    addTearDown(DevtrayKillSwitch.reset);
+    Devtray.enabled = false;
+    addTearDown(Devtray.reset);
 
     final counter = _Counter();
     DevtrayState.instance.recordCreate(

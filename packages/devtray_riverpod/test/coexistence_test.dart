@@ -45,7 +45,7 @@ Widget _host() => const MaterialApp(
 
 void main() {
   setUp(() {
-    DevtrayKillSwitch.reset();
+    Devtray.reset();
     DevtrayState.instance.clear();
     Bloc.observer = DebugBlocObserver();
   });
@@ -93,8 +93,8 @@ void main() {
   test('the kill switch stops both at once', () {
     // One switch, whatever is feeding it — a release build must buffer nothing
     // from either library.
-    DevtrayKillSwitch.enabled = false;
-    addTearDown(DevtrayKillSwitch.reset);
+    Devtray.enabled = false;
+    addTearDown(Devtray.reset);
 
     final cart = _CartCubit()..add();
     addTearDown(cart.close);

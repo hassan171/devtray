@@ -17,7 +17,6 @@ void main() {
   final controller = TextEditingController();
 
   Widget host() => DevtrayOverlay(
-        controller: DevtrayController(),
         presentation: DevtrayPresentation.fullscreen,
         pages: [
           DebugPage.builder(
@@ -33,7 +32,7 @@ void main() {
     final overlay = host();
     await tester.pumpWidget(overlay);
 
-    (tester.widget<DevtrayOverlay>(find.byType(DevtrayOverlay)).controller!).open();
+    Devtray.open();
     await tester.pumpAndSettle();
 
     await tester.tap(find.byType(TextField));

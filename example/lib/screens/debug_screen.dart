@@ -2,7 +2,7 @@ import 'package:devtray/devtray.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
-import '../app_services.dart' show UploadLogSink, counter, currentScreen, debug, dio, httpClient, logSessions, todos;
+import '../app_services.dart' show UploadLogSink, counter, currentScreen, dio, httpClient, logSessions, todos;
 import '../counter_cubit.dart';
 import '../load_generator.dart';
 import '../users_box.dart';
@@ -200,8 +200,8 @@ class DebugScreen extends StatelessWidget {
         _Section(
           title: 'The overlay itself',
           children: [
-            _Btn('Toggle the floating launcher', () => debug.showLauncher.value = !debug.showLauncher.value),
-            _Btn('Open the overlay', debug.toggle),
+            _Btn('Toggle the floating launcher', () => Devtray.showLauncher = !Devtray.showLauncher),
+            _Btn('Open the overlay', Devtray.toggle),
           ],
         ),
       ],

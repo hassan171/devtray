@@ -1,5 +1,79 @@
 # Changelog
 
+## 0.5.0
+
+`Devtray` is now the one control surface. Switching capture off, opening the panel and hiding
+the launcher were three unrelated objects; two of them are gone.
+
+### Breaking
+
+| Was | Now |
+|---|---|
+| `DevtrayKillSwitch.enabled` | `Devtray.enabled` |
+| `DevtrayKillSwitch.addDisableListener` | `Devtray.addDisableListener` |
+| `DevtrayController()` + `controller:` | `Devtray.open()` / `.close()` / `.toggle()` |
+| `controller.showLauncher.value = x` | `Devtray.showLauncher = x` |
+| `runDebugApp(enabled: ...)` | your own `if` around the call |
+| `runDebugApp(app: MyApp())` / `appBuilder:` | `runDebugApp(() => MyApp())` |
+
+**`DevtrayController` is gone**, along with `controller:` on `runDebugApp` and
+`DevtrayOverlay`. A process has one panel, so its state lives on `Devtray` — nothing to
+construct, inject, or thread through your app. This also removes a duplication: `showLauncher`
+existed on the widget, on `runDebugApp` *and* on the controller, and the first two were
+silently ignored whenever a controller was supplied.
+
+**`runDebugApp(enabled:)` is gone.** It used to make the call a plain `runApp` — no Zone, no
+hooks, no overlay. That was real, but the flag could only be read *after* the capture Zone and
+the error hooks were installed, so `enabled: false` still left a Zone wrapping your app,
+`debugPrint` replaced and `FlutterError.onError` replaced. Keeping devtray out of a build is
+now your own `if`, which is total in a way the flag never was:
+
+```dart
+void main() {
+  if (kDebugMode) {
+    runDebugApp(() => const MyApp(), pages: [...]);
+  } else {
+    runApp(const MyApp());
+  }
+}
+```
+
+`Devtray.enabled` still defaults to `kDebugMode`, so a release build that *does* call
+`runDebugApp` records nothing.
+
+**`app` and `appBuilder` are now one positional builder.** Two parameters, exactly one of
+which had to be passed, enforced by an assert that fired at runtime:
+
+```dart
+runDebugApp(() => const MyApp(), pages: [...]);
+```
+
+Positional because it is the one argument every call has, and it mirrors `runApp(MyApp())`.
+A builder because the old `app:` widget was constructed at the *call site* — before
+`runDebugApp` was even entered — so an app whose tree read something `setup` initialised threw
+before the bootstrap ran, and the fix was to notice and switch parameters. Now the tree is
+always built after `setup`, and the failure mode is gone rather than documented.
+
+### Added
+
+- **`configure: (d) => d..launcher(false)`** — the launcher's visibility alongside everything
+  else you configure, and **`..openOnStart()`** to open the panel at launch, for iterating on a
+  page inside the overlay itself.
+
+### Fixed
+
+- **`runDebugApp` never forwarded `enabled` to the overlay it built**, so
+  `runDebugApp(enabled: true)` in a release build gave you capture on and the UI silently off —
+  the exact drift the flag's own documentation claimed to prevent. Moot now that the flag is
+  gone, but it was wrong for two releases.
+- **`DevtrayJank` kept running after capture was switched off.** Alone among the stores it
+  registered no disable-listener, so its heartbeat timer and frame callback — the one
+  steady-state cost in the package — survived a switch-off with its buffers intact.
+- **The tools panel could throw during teardown.** `DebugToolsScreen`'s `TabController` was a
+  lazy `late` field, and `dispose()` was its first read whenever the panel was closed without
+  anyone touching a tab — constructing a controller at a point where the ancestor lookup its
+  ticker needs is illegal.
+
 ## 0.4.0
 
 Setup used to be spread across three mechanisms — arguments to `runDebugApp`, mutating

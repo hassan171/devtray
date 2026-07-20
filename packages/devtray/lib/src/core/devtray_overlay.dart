@@ -2,8 +2,7 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import 'debug_launcher_button.dart';
-import 'devtray_controller.dart';
-import 'devtray_kill_switch.dart';
+import 'devtray_facade.dart';
 import 'devtray_theme.dart';
 import 'debug_page.dart';
 import 'debug_tools_screen.dart';
@@ -40,7 +39,6 @@ enum DebugLauncherCorner { topLeft, topRight, bottomLeft, bottomRight }
 ///   enabled: kDebugMode,                       // when it exists at all
 ///   showLauncher: true,                        // whether the button is drawn
 ///   presentation: DevtrayPresentation.dialog,
-///   controller: myController,                  // open()/close() from anywhere
 ///   theme: const DevtrayTheme.dark(),
 ///   pages: [
 ///     const NetworkDebugPage(),
@@ -51,8 +49,14 @@ enum DebugLauncherCorner { topLeft, topRight, bottomLeft, bottomRight }
 /// ```
 ///
 /// With `showLauncher: false` there is no visible affordance at all — call
-/// `controller.open()` from your own trigger (shake, 5-tap on the logo, a
-/// hidden settings row).
+/// [Devtray.open] from your own trigger (shake, 5-tap on the logo, a hidden
+/// settings row).
+///
+/// Opening and closing live on [Devtray] rather than on a controller you inject,
+/// because a process has one panel. That also removes a duplication this widget
+/// used to carry: `showLauncher` existed here, on [runDebugApp] *and* on the
+/// controller, and this one was silently ignored whenever a controller was
+/// supplied.
 class DevtrayOverlay extends StatefulWidget {
   /// The app. The overlay is stacked on top of it.
   final Widget child;
@@ -60,24 +64,25 @@ class DevtrayOverlay extends StatefulWidget {
   /// The tabs. Order is preserved.
   final List<DebugPage> pages;
 
-  /// Master switch. When false the overlay renders nothing and never captures
-  /// gestures — pass an env flag, a remote flag, whatever.
+  /// Master switch for the *UI*. When false the overlay renders nothing and
+  /// never captures gestures — pass an env flag, a remote flag, whatever.
   ///
-  /// Defaults to [kDebugMode], matching [DevtrayKillSwitch]'s own default: the
-  /// stores already refuse to record in release, so defaulting this to `true`
-  /// meant the one thing that *did* survive into production was the floating
-  /// bug button. Pass `true` explicitly if you want the tools in a release
-  /// build (a staging or dogfood flavour).
+  /// Defaults to [kDebugMode], matching [Devtray.enabled]: the stores already
+  /// refuse to record in release, so defaulting this to `true` meant the one
+  /// thing that *did* survive into production was the floating bug button. Pass
+  /// `true` explicitly if you want the tools in a release build (a staging or
+  /// dogfood flavour).
+  ///
+  /// This is the UI half only. [Devtray.enabled] is the capture half, and they
+  /// are separate because a staging build reasonably wants capture on with no
+  /// visible affordance.
   final bool enabled;
 
-  /// Whether the floating launcher button is drawn. Ignored when a [controller]
-  /// is supplied — use `controller.showLauncher` instead, so it can be flipped
-  /// at runtime.
+  /// The launcher's default visibility.
+  ///
+  /// A default, not the source of truth: `configure: (d) => d..launcher(...)`
+  /// and assigning `Devtray.showLauncher` both override it, whenever they run.
   final bool showLauncher;
-
-  /// Supply one to drive the overlay from your own trigger. When omitted, the
-  /// overlay creates and owns an internal controller.
-  final DevtrayController? controller;
 
   final DevtrayPresentation presentation;
   final DevtrayTheme theme;
@@ -103,7 +108,6 @@ class DevtrayOverlay extends StatefulWidget {
     this.pages = const [],
     this.enabled = kDebugMode,
     this.showLauncher = true,
-    this.controller,
     this.presentation = DevtrayPresentation.dialog,
     this.theme = const DevtrayTheme(),
     this.launcherCorner = DebugLauncherCorner.bottomRight,
@@ -119,8 +123,15 @@ class DevtrayOverlay extends StatefulWidget {
 }
 
 class _DevtrayState extends State<DevtrayOverlay> {
-  late DevtrayController _controller = widget.controller ?? DevtrayController(showLauncher: widget.showLauncher);
-  bool get _ownsController => widget.controller == null;
+  @override
+  void initState() {
+    super.initState();
+    // Seed, not own. This widget's argument is a default; anything that set
+    // Devtray.showLauncher on purpose — `configure: ..launcher(false)`, or a
+    // runtime assignment — wins, because the overlay mounts after configure has
+    // already run and would otherwise silently undo it.
+    Devtray.seedShowLauncher(widget.showLauncher);
+  }
 
   /// Where the launcher sits. Null until first drag — the button then stays
   /// wherever it was dropped.
@@ -134,15 +145,18 @@ class _DevtrayState extends State<DevtrayOverlay> {
   @override
   void didUpdateWidget(DevtrayOverlay oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != widget.controller) {
-      if (oldWidget.controller == null) oldWidget.controller?.dispose();
-      _controller = widget.controller ?? DevtrayController(showLauncher: widget.showLauncher);
+    // Only when the seed itself changes. Re-applying on every rebuild would
+    // stomp a runtime `Devtray.showLauncher = false` the moment anything above
+    // this widget rebuilt.
+    if (oldWidget.showLauncher != widget.showLauncher) {
+      Devtray.seedShowLauncher(widget.showLauncher);
     }
   }
 
   @override
   void dispose() {
-    if (_ownsController) _controller.dispose();
+    // Devtray's notifiers are process-global and outlive this widget — see
+    // Devtray.reset. Only what this State owns gets disposed.
     _pos.dispose();
     super.dispose();
   }
@@ -188,7 +202,7 @@ class _DevtrayState extends State<DevtrayOverlay> {
           Positioned.fill(
             child: RepaintBoundary(
               child: ValueListenableBuilder<bool>(
-                valueListenable: _controller.isOpenListenable,
+                valueListenable: Devtray.isOpenListenable,
                 builder: (context, isOpen, _) {
                   if (isOpen && widget.presentation != DevtrayPresentation.custom) return _buildTools();
                   return _buildLauncher();
@@ -205,7 +219,7 @@ class _DevtrayState extends State<DevtrayOverlay> {
   /// rather than pushed as a route — see the note in [build].
   Widget _buildTools() {
     final t = widget.theme;
-    final screen = DebugToolsScreen(pages: widget.pages, theme: t, onClose: _controller.close);
+    final screen = DebugToolsScreen(pages: widget.pages, theme: t, onClose: Devtray.close);
 
     final Widget presented = switch (widget.presentation) {
       DevtrayPresentation.fullscreen => SafeArea(child: ColoredBox(color: t.background, child: screen)),
@@ -248,7 +262,7 @@ class _DevtrayState extends State<DevtrayOverlay> {
           if (isModal)
             Positioned.fill(
               child: GestureDetector(
-                onTap: _controller.close,
+                onTap: Devtray.close,
                 behavior: HitTestBehavior.opaque,
                 child: const ColoredBox(color: Color(0x8A000000)),
               ),
@@ -264,7 +278,7 @@ class _DevtrayState extends State<DevtrayOverlay> {
 
   Widget _buildLauncher() {
     return ValueListenableBuilder<bool>(
-      valueListenable: _controller.showLauncher,
+      valueListenable: Devtray.showLauncherListenable,
       builder: (context, showLauncher, _) {
         if (!showLauncher) return const SizedBox.shrink();
 
@@ -277,7 +291,7 @@ class _DevtrayState extends State<DevtrayOverlay> {
             // itself is identical at every drag position, so hoisting it out of
             // the builder below means dragging only re-runs `Positioned`.
             final button = GestureDetector(
-              onTap: _controller.open,
+              onTap: Devtray.open,
               onPanUpdate: (d) {
                 final current = _pos.value ?? _defaultPos(maxX, maxY);
                 final next = current + d.delta;

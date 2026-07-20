@@ -2,7 +2,7 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
-import '../core/devtray_kill_switch.dart';
+import '../core/devtray_facade.dart';
 import '../logs/devtray_log.dart';
 
 enum NetworkLogStatus { pending, success, failed }
@@ -158,7 +158,7 @@ class NetworkError implements Exception {
 class DevtrayNet {
   DevtrayNet._() {
     // Flipping the kill switch off must also drop what's already buffered.
-    DevtrayKillSwitch.addDisableListener(clear);
+    Devtray.addDisableListener(clear);
   }
   static final DevtrayNet instance = DevtrayNet._();
 
@@ -227,7 +227,7 @@ class DevtrayNet {
     // The adapters are installed by the host app, not by the overlay — so in a
     // release build with the interceptor still in place, this would otherwise
     // keep buffering 500 requests (headers, tokens, bodies) that nothing reads.
-    if (!DevtrayKillSwitch.enabled) return null;
+    if (!Devtray.enabled) return null;
     if (isExcluded(uri)) return null;
 
     final entry = NetworkLogEntry(

@@ -17,10 +17,6 @@ import 'counter_cubit.dart';
 /// Globals here keep the example's wiring visible in one place, which is what
 /// the example is for.
 
-/// Drives the overlay from our own trigger (the AppBar bug button), on top of
-/// the draggable launcher.
-final debug = DevtrayController();
-
 /// The one interceptor is all the Network page needs — every request made
 /// through this client shows up, including the ones the app makes on its own.
 final dio = Dio()..interceptors.add(DebugDioInterceptor());

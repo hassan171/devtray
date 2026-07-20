@@ -176,15 +176,13 @@ void main() {
         responseBody: '<html><body><h1>hello</h1></body></html>',
       );
 
-      final controller = DevtrayController();
       await tester.pumpWidget(DevtrayOverlay(
-        controller: controller,
         presentation: DevtrayPresentation.fullscreen,
         pages: [NetworkDebugPage(onPreviewHtml: onPreviewHtml)],
         child: const MaterialApp(home: Scaffold(body: Text('app'))),
       ));
 
-      controller.open();
+      Devtray.open();
       await tester.pumpAndSettle();
 
       await tester.tap(find.textContaining('/page'));

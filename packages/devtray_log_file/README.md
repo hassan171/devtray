@@ -12,7 +12,7 @@ just saw died with the app. This is the fix.
 import 'package:devtray_log_file/devtray_log_file.dart';
 
 runDebugApp(
-  app: const MyApp(),
+  () => const MyApp(),
   configure: (devtray) => devtray..logToAsync(() => FileLogSink.open()),
   pages: const [...],
 );

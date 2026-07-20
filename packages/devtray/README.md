@@ -19,19 +19,19 @@ compile the ones you use:
 
 ```yaml
 dependencies:
-  devtray: ^0.4.0          # the overlay, the pages, the stores
+  devtray: ^0.5.0          # the overlay, the pages, the stores
 
   # Add only what you need:
-  devtray_dio: ^0.4.0       # DebugDioInterceptor
-  devtray_http: ^0.4.0      # DebugHttpClient
-  devtray_bloc: ^0.4.0      # DebugBlocObserver     → the State page
-  devtray_riverpod: ^0.4.0  # DebugRiverpodObserver → the State page
-  devtray_prefs: ^0.4.0     # SharedPreferences adapter + mock persistence
-  devtray_hive: ^0.4.0      # browse and edit Hive boxes
-  devtray_sqflite: ^0.4.0   # every SQLite table, discovered from the schema
-  devtray_device: ^0.4.0    # real device/OS/app facts
-  devtray_html: ^0.4.0      # preview HTML response bodies
-  devtray_log_file: ^0.4.0  # write logs to rotating files, browse past runs
+  devtray_dio: ^0.5.0       # DebugDioInterceptor
+  devtray_http: ^0.5.0      # DebugHttpClient
+  devtray_bloc: ^0.5.0      # DebugBlocObserver     → the State page
+  devtray_riverpod: ^0.5.0  # DebugRiverpodObserver → the State page
+  devtray_prefs: ^0.5.0     # SharedPreferences adapter + mock persistence
+  devtray_hive: ^0.5.0      # browse and edit Hive boxes
+  devtray_sqflite: ^0.5.0   # every SQLite table, discovered from the schema
+  devtray_device: ^0.5.0    # real device/OS/app facts
+  devtray_html: ^0.5.0      # preview HTML response bodies
+  devtray_log_file: ^0.5.0  # write logs to rotating files, browse past runs
 ```
 
 A Riverpod app that uses `package:http` takes `devtray`,
@@ -58,8 +58,7 @@ import 'package:devtray_device/devtray_device.dart';
 final dio = Dio()..interceptors.add(DebugDioInterceptor());
 
 void main() => runDebugApp(
-  app: const MyApp(),
-  enabled: kDebugMode,
+  () => const MyApp(),
   pages: const [
     NetworkDebugPage(),
     LogsDebugPage(), // logs + errors in one filterable stream
@@ -69,15 +68,14 @@ void main() => runDebugApp(
 ```
 
 Every request through that `dio` now shows up in the overlay, along with your logs, any
-uncaught errors, and the device's specs. Nothing else to wire up — no wrapper widget, no
-second `enabled` flag to keep in sync.
+uncaught errors, and the device's specs. Nothing else to wire up.
 
-`runDebugApp` installs the log/error capture *and* wraps your app in the overlay. With
-`enabled: false` it is exactly `runApp(app)`: no Zone, no hooks, no overlay in the tree —
-so it's safe to leave in a release build.
+`runDebugApp` installs the log/error capture *and* wraps your app in the overlay. Capture is
+already gated on `kDebugMode` via `Devtray.enabled`, so a release build records nothing; wrap
+the call in your own `if` when you want the package gone from the tree entirely.
 
-It takes every option `DevtrayOverlay` does — `presentation`, `theme`, `controller`,
-`showLauncher`, the launcher's corner/size/icon. See
+It takes every option `DevtrayOverlay` does — `presentation`, `theme`, `showLauncher`, the
+launcher's corner/size/icon. See
 [Controlling when and how it opens](#controlling-when-and-how-it-opens).
 
 ### Configuring the stores
@@ -86,8 +84,7 @@ Everything the overlay captures is tuned in one place, through `configure:`:
 
 ```dart
 void main() => runDebugApp(
-  app: const MyApp(),
-  enabled: kDebugMode,
+  () => const MyApp(),
   configure: (devtray) => devtray
     // Keep noisy background traffic out of the request list.
     ..excludeUrls(['/health', '/metrics'])
@@ -168,8 +165,7 @@ captured:
 
 ```dart
 void main() => runDebugApp(
-  app: const MyApp(),
-  enabled: kDebugMode,
+  () => const MyApp(),
   setup: () async {
     await Firebase.initializeApp();
     await MyDotEnv.init();
@@ -370,7 +366,7 @@ for one button — so it's opt-in:
 
 ```yaml
 dependencies:
-  devtray_html: ^0.4.0
+  devtray_html: ^0.5.0
 ```
 
 ```dart
@@ -463,7 +459,7 @@ survive, and they're worth adding if you use mocks at all: otherwise you re-add 
 
 ```yaml
 dependencies:
-  devtray_prefs: ^0.4.0
+  devtray_prefs: ^0.5.0
 ```
 
 ```dart
@@ -880,48 +876,54 @@ To make your page look native to the overlay, reuse its widgets — all exported
 
 ## Controlling when and how it opens
 
-### The controller — open it from anywhere
+Three separate questions, deliberately not one switch — a staging build reasonably wants
+capture running with no visible affordance:
+
+| | Question | Where |
+|---|---|---|
+| **Capture** | is it recording? | `Devtray.enabled` |
+| **Visibility** | can it be seen or opened? | `Devtray.open()`, `Devtray.showLauncher` |
+| **Existence** | is it in the tree at all? | your own `if` around `runDebugApp` |
+
+### Open it from anywhere
 
 ```dart
-final debug = DevtrayController();
-
-DevtrayOverlay(controller: debug, pages: [...], child: ...);
-
-// From a shake detector, a 5-tap on the logo, a hidden settings row, a test:
-debug.open();
-debug.close();
-debug.toggle();
+Devtray.open();
+Devtray.close();
+Devtray.toggle();
 ```
+
+No controller to construct, inject or thread through your app — a process has one panel, so
+`Devtray` holds it. Call these from a shake detector, a 5-tap on the logo, a hidden settings
+row, a test.
 
 ### Hide the floating button and use your own
 
-The draggable button is on by default, but it's just *a* way in — not the only one. Hide it
-and trigger the overlay from anywhere you like:
+The draggable button is on by default, but it's just *a* way in — not the only one:
 
 ```dart
-final debug = DevtrayController(showLauncher: false);   // hidden from the start
-
-void main() => runDebugApp(const MyApp(), controller: debug, pages: [...]);
+runDebugApp(
+  () => const MyApp(),
+  configure: (d) => d..launcher(false),   // no visible affordance
+  pages: [...],
+);
 
 // …then anywhere in your app:
-IconButton(onPressed: debug.open, icon: const Icon(Icons.bug_report))
+IconButton(onPressed: Devtray.open, icon: const Icon(Icons.bug_report))
 ```
 
-Your trigger can be anything — an AppBar action, a row in a hidden settings screen, a 5-tap
-on the logo, a shake detector, a keyboard shortcut. Just call `debug.open()`.
-
-Toggle it at runtime too:
+Toggle it while running:
 
 ```dart
-debug.showLauncher.value = false;   // hide
-debug.showLauncher.value = true;    // show
+Devtray.showLauncher = false;   // hide
+Devtray.showLauncher = true;    // show
 ```
 
 That's how you ship a build with **no visible debug affordance** but a secret way in.
 
-> Note: `runDebugApp(showLauncher:)` / `DevtrayOverlay(showLauncher:)` is ignored once you pass
-> a `controller` — the controller owns that flag, so it can be flipped while running. Set the
-> initial value on the controller instead, as above.
+`runDebugApp(showLauncher:)` and `DevtrayOverlay(showLauncher:)` set the same thing, as a
+default. Setting it on purpose — via `configure` or by assigning `Devtray.showLauncher` —
+always wins, whenever the overlay happens to mount.
 
 ### Presentation
 
@@ -934,35 +936,41 @@ DevtrayOverlay(
 
 The panel is drawn as a layer inside the overlay's own `Stack` — it is **not pushed onto your
 Navigator**. Opening the tools therefore never touches your route stack, and back/pop behaviour
-in your app is unaffected. It also means `Devtray` works correctly above `MaterialApp`,
+in your app is unaffected. It also means the overlay works correctly above `MaterialApp`,
 where no `Navigator` or `Localizations` exists yet.
 
 `custom` presents nothing — you render `DebugToolsScreen` yourself (a side panel, an inline
-tab, wherever) and use the controller purely as an on/off signal:
+tab, wherever) and use the open state purely as a signal:
 
 ```dart
 ValueListenableBuilder<bool>(
-  valueListenable: debug.isOpenListenable,
+  valueListenable: Devtray.isOpenListenable,
   builder: (_, isOpen, __) => isOpen
-      ? DebugToolsScreen(pages: pages, onClose: debug.close)
+      ? DebugToolsScreen(pages: pages, onClose: Devtray.close)
       : const SizedBox.shrink(),
 )
 ```
 
-### Enabling
+### Keeping it out of a release build
 
-`runDebugApp(enabled: false)` renders nothing, captures nothing, and intercepts nothing. Wire
-it to whatever gate you want:
+There is no `enabled` flag on `runDebugApp`, on purpose. That call installs a capture Zone and
+replaces `debugPrint` and `FlutterError.onError` — all before any flag could be read — so a
+flag could only ever turn off *part* of it while leaving the hooks in place. A switch that
+silently does half its job is worse than none.
+
+Decide outside, where the decision is total:
 
 ```dart
-enabled: kDebugMode,                                   // debug builds only
-enabled: kDebugMode || const bool.fromEnvironment('DEV_TOOLS'),
-enabled: user.isInternal,                              // a runtime flag
+void main() {
+  if (kDebugMode) {
+    runDebugApp(() => const MyApp(), pages: [...]);
+  } else {
+    runApp(const MyApp());
+  }
+}
 ```
 
-**It also drives the kill switch**, so the UI and the capture can't drift apart — see below.
-
-### The kill switch — release safety
+### The capture switch — release safety
 
 The adapters are installed by **you**, not by the overlay:
 
@@ -974,23 +982,26 @@ So hiding the UI isn't enough. Without a global switch, a release build with tha
 still in place would keep buffering **500 requests — headers, auth tokens, response bodies —
 in memory**, with nothing to read it and no reason to exist.
 
-`DevtrayKillSwitch` closes that. It defaults to `kDebugMode`, so **a release build
-captures nothing out of the box** and you don't have to remember anything. When it's off:
+`Devtray.enabled` closes that. It defaults to `kDebugMode`, so **a release build captures
+nothing out of the box** and you don't have to remember anything. When it's off:
 
 - `DevtrayNet` and `DevtrayLog` (which also holds errors) become no-ops.
 - Mock rules never intercept (it beats an active rule *and* offline mode).
+- `DevtrayJank` stops its heartbeat — the one steady-state cost in the package.
 - Turning it off **clears** whatever was already captured.
 - The interceptor stays a passthrough, so **disabling the tools can't break your networking**.
 
-`runDebugApp(enabled:)` sets it for you. Set it directly if you don't use `runDebugApp`, or
-want it on in a staging release:
+Set it for a staging release, or flip it at runtime:
 
 ```dart
-DevtrayKillSwitch.enabled = kDebugMode || const bool.fromEnvironment('DEV_TOOLS');
+Devtray.enabled = kDebugMode || const bool.fromEnvironment('DEV_TOOLS');
 
-// …or flip it at runtime — tools behind a login in a support build:
-DevtrayKillSwitch.enabled = user.isInternal;
+// …tools behind a login in a support build:
+Devtray.enabled = user.isInternal;
 ```
+
+Settings from `configure` are applied regardless, so enabling capture mid-session finds your
+excluded URLs and enrichers already registered.
 
 ### Launcher appearance
 

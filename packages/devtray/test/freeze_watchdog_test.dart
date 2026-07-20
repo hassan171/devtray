@@ -114,8 +114,8 @@ void main() {
     });
 
     test('does nothing while the kill switch is off', () {
-      DevtrayKillSwitch.enabled = false;
-      addTearDown(() => DevtrayKillSwitch.enabled = true);
+      Devtray.enabled = false;
+      addTearDown(() => Devtray.enabled = true);
 
       watchdog.start();
 

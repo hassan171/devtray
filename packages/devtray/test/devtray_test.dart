@@ -3,13 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Widget _app({
-  DevtrayController? controller,
   bool enabled = true,
   bool showLauncher = true,
   List<DebugPage> pages = const [NetworkDebugPage()],
 }) {
   return DevtrayOverlay(
-    controller: controller,
     enabled: enabled,
     showLauncher: showLauncher,
     pages: pages,
@@ -18,7 +16,12 @@ Widget _app({
 }
 
 void main() {
-  setUp(DevtrayNet.instance.clear);
+  setUp(() {
+    DevtrayNet.instance.clear();
+    // Panel state is process-global now, so a test that leaves it open would
+    // otherwise start the next one mid-flight.
+    Devtray.reset();
+  });
 
   group('DevtrayOverlay', () {
     testWidgets('renders the launcher and opens the tools on tap', (tester) async {
@@ -40,47 +43,44 @@ void main() {
       expect(find.text('app'), findsOneWidget);
     });
 
-    testWidgets('controller.open() works with the launcher hidden', (tester) async {
-      final controller = DevtrayController(showLauncher: false);
-      await tester.pumpWidget(_app(controller: controller));
+    testWidgets('Devtray.open() works with the launcher hidden', (tester) async {
+      await tester.pumpWidget(_app(showLauncher: false));
 
       expect(find.byIcon(Icons.bug_report), findsNothing);
 
-      controller.open();
+      Devtray.open();
       await tester.pumpAndSettle();
       expect(find.byType(DebugToolsScreen), findsOneWidget);
     });
 
-    testWidgets('dismissing via the close button resyncs the controller', (tester) async {
-      final controller = DevtrayController();
-      await tester.pumpWidget(_app(controller: controller));
+    testWidgets('dismissing via the close button resyncs Devtray.isOpen', (tester) async {
+      await tester.pumpWidget(_app());
 
-      controller.open();
+      Devtray.open();
       await tester.pumpAndSettle();
-      expect(controller.isOpen, isTrue);
+      expect(Devtray.isOpen, isTrue);
 
       await tester.tap(find.byIcon(Icons.close));
       await tester.pumpAndSettle();
 
-      // Controller must be back to closed and the launcher back on screen,
-      // otherwise the overlay can never be reopened.
-      expect(controller.isOpen, isFalse);
+      // Must be back to closed and the launcher back on screen, otherwise the
+      // overlay can never be reopened.
+      expect(Devtray.isOpen, isFalse);
       expect(find.byType(DebugToolsScreen), findsNothing);
       expect(find.byIcon(Icons.bug_report), findsOneWidget);
     });
 
-    testWidgets('dismissing via the barrier resyncs the controller', (tester) async {
-      final controller = DevtrayController();
-      await tester.pumpWidget(_app(controller: controller));
+    testWidgets('dismissing via the barrier resyncs Devtray.isOpen', (tester) async {
+      await tester.pumpWidget(_app());
 
-      controller.open();
+      Devtray.open();
       await tester.pumpAndSettle();
 
       // Tap outside the dialog.
       await tester.tapAt(const Offset(5, 5));
       await tester.pumpAndSettle();
 
-      expect(controller.isOpen, isFalse);
+      expect(Devtray.isOpen, isFalse);
       expect(find.byIcon(Icons.bug_report), findsOneWidget);
     });
 

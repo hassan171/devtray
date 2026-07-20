@@ -246,8 +246,8 @@ void main() {
         ..policy = const FlushPolicy.manual()
         ..addSink(sink);
 
-      DevtrayKillSwitch.enabled = false;
-      addTearDown(() => DevtrayKillSwitch.enabled = true);
+      Devtray.enabled = false;
+      addTearDown(() => Devtray.enabled = true);
 
       DevtrayLog.instance.log('should not be persisted');
       await exporter.flush();

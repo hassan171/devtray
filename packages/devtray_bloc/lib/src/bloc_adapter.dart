@@ -54,7 +54,7 @@ class DebugBlocObserver extends BlocObserver {
     // process lifetime, so in a release build this map would otherwise keep
     // taking a strong reference to an event object per transition, for a
     // DevtrayState that is never going to read it.
-    if (DevtrayKillSwitch.enabled) {
+    if (Devtray.enabled) {
       // Stash the event for the onChange that immediately follows — recording
       // the change here as well would log every bloc transition twice.
       _pendingEvents[identityHashCode(bloc)] = transition.event;

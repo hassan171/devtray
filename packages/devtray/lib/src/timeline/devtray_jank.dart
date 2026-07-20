@@ -4,7 +4,7 @@ import 'dart:collection';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
-import '../core/devtray_kill_switch.dart';
+import '../core/devtray_facade.dart';
 
 /// One period during which the UI isolate did not respond.
 class FreezeEvent {
@@ -66,7 +66,16 @@ class SlowFrameEvent {
 /// but the first thing in the overlay with a real steady-state cost — so it is
 /// **opt-in**: nothing runs until [start] is called.
 class DevtrayJank {
-  DevtrayJank._();
+  DevtrayJank._() {
+    // Unlike the other stores, switching off has to *stop* something as well as
+    // clear it: this one owns a running timer and a frame callback, and leaving
+    // those alive would keep paying the one steady-state cost in the package
+    // for a disabled overlay.
+    Devtray.addDisableListener(() {
+      stop();
+      clear();
+    });
+  }
   static final DevtrayJank instance = DevtrayJank._();
 
   /// How often the heartbeat checks in.
@@ -116,7 +125,7 @@ class DevtrayJank {
   /// Opt-in by design — see the class docs on cost. Does nothing when the kill
   /// switch is off, so a release build that calls this still pays nothing.
   void start() {
-    if (_heartbeat != null || !DevtrayKillSwitch.enabled) return;
+    if (_heartbeat != null || !Devtray.enabled) return;
 
     _lastBeat = DateTime.now();
     _heartbeat = Timer.periodic(heartbeatInterval, (_) => _beat());

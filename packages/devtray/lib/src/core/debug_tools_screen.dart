@@ -29,7 +29,18 @@ class DebugToolsScreen extends StatefulWidget {
 }
 
 class _DebugToolsScreenState extends State<DebugToolsScreen> with TickerProviderStateMixin {
-  late TabController _controller = TabController(length: widget.pages.length, vsync: this);
+  late TabController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    // Built here rather than as a `late` field initialiser. A lazy `late` is
+    // constructed on first *read*, and dispose() reads it — so a screen that
+    // mounted and unmounted without anyone touching a tab would construct a
+    // TabController during teardown, where the ancestor lookup its ticker needs
+    // is illegal ("Looking up a deactivated widget's ancestor is unsafe").
+    _controller = TabController(length: widget.pages.length, vsync: this);
+  }
 
   @override
   void didUpdateWidget(DebugToolsScreen oldWidget) {

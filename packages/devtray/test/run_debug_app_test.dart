@@ -23,13 +23,16 @@ const _app = MaterialApp(home: Scaffold(body: Text('app')));
 void main() {
   setUp(() {
     DevtrayLog.instance.clear();
-    DevtrayLog.instance.clear();
+    // Capture and panel state are process-global, so anything a test sets would
+    // otherwise leak into every test after it — a hidden launcher being the
+    // failure that actually bit.
+    Devtray.reset();
   });
 
   group('runDebugApp', () {
     testWidgets('mounts the app under a DevtrayOverlay with the launcher', (tester) async {
       await withDebugPrintRestored(() async {
-        runDebugApp(app: _app, pages: const [LogsDebugPage()]);
+        runDebugApp(() => _app, pages: const [LogsDebugPage()]);
         await tester.pumpAndSettle();
 
         expect(find.text('app'), findsOneWidget);
@@ -40,7 +43,7 @@ void main() {
 
     testWidgets('opens the tools from the launcher', (tester) async {
       await withDebugPrintRestored(() async {
-        runDebugApp(app: _app, pages: const [LogsDebugPage()]);
+        runDebugApp(() => _app, pages: const [LogsDebugPage()]);
         await tester.pumpAndSettle();
 
         await tester.tap(find.byIcon(Icons.bug_report));
@@ -53,7 +56,7 @@ void main() {
 
     testWidgets('installs the capture hooks — debugPrint reaches the Logs page', (tester) async {
       await withDebugPrintRestored(() async {
-        runDebugApp(app: _app, pages: const [LogsDebugPage()]);
+        runDebugApp(() => _app, pages: const [LogsDebugPage()]);
         await tester.pumpAndSettle();
 
         debugPrint('hello from the app');
@@ -62,32 +65,56 @@ void main() {
       });
     });
 
-    testWidgets('enabled: false is a plain runApp — no overlay in the tree at all', (tester) async {
+    // There is deliberately no `enabled: false` case here any more.
+    //
+    // That flag used to make this function a plain `runApp` — no Zone, no hooks,
+    // no overlay. It is gone because keeping devtray out of a release build is
+    // now the caller's `if`, which is total in a way a flag read *after* the Zone
+    // is installed could never be. See the note on runDebugApp.
+    testWidgets('capture is inert when Devtray.enabled is false', (tester) async {
       await withDebugPrintRestored(() async {
-        runDebugApp(app: _app, enabled: false, pages: const [LogsDebugPage()]);
+        Devtray.enabled = false;
+        addTearDown(Devtray.reset);
+
+        runDebugApp(() => _app, pages: const [LogsDebugPage()]);
         await tester.pumpAndSettle();
 
         expect(find.text('app'), findsOneWidget);
-        // Not merely inert — absent. A release build gets the app it would have
-        // had without the package.
-        expect(find.byType(DevtrayOverlay), findsNothing);
-        expect(find.byIcon(Icons.bug_report), findsNothing);
 
-        // And the hooks are not installed either.
+        // The hooks are installed — that is the trade — but nothing is recorded.
         debugPrint('should not be captured');
         expect(DevtrayLog.instance.entries, isEmpty);
       });
     });
 
-    testWidgets('forwards the controller, so open() works from the app', (tester) async {
+    testWidgets('configure ..launcher(false) is not undone when the overlay mounts', (tester) async {
       await withDebugPrintRestored(() async {
-        final controller = DevtrayController(showLauncher: false);
-        runDebugApp(app: _app, controller: controller, pages: const [LogsDebugPage()]);
+        addTearDown(Devtray.reset);
+
+        runDebugApp(
+          () => _app,
+          configure: (d) => d..launcher(false),
+          pages: const [LogsDebugPage()],
+        );
+        await tester.pumpAndSettle();
+
+        // The overlay mounts AFTER configure runs and carries its own
+        // `showLauncher` default of true. Seeding unconditionally would undo the
+        // explicit choice a frame later — silently, and only in the real app,
+        // since nothing else reads it back.
+        expect(Devtray.showLauncher, isFalse);
+        expect(find.byIcon(Icons.bug_report), findsNothing);
+      });
+    });
+
+    testWidgets('Devtray.open() works from the app, with the launcher hidden', (tester) async {
+      await withDebugPrintRestored(() async {
+        runDebugApp(() => _app, showLauncher: false, pages: const [LogsDebugPage()]);
         await tester.pumpAndSettle();
 
         expect(find.byIcon(Icons.bug_report), findsNothing);
 
-        controller.open();
+        Devtray.open();
         await tester.pumpAndSettle();
 
         expect(find.byType(DebugToolsScreen), findsOneWidget);
@@ -110,7 +137,7 @@ void main() {
         );
 
         DevtrayLog.instance.log('a line worth copying');
-        runDebugApp(app: _app, pages: const [LogsDebugPage()]);
+        runDebugApp(() => _app, pages: const [LogsDebugPage()]);
         await tester.pumpAndSettle();
 
         await tester.tap(find.byIcon(Icons.bug_report));
@@ -135,7 +162,7 @@ void main() {
     testWidgets('a copy button with nothing to copy is disabled', (tester) async {
       await withDebugPrintRestored(() async {
         // No logs — so "Copy all" has nothing to write.
-        runDebugApp(app: _app, pages: const [LogsDebugPage()]);
+        runDebugApp(() => _app, pages: const [LogsDebugPage()]);
         await tester.pumpAndSettle();
 
         await tester.tap(find.byIcon(Icons.bug_report));
@@ -151,7 +178,7 @@ void main() {
     testWidgets('forwards presentation and theme', (tester) async {
       await withDebugPrintRestored(() async {
         runDebugApp(
-          app: _app,
+          () => _app,
           presentation: DevtrayPresentation.fullscreen,
           theme: const DevtrayTheme.dark(),
           pages: const [LogsDebugPage()],

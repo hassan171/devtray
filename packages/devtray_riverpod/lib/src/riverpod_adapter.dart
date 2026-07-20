@@ -87,7 +87,7 @@ base class DebugRiverpodObserver extends ProviderObserver {
     // every provider event is not something a release build should pay for.
     // The observer stays installed for the process lifetime, so without this
     // an app that ships it keeps paying.
-    if (DevtrayKillSwitch.enabled) {
+    if (Devtray.enabled) {
       DevtrayState.instance.recordCreate(
         _idOf(context),
         type: _typeOf(context),
@@ -100,7 +100,7 @@ base class DebugRiverpodObserver extends ProviderObserver {
 
   @override
   void didUpdateProvider(ProviderObserverContext context, Object? previousValue, Object? newValue) {
-    if (DevtrayKillSwitch.enabled) {
+    if (Devtray.enabled) {
       DevtrayState.instance.record(
         _idOf(context),
         type: _typeOf(context),

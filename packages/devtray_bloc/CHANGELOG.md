@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0
+
+No changes of its own. The core folded `DevtrayKillSwitch` and `DevtrayController` into
+`Devtray` and reshaped `runDebugApp`'s signature — see its changelog for the migration table.
+
 ## 0.4.0
 
 No changes of its own, but the core renamed several public types — see its

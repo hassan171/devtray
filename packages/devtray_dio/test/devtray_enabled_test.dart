@@ -22,18 +22,18 @@ class _FakeAdapter implements HttpClientAdapter {
 
 void main() {
   setUp(() {
-    DevtrayKillSwitch.enabled = true;
+    Devtray.enabled = true;
     DevtrayNet.instance.clear();
   });
 
-  tearDown(() => DevtrayKillSwitch.enabled = true);
+  tearDown(() => Devtray.enabled = true);
 
   group('the dio adapter with the switch off', () {
     // The kill switch's *logic* is tested in the core package. This is the part
     // only dio can answer: that the interceptor you installed stays harmless
     // when the tools are off.
     test('requests still reach the real server — the app must not break', () {
-      DevtrayKillSwitch.enabled = false;
+      Devtray.enabled = false;
 
       final network = _FakeAdapter();
       final dio = Dio()
