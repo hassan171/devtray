@@ -7,15 +7,13 @@ import 'package:flutter/material.dart';
 // purpose. Exporting it would let an app build a Devtray outside
 // runDebugApp, which is exactly the ordering hazard the facade removes.
 import 'devtray_facade.dart';
-import 'devtray_typedefs.dart';
 
 /// Installs log/error capture, wraps [app] in a [Devtray], and runs it —
 /// the whole setup in one call.
 ///
 /// ```dart
 /// void main() => runDebugApp(
-///       app: const MyApp(),
-///       enabled: kDebugMode,
+///       () => const MyApp(),
 ///       pages: const [
 ///         NetworkDebugPage(),
 ///         LogsDebugPage(), // logs + errors in one filterable stream
@@ -25,12 +23,31 @@ import 'devtray_typedefs.dart';
 /// ```
 ///
 /// This is equivalent to installing the capture Zone and wrapping your app in
-/// [Devtray] by hand, except that [enabled] is stated once instead of
-/// twice — a single switch for both the capture and the UI, which can't drift
-/// out of sync.
+/// [DevtrayOverlay] by hand.
 ///
-/// When [enabled] is false this is exactly `runApp(app)`: no Zone, no hooks, no
-/// overlay in the tree, nothing to strip for release.
+/// ## Keeping it out of a release build
+///
+/// There is no `enabled` flag here, and that is deliberate. Calling this
+/// function installs a capture Zone, replaces `debugPrint`, and replaces
+/// `FlutterError.onError` — all of which happen *before* any flag could be read,
+/// so a flag could only ever turn off half of it while leaving the hooks in
+/// place. A switch that silently does part of its job is worse than none.
+///
+/// Decide outside instead, where the decision is visible and total:
+///
+/// ```dart
+/// void main() {
+///   if (kDebugMode) {
+///     runDebugApp(() => const MyApp(), pages: [...]);
+///   } else {
+///     runApp(const MyApp());
+///   }
+/// }
+/// ```
+///
+/// [Devtray.enabled] remains the runtime switch for *capture* — it defaults to
+/// [kDebugMode], so even if you always call this function, a release build
+/// records nothing.
 ///
 /// **Why two things and not one widget?** The capturing Zone has to be
 /// installed *around* `runApp`, and [Devtray] is a widget that only exists
@@ -45,13 +62,11 @@ import 'devtray_typedefs.dart';
 /// notifications, a dotenv file, an orientation lock. That work has to run
 /// **inside** the capturing Zone (so its errors and logs are captured too) and
 /// **before** `runApp`. Pass it as [setup]; it is awaited before the app is
-/// mounted, and it runs on both the enabled and disabled paths — your app boots
-/// the same either way:
+/// mounted:
 ///
 /// ```dart
 /// void main() => runDebugApp(
-///       app: const MyApp(),
-///       enabled: kDebugMode,
+///       () => const MyApp(),
 ///       setup: () async {
 ///         await Firebase.initializeApp();
 ///         await MyDotEnv.init();
@@ -64,29 +79,27 @@ import 'devtray_typedefs.dart';
 /// capture hooks are installed, so a `debugPrint` or a thrown error during
 /// bootstrap is already captured.
 ///
-/// If your app widget can only be constructed *after* [setup] finishes (it
-/// reads a value the bootstrap produced), pass [appBuilder] instead of [app] —
-/// it is called after [setup] completes.
-void runDebugApp({
-  /// The app widget. Built at the call site, so it is constructed *before*
-  /// [setup] runs — if it reads anything [setup] initialises, use [appBuilder]
-  /// instead or it will throw here, before this function is even entered.
-  Widget? app,
-
-  /// The app widget, built after [setup] completes.
-  ///
-  /// Use this whenever the widget tree touches something the bootstrap sets up
-  /// — `dotenv`, Firebase, a prefs singleton:
-  ///
-  /// ```dart
-  /// appBuilder: () => DevicePreview(
-  ///   enabled: MyEnv.devicePreview(),   // reads dotenv, loaded in setup
-  ///   builder: (_) => const MyApp(),
-  /// ),
-  /// ```
-  ///
-  /// Pass exactly one of [app] or [appBuilder].
-  Widget Function()? appBuilder,
+/// [app] is a builder, not a widget, so the tree is constructed after [setup]
+/// has run — an app whose widgets read something the bootstrap produced works
+/// without you having to notice the ordering.
+/// The app builder is positional, mirroring `runApp(MyApp())` — it is the one
+/// argument every call has, and naming it added nothing.
+///
+/// It is a *builder* rather than a widget so the tree is constructed after
+/// [setup] has run, which is what lets it read anything the bootstrap made —
+/// `dotenv`, Firebase, a prefs singleton:
+///
+/// ```dart
+/// runDebugApp(
+///   () => DevicePreview(
+///     enabled: MyEnv.devicePreview(),   // reads dotenv, loaded in setup
+///     builder: (_) => const MyApp(),
+///   ),
+///   setup: () async => MyDotEnv.init(),
+/// );
+/// ```
+void runDebugApp(
+  Widget Function() app, {
   Future<void> Function()? setup,
 
   /// Configures the overlay's stores in one place — see [Devtray].
@@ -98,17 +111,15 @@ void runDebugApp({
   ///   ..detectFreezes(),
   /// ```
   ///
-  /// Called after [DevtrayKillSwitch] is set and the binding exists, which is
-  /// the ordering that makes it safe: configuring a store *before* the kill
-  /// switch silently does nothing, and that was easy to get wrong when setup
-  /// was scattered across the singletons.
+  /// Called once the binding exists and the capture hooks are installed, which
+  /// is the ordering that makes it safe: configuring a store before that point
+  /// silently does nothing, and it was easy to get wrong when setup was
+  /// scattered across the singletons.
   ///
-  /// Skipped entirely when [enabled] is false, so anything expensive inside it
-  /// costs a release build nothing.
+  /// Runs regardless of [Devtray.enabled] — it sets settings, which must
+  /// survive capture being switched on later in the session.
   DevtrayConfigure? configure,
-  bool enabled = true,
   List<DebugPage> pages = const [],
-  DevtrayController? controller,
   DevtrayPresentation presentation = DevtrayPresentation.dialog,
   DevtrayTheme theme = const DevtrayTheme(),
   bool showLauncher = true,
@@ -146,26 +157,6 @@ void runDebugApp({
   /// is swallowed so your handler can't take down the error path.
   void Function(Object error, StackTrace stack)? onUncaughtError,
 }) {
-  assert((app == null) != (appBuilder == null), 'Pass exactly one of `app` or `appBuilder`.');
-
-  // Drive the global switch from the same flag, so the UI and the capture can't
-  // disagree. Without this, `enabled: false` would remove the overlay while the
-  // adapters you installed kept buffering every request, token and body.
-  DevtrayKillSwitch.enabled = enabled;
-
-  if (!enabled) {
-    // Not even a pass-through Devtray in the tree — release builds get the
-    // app exactly as they would without this package. The bootstrap still has
-    // to run, so the app boots identically to the enabled path.
-    if (setup == null) {
-      runApp(app ?? appBuilder!());
-      return;
-    }
-    WidgetsFlutterBinding.ensureInitialized();
-    setup().then((_) => runApp(app ?? appBuilder!()));
-    return;
-  }
-
   runZonedGuarded(
     () async {
       // Must be inside the Zone: the binding latches onto the Zone it was
@@ -182,11 +173,15 @@ void runDebugApp({
 
       // The stores, configured in one place.
       //
-      // Here specifically: after the kill switch (so nothing is silently
-      // dropped), after the capture hooks (so a log line written from inside
-      // `configure` is captured), and before `setup` — an app bootstrap may
-      // reasonably log or make requests, and the overlay should already be
+      // Here specifically: after the capture hooks (so a log line written from
+      // inside `configure` is captured), and before `setup` — an app bootstrap
+      // may reasonably log or make requests, and the overlay should already be
       // configured to record them.
+      //
+      // Not gated on Devtray.enabled: this sets *settings*, and a setting
+      // applied while capture happens to be off must still be there when it is
+      // switched back on. The stores' own write-time checks are what make a
+      // disabled build record nothing.
       if (configure != null) await applyDevtraySetup(configure);
 
       // Restore whatever the app's storage backend has, if any.
@@ -212,7 +207,6 @@ void runDebugApp({
       runApp(
         DevtrayOverlay(
           pages: pages,
-          controller: controller,
           presentation: presentation,
           theme: theme,
           showLauncher: showLauncher,
@@ -222,7 +216,7 @@ void runDebugApp({
           launcherSize: launcherSize,
           launcherIcon: launcherIcon,
           launcherBuilder: launcherBuilder,
-          child: app ?? appBuilder!(),
+          child: app(),
         ),
       );
     },

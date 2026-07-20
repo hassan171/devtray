@@ -47,14 +47,14 @@ void main() {
   });
 
   tearDown(() {
-    DevtrayKillSwitch.enabled = true;
+    Devtray.enabled = true;
     DevtrayJank.instance.stop();
   });
 
   group('configure', () {
     testWidgets('applies every subsystem from one callback', (tester) async => withDebugPrintRestored(() async {
       runDebugApp(
-        app: const SizedBox.shrink(),
+        () => const SizedBox.shrink(),
         configure: (d) => d
           ..excludeUrls(['/health', '/metrics'])
           ..network(maxEntries: 42)
@@ -76,26 +76,28 @@ void main() {
       await DevtrayExport.instance.dispose();
     }));
 
-    testWidgets('runs AFTER the kill switch, so nothing it configures is dropped', (tester) async => withDebugPrintRestored(() async {
-      // The hazard this facade exists to remove. Configuring a store before
-      // DevtrayKillSwitch.enabled is set means the store refuses the write and
-      // says nothing about it — which is silent, and was easy to hit when setup
-      // was scattered across the singletons.
-      DevtrayKillSwitch.enabled = false;
+    testWidgets('settings it applies survive capture being switched on later', (tester) async => withDebugPrintRestored(() async {
+      // runDebugApp no longer forces the switch on, so `configure` observes
+      // whatever the app set. What has to hold is that its *settings* land
+      // regardless: a support build that boots with capture off and enables it
+      // mid-session must find its excluded URLs already registered, not missing
+      // because of when the app happened to start.
+      Devtray.enabled = false;
+      addTearDown(Devtray.reset);
 
-      late bool switchWasOn;
       runDebugApp(
-        app: const SizedBox.shrink(),
-        configure: (d) => d.raw(() => switchWasOn = DevtrayKillSwitch.enabled),
+        () => const SizedBox.shrink(),
+        configure: (d) => d..excludeUrls(['/health']),
       );
       await tester.pumpAndSettle();
 
-      expect(switchWasOn, isTrue);
+      Devtray.enabled = true;
+      expect(DevtrayNet.instance.excludedUrlPatterns, contains('/health'));
     }));
 
     testWidgets('runs AFTER the capture hooks, so it can log', (tester) async => withDebugPrintRestored(() async {
       runDebugApp(
-        app: const SizedBox.shrink(),
+        () => const SizedBox.shrink(),
         configure: (d) => d.raw(() => DevtrayLog.instance.log('from configure', tag: 'setup')),
       );
       await tester.pumpAndSettle();
@@ -111,7 +113,7 @@ void main() {
       final order = <String>[];
 
       runDebugApp(
-        app: const SizedBox.shrink(),
+        () => const SizedBox.shrink(),
         configure: (d) => d.raw(() => order.add('configure')),
         setup: () async => order.add('setup'),
       );
@@ -122,24 +124,44 @@ void main() {
       expect(order, ['configure', 'setup']);
     }));
 
-    testWidgets('is SKIPPED entirely when disabled', (tester) async => withDebugPrintRestored(() async {
+    testWidgets('still runs when capture is off', (tester) async => withDebugPrintRestored(() async {
       var ran = false;
+      Devtray.enabled = false;
+      addTearDown(Devtray.reset);
 
       runDebugApp(
-        app: const SizedBox.shrink(),
-        enabled: false,
+        () => const SizedBox.shrink(),
         configure: (d) => d.raw(() => ran = true),
       );
       await tester.pumpAndSettle();
 
-      // Not merely inert — never called. Anything expensive inside it (an
-      // enricher touching the filesystem, a sink opening a socket) must cost a
-      // release build nothing.
-      expect(ran, isFalse);
+      // `configure` sets *settings*, and Devtray.enabled is flippable at
+      // runtime — a support build that switches capture on mid-session must
+      // find its excluded URLs and enrichers already registered, not missing
+      // because the app happened to boot with capture off.
+      expect(ran, isTrue);
+    }));
+
+    testWidgets('app is built AFTER setup, so it can read what the bootstrap made', (tester) async => withDebugPrintRestored(() async {
+      final order = <String>[];
+
+      runDebugApp(
+        () {
+          order.add('app');
+          return const SizedBox.shrink();
+        },
+        setup: () async => order.add('setup'),
+      );
+      await tester.pumpAndSettle();
+
+      // The whole reason `app` is a builder. As a plain widget it was
+      // constructed at the call site — before this function was even entered —
+      // so an app reading dotenv or a Firebase handle threw before setup ran.
+      expect(order, ['setup', 'app']);
     }));
 
     testWidgets('is optional', (tester) async => withDebugPrintRestored(() async {
-      runDebugApp(app: const SizedBox.shrink());
+      runDebugApp(() => const SizedBox.shrink());
       await tester.pumpAndSettle();
 
       expect(DevtrayNet.instance.excludedUrlPatterns, isEmpty);
@@ -153,7 +175,7 @@ void main() {
       // setup returns — so this asserts the whole surface, and fails when a new
       // knob is added without a way to reach it from here.
       runDebugApp(
-        app: const SizedBox.shrink(),
+        () => const SizedBox.shrink(),
         configure: (d) => d
           ..excludeUrls(['/x'])
           ..network(maxEntries: 11, maxBodyChars: 2048, errorReporting: NetworkErrorReporting.serverAndTransport)
@@ -165,7 +187,9 @@ void main() {
             heartbeatInterval: const Duration(milliseconds: 80),
             maxFreezes: 15,
             maxSlowFrames: 16,
-          ),
+          )
+          ..launcher(false)
+          ..openOnStart(),
       );
       await tester.pumpAndSettle();
 
@@ -183,6 +207,9 @@ void main() {
       expect(state.maxClosedSources, 14);
       expect(state.retainStateObjects, isTrue);
 
+      expect(Devtray.showLauncher, isFalse);
+      expect(Devtray.isOpen, isTrue);
+
       final watchdog = DevtrayJank.instance;
       expect(watchdog.freezeThreshold, const Duration(milliseconds: 300));
       expect(watchdog.slowFrameThreshold, const Duration(milliseconds: 40));
@@ -195,6 +222,7 @@ void main() {
       watchdog.stop();
       DevtrayExport.instance.flushOnPause = true;
       state.retainStateObjects = false;
+      Devtray.reset();
     }));
 
     testWidgets('raw() covers anything the facade does not', (tester) async => withDebugPrintRestored(() async {
@@ -202,7 +230,7 @@ void main() {
       // method must never be a reason to configure something OUTSIDE the
       // callback, which is where the ordering guarantee is lost.
       runDebugApp(
-        app: const SizedBox.shrink(),
+        () => const SizedBox.shrink(),
         configure: (d) => d.raw(() => DevtrayMocks.instance.rulesEnabled.value = false),
       );
       await tester.pumpAndSettle();
@@ -215,7 +243,7 @@ void main() {
   group('the methods reach the real singletons', () {
     testWidgets('inspect registers against DevtrayState', (tester) async => withDebugPrintRestored(() async {
       runDebugApp(
-        app: const SizedBox.shrink(),
+        () => const SizedBox.shrink(),
         configure: (d) => d.inspect<_Probe>((p) => {'value': p.value}),
       );
       await tester.pumpAndSettle();
@@ -227,7 +255,7 @@ void main() {
 
     testWidgets('inspectAll registers several typed extractors at once', (tester) async => withDebugPrintRestored(() async {
       runDebugApp(
-        app: const SizedBox.shrink(),
+        () => const SizedBox.shrink(),
         configure: (devtray) => devtray.inspectAll([
           // The variance question this exists to answer: an Inspect<_Probe> has
           // to be usable in a List<Inspect<Object>>, and the callback must
@@ -246,7 +274,7 @@ void main() {
       // Both spellings must be interchangeable — inspectAll is a convenience,
       // not a second mechanism with its own store.
       runDebugApp(
-        app: const SizedBox.shrink(),
+        () => const SizedBox.shrink(),
         configure: (devtray) => devtray
           ..inspect<_Probe>((p) => {'via': 'inspect'})
           ..inspectAll([Inspect<_OtherProbe>((p) => {'via': 'inspectAll'})]),
@@ -259,7 +287,7 @@ void main() {
 
     testWidgets('detectFreezes starts the watchdog with the given thresholds', (tester) async => withDebugPrintRestored(() async {
       runDebugApp(
-        app: const SizedBox.shrink(),
+        () => const SizedBox.shrink(),
         configure: (d) => d.detectFreezes(threshold: const Duration(milliseconds: 400)),
       );
       await tester.pumpAndSettle();
@@ -277,7 +305,7 @@ void main() {
       var opened = false;
 
       runDebugApp(
-        app: const SizedBox.shrink(),
+        () => const SizedBox.shrink(),
         configure: (d) => d.logToAsync(() async {
           // A real file sink creates a directory and prunes old sessions, so
           // this is genuinely async — which is why `configure` cannot simply
@@ -300,7 +328,7 @@ void main() {
 
     testWidgets('a sink that fails to open is reported, not fatal', (tester) async => withDebugPrintRestored(() async {
       runDebugApp(
-        app: const SizedBox.shrink(),
+        () => const SizedBox.shrink(),
         configure: (d) => d.logToAsync(() async => throw StateError('no such directory')),
       );
       await tester.pumpAndSettle();
@@ -316,7 +344,7 @@ void main() {
 
     testWidgets('enrich adds fields to entries logged afterwards', (tester) async => withDebugPrintRestored(() async {
       runDebugApp(
-        app: const SizedBox.shrink(),
+        () => const SizedBox.shrink(),
         configure: (d) => d.enrich('probe', () => {'live': true}),
       );
       await tester.pumpAndSettle();

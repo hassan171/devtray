@@ -23,8 +23,6 @@ library;
 // Core
 export 'src/core/debug_launcher_button.dart';
 export 'src/core/devtray_overlay.dart';
-export 'src/core/devtray_controller.dart';
-export 'src/core/devtray_kill_switch.dart';
 export 'src/core/devtray_theme.dart';
 export 'src/core/debug_page.dart';
 // Typography — so a custom page's data reads like the built-in pages' data.

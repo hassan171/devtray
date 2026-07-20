@@ -51,14 +51,14 @@ Widget _host() => const MaterialApp(
 
 void main() {
   setUp(() {
-    DevtrayKillSwitch.reset();
+    Devtray.reset();
     DevtrayState.instance.clear();
     Bloc.observer = DebugBlocObserver();
   });
 
   tearDown(() {
     Bloc.observer = _NoopObserver();
-    DevtrayKillSwitch.reset();
+    Devtray.reset();
   });
 
   group('tracking', () {
@@ -392,7 +392,7 @@ void main() {
 
   group('the kill switch', () {
     test('nothing is tracked when it is off', () {
-      DevtrayKillSwitch.enabled = false;
+      Devtray.enabled = false;
 
       final cubit = CounterCubit();
       addTearDown(cubit.close);

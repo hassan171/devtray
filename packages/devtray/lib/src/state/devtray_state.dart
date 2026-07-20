@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
-import '../core/devtray_kill_switch.dart';
+import '../core/devtray_facade.dart';
 import '../core/devtray_typedefs.dart';
 import '../logs/devtray_log.dart' show CoalescingValueNotifier, DevtrayLog;
 import 'debug_inspectable.dart';
@@ -124,11 +124,11 @@ class TrackedSource {
 /// [recordError], [recordCreate], [recordClose]). Ready-made glue for Riverpod,
 /// `ValueNotifier`, and plain `setState` lives in `state_bridge.dart`.
 ///
-/// Nothing is captured when [DevtrayKillSwitch] is off, so a release build
+/// Nothing is captured when [Devtray] is off, so a release build
 /// pays nothing but the adapter's own (trivial) dispatch.
 class DevtrayState {
   DevtrayState._() {
-    DevtrayKillSwitch.addDisableListener(clear);
+    Devtray.addDisableListener(clear);
   }
   static final DevtrayState instance = DevtrayState._();
 
@@ -378,7 +378,7 @@ class DevtrayState {
   /// Optional — [record] lazily registers anything it hasn't seen — but calling
   /// it means a source that never changes still shows up (on its initial state).
   void recordCreate(int id, {required String type, Object? state, Object? instance}) {
-    if (!DevtrayKillSwitch.enabled) return;
+    if (!Devtray.enabled) return;
 
     _sources[id] = TrackedSource(
       id: id,
@@ -404,7 +404,7 @@ class DevtrayState {
     Object? event,
     Object? instance,
   }) {
-    if (!DevtrayKillSwitch.enabled) return;
+    if (!Devtray.enabled) return;
 
     final tracked = _sources.putIfAbsent(id, () {
       // Lazily registering a source changes the set `sources` sorts over.
@@ -456,7 +456,7 @@ class DevtrayState {
 
   /// Attach an error to an already-tracked source.
   void recordError(int id, Object error, StackTrace stackTrace) {
-    if (!DevtrayKillSwitch.enabled) return;
+    if (!Devtray.enabled) return;
 
     final tracked = _sources[id];
     if (tracked == null) return;
@@ -470,7 +470,7 @@ class DevtrayState {
   /// Mark a source closed. It's kept (past-tense) so you can see what it did
   /// just before the screen that owned it was popped, then evicted in order.
   void recordClose(int id) {
-    if (!DevtrayKillSwitch.enabled) return;
+    if (!Devtray.enabled) return;
 
     final tracked = _sources[id];
     if (tracked == null) return;

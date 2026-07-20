@@ -59,7 +59,7 @@ ProviderContainer _container({ProviderObserver? next}) {
 
 void main() {
   setUp(() {
-    DevtrayKillSwitch.reset();
+    Devtray.reset();
     DevtrayState.instance.clear();
   });
 
@@ -186,8 +186,8 @@ void main() {
   });
 
   test('the kill switch stops recording — a release build buffers nothing', () {
-    DevtrayKillSwitch.enabled = false;
-    addTearDown(DevtrayKillSwitch.reset);
+    Devtray.enabled = false;
+    addTearDown(Devtray.reset);
 
     final c = _container();
     c.read(counter);

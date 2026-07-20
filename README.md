@@ -17,8 +17,7 @@ Swap `runApp` for `runDebugApp` and list the pages you want:
 import 'package:devtray/devtray.dart';
 
 void main() => runDebugApp(
-  app: const MyApp(),
-  enabled: kDebugMode,
+  () => const MyApp(),
   pages: [NetworkDebugPage(), LogsDebugPage()],
 );
 ```
@@ -54,7 +53,7 @@ transport-agnostic store, so dio and http feed the same page.
 ## Installing before it's on pub.dev
 
 Not published yet — until it is, depend on it from git. The integration packages declare a
-hosted `devtray: ^0.4.0` that can't resolve yet, so the core needs an override:
+hosted `devtray: ^0.5.0` that can't resolve yet, so the core needs an override:
 
 ```yaml
 dependencies:

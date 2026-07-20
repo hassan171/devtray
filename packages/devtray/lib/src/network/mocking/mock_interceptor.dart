@@ -1,4 +1,4 @@
-import '../../core/devtray_kill_switch.dart';
+import '../../core/devtray_facade.dart';
 import 'mock_rule.dart';
 import 'devtray_mocks.dart';
 
@@ -51,7 +51,7 @@ MockDecision decideMock({
   // want this feature" switch.
   // A mock rule intercepting real traffic in a release build would be the worst
   // failure this package could produce, so the global switch beats everything.
-  if (!DevtrayKillSwitch.enabled) return const PassThrough();
+  if (!Devtray.enabled) return const PassThrough();
   if (s.isDisabled) return const PassThrough();
 
   if (s.offline.value) {

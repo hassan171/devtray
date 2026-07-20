@@ -3,7 +3,7 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
-import '../core/devtray_kill_switch.dart';
+import '../core/devtray_facade.dart';
 import '../core/devtray_typedefs.dart';
 import 'devtray_export.dart';
 
@@ -203,7 +203,7 @@ class LogEntry {
 /// See [context], [addEnricher] and [LogEntry.fields].
 class DevtrayLog {
   DevtrayLog._() {
-    DevtrayKillSwitch.addDisableListener(clear);
+    Devtray.addDisableListener(clear);
   }
   static final DevtrayLog instance = DevtrayLog._();
 
@@ -444,7 +444,7 @@ class DevtrayLog {
     // The debugPrint/Zone/error hooks stay installed for the process lifetime,
     // so without this a release build would keep buffering entries nothing will
     // ever read — and badging a launcher that isn't there.
-    if (!DevtrayKillSwitch.enabled) return false;
+    if (!Devtray.enabled) return false;
 
     if (tag != null) _tagCounts.update(tag, (n) => n + 1, ifAbsent: () => 1);
 

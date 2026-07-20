@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   setUp(() {
-    DevtrayKillSwitch.reset();
+    Devtray.reset();
     DevtrayNet.instance.clear();
     DevtrayLog.instance.clear();
     DevtrayLog.instance.clear();
@@ -13,15 +13,15 @@ void main() {
       ..clear()
       ..offline.value = false;
   });
-  tearDown(DevtrayKillSwitch.reset);
+  tearDown(Devtray.reset);
 
   test('defaults to kDebugMode — a release build captures nothing by default', () {
     // The whole point: you shouldn't have to remember anything.
-    expect(DevtrayKillSwitch.enabled, kDebugMode);
+    expect(Devtray.enabled, kDebugMode);
   });
 
   group('when off, every store is a no-op', () {
-    setUp(() => DevtrayKillSwitch.enabled = false);
+    setUp(() => Devtray.enabled = false);
 
     test('network requests are not captured', () {
       final entry = DevtrayNet.instance.add(
@@ -70,7 +70,7 @@ void main() {
       expect(DevtrayLog.instance.entries, isNotEmpty);
       expect(DevtrayLog.instance.entries, isNotEmpty);
 
-      DevtrayKillSwitch.enabled = false;
+      Devtray.enabled = false;
 
       // Otherwise flipping the switch would leave the very buffer of traffic it
       // exists to prevent.
@@ -80,12 +80,12 @@ void main() {
     });
 
     test('turning it back on resumes capture', () {
-      DevtrayKillSwitch.enabled = false;
+      Devtray.enabled = false;
       expect(DevtrayLog.instance.log, isNotNull); // no-op, no throw
       DevtrayLog.instance.log('dropped');
       expect(DevtrayLog.instance.entries, isEmpty);
 
-      DevtrayKillSwitch.enabled = true;
+      Devtray.enabled = true;
       DevtrayLog.instance.log('kept');
 
       expect(DevtrayLog.instance.entries.single.message, 'kept');

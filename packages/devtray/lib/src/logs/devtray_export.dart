@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 
-import '../core/devtray_kill_switch.dart';
+import '../core/devtray_facade.dart';
 import 'devtray_log.dart';
 
 /// Where captured logs go when they leave memory — a file, an upload, a
@@ -196,7 +196,7 @@ class DevtrayExport {
     // export would accumulate entries forever waiting for a flush that has
     // nowhere to go — a leak in the default configuration.
     if (_sinks.isEmpty) return;
-    if (!DevtrayKillSwitch.enabled) return;
+    if (!Devtray.enabled) return;
 
     _pending.add(entry);
     _schedule();

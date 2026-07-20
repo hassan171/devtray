@@ -99,6 +99,31 @@ Future<void> _openStores() async {
     ..addAll(await SqfliteStorage.tables(NotesDb.db));
 }
 
+/// The app itself, identical on both paths — with devtray and without.
+///
+/// One definition so the release path can't drift from the debug one: whatever
+/// you see with the overlay attached is exactly what ships without it.
+Widget _buildApp() {
+  // The Riverpod scope wraps the app, so the observer sees every provider.
+  // Note what ISN'T here: no second State page, no choosing between libraries.
+  // The bloc observer in main() and this one push into the same DevtrayState,
+  // and the page shows both — which is exactly what an app migrating from one
+  // to the other needs.
+  return ProviderScope(
+    observers: [const DebugRiverpodObserver()],
+    child: MaterialApp(
+      title: 'Notes — devtray example',
+      // The app's own identity, deliberately unlike the overlay's blue/grey:
+      // a screenshot should never leave you wondering where the host app ends
+      // and the debug tool begins. Both modes, so the overlay's own dark theme
+      // has something honest to sit on.
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      home: const _Bootstrap(),
+    ),
+  );
+}
+
 void main() {
   // Feeds the State page from bloc. Stays out here because it's an assignment
   // to bloc's own global, not devtray configuration — the observer is the only
@@ -107,17 +132,26 @@ void main() {
   //   Bloc.observer = DebugBlocObserver(next: MyObserver());
   Bloc.observer = DebugBlocObserver();
 
+  // Keeping devtray out of a release build is this `if`, not a flag on
+  // runDebugApp. The call installs a capture Zone and replaces debugPrint and
+  // FlutterError.onError before any flag could be read, so deciding out here is
+  // the only way to make "off" mean *absent* rather than merely inert.
+  if (!kDebugMode) {
+    runApp(_buildApp());
+    return;
+  }
+
   // One call: installs the log/error capture Zone, wraps the app in the
-  // overlay, and runs it. `enabled` gates both — with it false this is a plain
-  // runApp() and the package leaves no trace in the tree.
+  // overlay, and runs it.
   runDebugApp(
+    _buildApp,
     // Everything the overlay's stores need, in one place.
     //
     // These used to be half a dozen `Something.instance.x = y` lines scattered
     // above this call, which was easy to lose track of and — for the ones that
-    // check the kill switch — silently order-dependent. `configure` runs after
-    // the kill switch is set and the capture hooks are installed, and is
-    // skipped entirely in a release build.
+    // check the capture switch — silently order-dependent. `configure` runs
+    // after the capture hooks are installed, so a line logged from inside it is
+    // captured rather than dropped.
     configure: (d) => d
       // Keep background noise out of the inspector.
       ..excludeUrls(['/health'])
@@ -159,6 +193,12 @@ void main() {
       // page is mounted — the Debug tab's jank buttons freeze the UI from a
       // different tab, and a page-scoped watchdog would miss them.
       ..detectFreezes()
+      // The floating bug button. True is the default, so this line changes
+      // nothing — it's here because the Debug tab toggles it at runtime, and
+      // this is the one place that says where the starting value comes from.
+      // Pass false for an app with no visible affordance: Devtray.open() from
+      // your own trigger is then the only way in.
+      ..launcher(true)
       // Logs leave memory and land on disk, so the Logs page's session picker
       // has past runs to offer. Async because opening the directory touches the
       // filesystem; runDebugApp awaits it before running the app, so bootstrap
@@ -177,21 +217,6 @@ void main() {
     // The bloc observer above and this one push into the same DevtrayState,
     // and the page shows both — which is exactly what an app migrating from one
     // to the other needs.
-    app: ProviderScope(
-      observers: [const DebugRiverpodObserver()],
-      child: MaterialApp(
-        title: 'Notes — devtray example',
-        // The app's own identity, deliberately unlike the overlay's blue/grey:
-        // a screenshot should never leave you wondering where the host app ends
-        // and the debug tool begins. Both modes, so the overlay's own dark
-        // theme has something honest to sit on.
-        theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
-        home: const _Bootstrap(),
-      ),
-    ),
-    enabled: kDebugMode,
-    controller: debug,
     pages: [
       // `onPreviewHtml` is what turns the HTML preview button on. The core has
       // no HTML renderer — it doesn't depend on flutter_html — so without a
@@ -344,7 +369,7 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           IconButton(
             tooltip: 'Open the debug overlay',
-            onPressed: debug.toggle,
+            onPressed: Devtray.toggle,
             icon: const Icon(Icons.bug_report_outlined),
           ),
         ],
