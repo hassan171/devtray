@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../core/devtray_context.dart';
 import '../core/devtray_facade.dart';
+import '../core/devtray_listeners.dart';
 import '../logs/devtray_log.dart';
 
 /// One screen the app was on, and for how long.
@@ -188,6 +189,10 @@ class DevtrayNav {
       DevtrayLog.instance.log(visit.transition, tag: 'nav');
     }
     tick.value++;
+
+    // After `_publish`, so a listener that logs from here gets an entry already
+    // carrying the new screen rather than the one being left.
+    _onEnter.notify(visit);
   }
 
   int _nextSequence = 0;
@@ -209,6 +214,11 @@ class DevtrayNav {
     if (index == -1) return;
 
     final left = _stack.removeAt(index)..leftAt = DateTime.now();
+
+    // The visit created when a pop resumes the screen beneath. Held so the
+    // notifications below fire once the history is fully consistent, rather
+    // than from the middle of building it.
+    RouteVisit? resumedVisit;
 
     // Returning is its OWN visit, not the old one reopening.
     //
@@ -236,6 +246,7 @@ class DevtrayNav {
       while (_visits.length > maxVisits) {
         _visits.removeFirst();
       }
+      resumedVisit = resumed;
     }
 
     _publish();
@@ -243,6 +254,13 @@ class DevtrayNav {
       DevtrayLog.instance.log(_lastEntered?.transition ?? '← $resolved', tag: 'nav');
     }
     tick.value++;
+
+    _onLeave.notify(left);
+    // Resuming the screen beneath is an arrival in its own right — the same
+    // visit `onScreen` would have reported had you pushed it — so a listener
+    // tracking the current screen stays correct on the way back, not just the
+    // way in.
+    if (resumedVisit case final resumed?) _onEnter.notify(resumed);
   }
 
   /// Pushes the current screen and overlay into the shared context, so every
@@ -267,6 +285,40 @@ class DevtrayNav {
     } else {
       DevtrayContext.instance.set(overlayField, overlay.type);
     }
+  }
+
+  // ------------------------------------------------------------- listeners
+
+  final DevtrayListeners<RouteVisit> _onEnter = DevtrayListeners<RouteVisit>('navigation');
+  final DevtrayListeners<RouteVisit> _onLeave = DevtrayListeners<RouteVisit>('navigation leave');
+
+  /// Calls [listener] each time a route is **entered**. Returns a disposer.
+  ///
+  /// ```dart
+  /// ..onScreen((v) => analytics.screenView(v.name))
+  /// ```
+  ///
+  /// Fires for both routes an observer saw and screens pushed by hand through
+  /// [enter], so one registration covers an app that does both. Overlays (a
+  /// dialog, a sheet) arrive here too — check [RouteVisit.isOverlay] if you only
+  /// want real screens.
+  ///
+  /// A *return* to a previous screen is its own [RouteVisit] with
+  /// [RouteVisit.wasReturn] set, so this fires on the way back as well.
+  DevtrayUnsubscribe onScreen(DevtrayListener<RouteVisit> listener) => _onEnter.add(listener);
+
+  /// Calls [listener] when a route is **left**, with the completed visit.
+  ///
+  /// The visit's [RouteVisit.leftAt] and [RouteVisit.duration] are populated by
+  /// this point, which is what makes it the place to record time-on-screen.
+  DevtrayUnsubscribe onScreenLeave(DevtrayListener<RouteVisit> listener) => _onLeave.add(listener);
+
+  /// Drops every [onScreen] and [onScreenLeave] registration.
+  ///
+  /// The blunt counterpart to the disposers. See [DevtrayLog.clearListeners].
+  void clearListeners() {
+    _onEnter.clear();
+    _onLeave.clear();
   }
 
   void clear() {

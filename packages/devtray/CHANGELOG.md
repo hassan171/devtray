@@ -2,9 +2,48 @@
 
 ## Unreleased
 
-Context reaches network requests, and the overlay can tell which screen the app is on.
+Context reaches network requests, the overlay can tell which screen the app is on, and your
+app can get a callback on anything it captures.
 
 ### Added
+
+- **Listeners on every store.** Devtray could only be *read* — the `tick` notifiers say
+  "something changed, rebuild", coalesced and with no payload, so acting on a specific
+  capture meant diffing a buffer. Each store now hands the item itself back:
+
+  ```dart
+  configure: (d) => d
+    ..onError((e) => Sentry.captureException(e.error ?? e.message, stackTrace: e.stackTrace))
+    ..onResponse((r) { if (r.statusCode == 401) authBloc.add(SessionExpired()); })
+    ..onScreen((v) => analytics.screenView(v.name)),
+  ```
+
+  `onLog`/`onError`, `onRequest`/`onResponse`/`onFailure`, `onScreen`/`onScreenLeave`,
+  `onStateChange`/`onStateError`, `onFreeze`/`onSlowFrame`. `onError` covers every route into
+  the log store at once — your own `report` calls, the framework and platform hooks, and
+  failed requests — so one registration sees them all. `onFailure` fires regardless of
+  `errorReporting`, which governs only whether a failure also becomes a log line.
+
+  **Observe-only.** Listeners run after the item is recorded and cannot change or suppress it.
+  One that throws is caught and reported as an error line naming the list it was on, and the
+  rest still run: a broken callback should cost you the callback, not the entry it was
+  watching, and certainly not the app being debugged.
+
+  The store methods return a disposer for a listener scoped to a widget
+  (`final off = DevtrayNet.instance.onFailure(...)`; `off()` in `dispose`) — a returned
+  disposer rather than `removeListener(fn)`, since the registration is usually an inline
+  closure and there'd otherwise be nothing to pass back.
+
+  `onSlowFrame` is the one to be careful with: it runs inside the frame pipeline and can fire
+  every frame on a bad scroll, so a listener doing real work there becomes the jank it is
+  measuring.
+
+- **`Devtray.clearListeners()`**, plus `clearLogListeners`, `clearNetworkListeners`,
+  `clearNavListeners`, `clearStateListeners` and `clearJankListeners` — for a sign-out that
+  should undo whatever the session registered, and for tests, where the stores are singletons
+  and a listener left behind fires for every test after it. Blunt by design: they drop
+  anything's registrations, so hold the disposer when you only mean to undo your own.
+  Unrelated to `enabled`, which stops listeners firing without dropping them.
 
 - **Context on network requests.** Ambient values and enrichers used to reach log lines only,
   so a line could say which screen it came from and a *request* could not — the more useful

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../core/devtray_facade.dart';
+import '../core/devtray_listeners.dart';
 import '../core/devtray_typedefs.dart';
 import '../logs/devtray_log.dart' show CoalescingValueNotifier, DevtrayLog;
 import 'debug_inspectable.dart';
@@ -75,6 +76,24 @@ class StateSnapshot {
 /// type: an app can have several instances of the same type alive at once (one
 /// per screen), and they must not be conflated. For bloc, the adapter uses
 /// `identityHashCode`.
+/// One state change, together with the source it happened on.
+///
+/// The two are paired because neither is much use alone: a [StateChangeEntry]
+/// says what changed but not what changed it, and the source alone has already
+/// moved on to its new value by the time a listener runs.
+class StateChange {
+  /// The source that changed — its type, id, current state and live fields.
+  final TrackedSource source;
+
+  /// What changed: the from/to values, the event that caused it, the time.
+  final StateChangeEntry change;
+
+  const StateChange({required this.source, required this.change});
+
+  /// The source's runtime type name, the thing most listeners switch on.
+  String get type => source.type;
+}
+
 class TrackedSource {
   final int id;
   final String type;
@@ -422,25 +441,25 @@ class DevtrayState {
     // it's one object per source, not one per change. The history is what gets
     // snapshotted.
     tracked.state = to;
-    tracked.changes.insert(
-      0,
-      StateChangeEntry(
-        id: _nextChangeId++,
-        time: DateTime.now(),
-        from: _retainable(from, type),
-        to: _retainable(to, type),
-        // Events are kept as-is. They're small, short-lived value objects
-        // (`Decrement()`, `LoadPage(2)`) rather than the accumulated state
-        // graphs that caused the leak — and callers legitimately pattern-match
-        // on their real type.
-        event: event,
-      ),
+    final entry = StateChangeEntry(
+      id: _nextChangeId++,
+      time: DateTime.now(),
+      from: _retainable(from, type),
+      to: _retainable(to, type),
+      // Events are kept as-is. They're small, short-lived value objects
+      // (`Decrement()`, `LoadPage(2)`) rather than the accumulated state
+      // graphs that caused the leak — and callers legitimately pattern-match
+      // on their real type.
+      event: event,
     );
+    tracked.changes.insert(0, entry);
 
     while (tracked.changes.length > maxChangesPerSource) {
       tracked.changes.removeLast();
     }
     tick.bump();
+
+    _onChange.notify(StateChange(source: tracked, change: entry));
   }
 
   /// What to store in the history for [value].
@@ -454,6 +473,41 @@ class DevtrayState {
     return StateSnapshot(text: display(value, sourceType: sourceType), type: value.runtimeType.toString());
   }
 
+  // ------------------------------------------------------------- listeners
+
+  final DevtrayListeners<StateChange> _onChange = DevtrayListeners<StateChange>('state change');
+  final DevtrayListeners<TrackedSource> _onSourceError = DevtrayListeners<TrackedSource>('state error');
+
+  /// Calls [listener] on every state change, from any tracked source.
+  ///
+  /// ```dart
+  /// ..onStateChange((c) {
+  ///   if (c.source.type == 'AuthCubit') print('auth → ${c.change.to}');
+  /// })
+  /// ```
+  ///
+  /// Fires for every adapter that pushes into this store — bloc, riverpod, a
+  /// plain `ValueNotifier`, `setState` via the bridge — because they all funnel
+  /// through [record].
+  ///
+  /// The change's `from`/`to` are what the *history* holds, which by default are
+  /// rendered snapshots rather than the live objects (see `retainStateObjects`).
+  /// Read [StateChange.source]'s `state` for the current value as a real object.
+  DevtrayUnsubscribe onStateChange(DevtrayListener<StateChange> listener) => _onChange.add(listener);
+
+  /// Calls [listener] when a tracked source reports an error.
+  ///
+  /// The source carries the error and stack trace by the time this fires.
+  DevtrayUnsubscribe onStateError(DevtrayListener<TrackedSource> listener) => _onSourceError.add(listener);
+
+  /// Drops every [onStateChange] and [onStateError] registration.
+  ///
+  /// The blunt counterpart to the disposers. See [DevtrayLog.clearListeners].
+  void clearListeners() {
+    _onChange.clear();
+    _onSourceError.clear();
+  }
+
   /// Attach an error to an already-tracked source.
   void recordError(int id, Object error, StackTrace stackTrace) {
     if (!Devtray.enabled) return;
@@ -465,6 +519,8 @@ class DevtrayState {
       ..error = error
       ..stackTrace = stackTrace;
     tick.bump();
+
+    _onSourceError.notify(tracked);
   }
 
   /// Mark a source closed. It's kept (past-tense) so you can see what it did

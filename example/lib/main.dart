@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:bloc/bloc.dart';
 import 'package:devtray/devtray.dart';
 // One import per integration. The core knows nothing about any of these — each
@@ -203,6 +205,32 @@ void main() {
       // page is mounted — the Debug tab's jank buttons freeze the UI from a
       // different tab, and a page-scoped watchdog would miss them.
       ..detectFreezes()
+      // Everything above configures what devtray RECORDS. The `on…` methods
+      // hand each recorded item back, so the app can act on it — this is where
+      // a real app forwards to Sentry, or reacts to a 401 by signing out.
+      //
+      // Not the same as the `tick` notifiers the pages listen to: those are a
+      // coalesced "something changed" with no payload, so a burst of ten
+      // requests fires once and finding out what arrived means diffing the
+      // buffer. These carry the item itself, one call per capture.
+      //
+      // Observe-only — they run after the item is recorded and cannot change or
+      // suppress it, and one that throws costs you the callback rather than the
+      // entry it was watching.
+      //
+      // Note these report with `Zone.root.print`, not `print` or `debugPrint`.
+      // runDebugApp captures BOTH of those into the log store, so a log
+      // listener printing with either would feed the store it is listening to.
+      // `Zone.root.print` is the one route out to the console that capture
+      // cannot see — the same escape hatch runDebugApp uses for errors thrown
+      // inside its own zone. A real app forwarding to Sentry or a metrics
+      // client never touches this, since neither goes through print.
+      ..onError((e) => Zone.root.print('[example] would report to Sentry: ${e.message}'))
+      ..onFailure((r) => Zone.root.print('[example] request failed: ${r.method} ${r.uri.path} → ${r.statusCode}'))
+      // Registered here these last the whole session. For one scoped to a
+      // widget, call the store's own method — DevtrayNav.instance.onScreen(...)
+      // returns a DevtrayUnsubscribe to call from dispose().
+      ..onScreen((v) => Zone.root.print('[example] would send a screen view: ${v.name}'))
       // The floating bug button. True is the default, so this line changes
       // nothing — it's here because the Debug tab toggles it at runtime, and
       // this is the one place that says where the starting value comes from.

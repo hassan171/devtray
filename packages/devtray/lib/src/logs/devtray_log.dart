@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../core/devtray_context.dart';
 import '../core/devtray_facade.dart';
+import '../core/devtray_listeners.dart';
 import '../core/devtray_typedefs.dart';
 import 'devtray_export.dart';
 
@@ -210,6 +211,17 @@ class DevtrayLog {
     // is the one place that knows how — a dropped enricher becomes an ordinary
     // error line on the Logs page rather than vanishing.
     DevtrayContext.instance.onEnricherDropped = (message) => log(message, level: LogLevel.error, tag: 'devtray');
+
+    // Same arrangement for the listener lists every store keeps: they hold no
+    // reference to this one, so this is where a throwing callback becomes a
+    // visible error line. Until this runs they fall back to FlutterError, so a
+    // listener on another store that throws first is still reported.
+    DevtrayListeners.onListenerError = (message, stack) => log(
+      message,
+      level: LogLevel.error,
+      tag: 'devtray',
+      fields: {'stack': stack.toString()},
+    );
   }
   static final DevtrayLog instance = DevtrayLog._();
 
@@ -416,6 +428,15 @@ class DevtrayLog {
     // Never fire `tick`'s listeners inline — the report may be happening during
     // a build. `bump` coalesces into one deferred notification.
     tick.bump();
+
+    // Host callbacks, after the entry is stored. Unlike `tick` these ARE
+    // synchronous and uncoalesced: a listener is reacting to this specific
+    // entry, so it must receive every one rather than a "something happened"
+    // signal per frame. They cannot mark widgets dirty by themselves, so the
+    // mid-build hazard that `tick` coalesces for does not apply.
+    _onLog.notify(entry);
+    if (level == LogLevel.error) _onError.notify(entry);
+
     return true;
   }
 
@@ -425,6 +446,50 @@ class DevtrayLog {
     ErrorSource.network => 'network',
     ErrorSource.reported => 'reported',
   };
+
+  // ------------------------------------------------------------- listeners
+
+  final DevtrayListeners<LogEntry> _onLog = DevtrayListeners<LogEntry>('log');
+  final DevtrayListeners<LogEntry> _onError = DevtrayListeners<LogEntry>('error');
+
+  /// Calls [listener] with every entry as it is recorded. Returns a disposer.
+  ///
+  /// ```dart
+  /// final off = DevtrayLog.instance.onLog((e) => analytics.trail(e.message));
+  /// // …later
+  /// off();
+  /// ```
+  ///
+  /// Fires synchronously, after the entry is stored and after the sinks have
+  /// seen it, so what a listener observes is exactly what was recorded. Nothing
+  /// fires while the kill switch is off, because nothing is recorded.
+  DevtrayUnsubscribe onLog(DevtrayListener<LogEntry> listener) => _onLog.add(listener);
+
+  /// Calls [listener] only for entries at [LogLevel.error].
+  ///
+  /// The reason this exists rather than leaving you to filter in [onLog]: this
+  /// is the callback people actually want — forwarding to a crash reporter —
+  /// and as its own list an app that only wants errors pays nothing per debug
+  /// line.
+  ///
+  /// ```dart
+  /// ..onError((e) => Sentry.captureException(e.error ?? e.message, stackTrace: e.stackTrace))
+  /// ```
+  ///
+  /// Covers errors from every route into the store — [report], the framework
+  /// and platform hooks installed by `captureErrors`, and failed requests
+  /// forwarded by [DevtrayNet] — so one registration sees them all.
+  DevtrayUnsubscribe onError(DevtrayListener<LogEntry> listener) => _onError.add(listener);
+
+  /// Drops every [onLog] and [onError] registration.
+  ///
+  /// The blunt counterpart to the disposers — for a sign-out that should undo
+  /// whatever a session registered, and for tests, where the store is a
+  /// singleton and a listener left behind would fire for every test after it.
+  void clearListeners() {
+    _onLog.clear();
+    _onError.clear();
+  }
 
   /// Called by the Logs page when it's shown — drops the launcher's error badge.
   void markErrorsSeen() => unseenErrorCount.value = 0;

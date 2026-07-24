@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../core/devtray_context.dart';
 import 'network_export.dart';
 import '../core/devtray_facade.dart';
+import '../core/devtray_listeners.dart';
 import '../logs/devtray_log.dart';
 
 enum NetworkLogStatus { pending, success, failed }
@@ -333,6 +334,7 @@ class DevtrayNet {
       _byIdIndex.remove(_entries.removeLast().id);
     }
     tick.bump();
+    _onRequest.notify(entry);
     return entry;
   }
 
@@ -371,6 +373,12 @@ class DevtrayNet {
     // an early write would either need a second record or lose the half you
     // wanted.
     DevtrayNetExport.instance.ingest(entry);
+
+    // Host callbacks last, so a listener sees an entry the sinks have already
+    // accepted — and so one that throws cannot stop the request being recorded
+    // or exported.
+    _onResponse.notify(entry);
+    if (status == NetworkLogStatus.failed) _onFailure.notify(entry);
   }
 
   bool _shouldReport(NetworkLogEntry entry) {
@@ -409,6 +417,51 @@ class DevtrayNet {
     _entries.clear();
     _byIdIndex.clear();
     tick.bump();
+  }
+
+  // ------------------------------------------------------------- listeners
+
+  final DevtrayListeners<NetworkLogEntry> _onRequest = DevtrayListeners<NetworkLogEntry>('network request');
+  final DevtrayListeners<NetworkLogEntry> _onResponse = DevtrayListeners<NetworkLogEntry>('network response');
+  final DevtrayListeners<NetworkLogEntry> _onFailure = DevtrayListeners<NetworkLogEntry>('network failure');
+
+  /// Calls [listener] when a request **starts**. Returns a disposer.
+  ///
+  /// The entry has no status, body or duration yet — those arrive with the
+  /// response. Use [onResponse] for anything that needs the outcome; this is for
+  /// the departure itself (an in-flight counter, a spinner in your own overlay).
+  DevtrayUnsubscribe onRequest(DevtrayListener<NetworkLogEntry> listener) => _onRequest.add(listener);
+
+  /// Calls [listener] when a request **completes**, successfully or not.
+  ///
+  /// ```dart
+  /// ..onResponse((r) {
+  ///   if (r.statusCode == 401) authBloc.add(SessionExpired());
+  /// })
+  /// ```
+  ///
+  /// Fires for every adapter — dio, package:http, anything hand-rolled — because
+  /// they all funnel through `complete()`. The entry is final by this point:
+  /// status, headers, body and duration are all populated.
+  DevtrayUnsubscribe onResponse(DevtrayListener<NetworkLogEntry> listener) => _onResponse.add(listener);
+
+  /// Calls [listener] only for requests that **failed**.
+  ///
+  /// Failure means the transport reported one — a timeout, a refused
+  /// connection, a bad certificate — or the status was an error code. Note this
+  /// is independent of [errorReporting], which governs whether a failure also
+  /// becomes a *log* entry; a listener here sees every failure regardless, since
+  /// suppressing the log line is about noise on the Logs page rather than about
+  /// what your code is allowed to know.
+  DevtrayUnsubscribe onFailure(DevtrayListener<NetworkLogEntry> listener) => _onFailure.add(listener);
+
+  /// Drops every [onRequest], [onResponse] and [onFailure] registration.
+  ///
+  /// The blunt counterpart to the disposers. See [DevtrayLog.clearListeners].
+  void clearListeners() {
+    _onRequest.clear();
+    _onResponse.clear();
+    _onFailure.clear();
   }
 
   /// The entry with this id, or null once it's been evicted. O(1).

@@ -123,6 +123,7 @@ nothing.
 | `logTo`, `logToAsync` | Where logs go when they leave memory |
 | `inspect<T>`, `inspectAll`, `formatState<T>`, `formatSource<S>`, `state(...)` | The State page |
 | `detectFreezes(...)` | UI-freeze and slow-frame detection |
+| `onLog`, `onError`, `onRequest`, `onResponse`, `onFailure`, `onScreen`, … | Callbacks on what's captured — see [Listening to what's captured](#listening-to-whats-captured) |
 | `raw(() { ... })` | Anything not covered — reach straight for the stores |
 
 Registering several inspectors reads better as a list:
@@ -145,6 +146,101 @@ the sink:
 ```dart
 ..logToAsync(() => FileLogSink.open())
 ```
+
+### Listening to what's captured
+
+Everything above configures what devtray **records**. The `on…` methods hand each recorded
+item back, so your app can act on it:
+
+```dart
+configure: (devtray) => devtray
+  ..onError((e) => Sentry.captureException(e.error ?? e.message, stackTrace: e.stackTrace))
+  ..onResponse((r) {
+    if (r.statusCode == 401) authBloc.add(SessionExpired());
+  })
+  ..onScreen((v) => analytics.screenView(v.name))
+  ..onFreeze((f) => analytics.track('ui_freeze', {'ms': f.duration.inMilliseconds})),
+```
+
+This is what the `tick` notifiers on each store can't do. Those are a "something changed,
+rebuild" signal for the pages: coalesced, so a burst of ten requests fires once, and carrying
+no payload — finding out *what* arrived means diffing the buffer yourself.
+
+| Method | Fires |
+|---|---|
+| `onLog` / `onError` | Every log line / only the errors |
+| `onRequest` / `onResponse` / `onFailure` | A request starts / completes / failed |
+| `onScreen` / `onScreenLeave` | A route is entered / left (with `duration` filled in) |
+| `onStateChange` / `onStateError` | A tracked source emitted / reported an error |
+| `onFreeze` / `onSlowFrame` | A UI freeze ended / a frame ran long |
+
+`onError` is the crash-reporter hook, and it covers every route into the log store at once:
+your own `Devtray.report` calls, the Flutter and platform error handlers `runDebugApp`
+installs, and failed requests forwarded from the network store. One registration sees them
+all.
+
+**Observe-only.** Listeners run *after* the item is recorded and cannot change or suppress
+it. A listener that throws is caught, reported as an error line naming which list it was on,
+and the remaining listeners still run — one broken callback is a bug in that callback, not a
+reason to lose the entry it was watching or to take down the app being debugged.
+
+Nothing fires while `Devtray.enabled` is false, because nothing is recorded.
+
+#### Listeners scoped to a widget
+
+Registrations made in `configure` last the whole session. For one tied to a widget, call the
+store's own method — it returns a disposer:
+
+```dart
+class _CheckoutState extends State<Checkout> {
+  late final DevtrayUnsubscribe _off;
+
+  @override
+  void initState() {
+    super.initState();
+    _off = DevtrayNet.instance.onFailure(_showRetryBanner);
+  }
+
+  @override
+  void dispose() {
+    _off();
+    super.dispose();
+  }
+}
+```
+
+A returned disposer rather than a `removeListener(fn)` pair because the registration is
+usually a closure written inline, and removing it later would otherwise mean hoisting it to a
+field purely so there's something to pass back.
+
+#### Removing them all at once
+
+For the blunt case — a sign-out that should undo whatever the signed-in session registered,
+or a test between cases:
+
+```dart
+Devtray.clearListeners();       // every store
+
+Devtray.clearLogListeners();    // onLog, onError
+Devtray.clearNetworkListeners();// onRequest, onResponse, onFailure
+Devtray.clearNavListeners();    // onScreen, onScreenLeave
+Devtray.clearStateListeners();  // onStateChange, onStateError
+Devtray.clearJankListeners();   // onFreeze, onSlowFrame
+```
+
+These are blunt on purpose: they drop listeners *anything* registered, including a package's.
+When you only mean to undo your own, hold the disposer.
+
+None of them are the same as `Devtray.enabled = false`. Switching capture off already stops
+every listener firing, because nothing is recorded; these drop the registrations themselves,
+so they don't come back when capture is switched on again.
+
+#### One caveat: `onSlowFrame`
+
+`onSlowFrame` is the only listener that runs **inside the frame pipeline**, and on a bad
+scroll it can fire every frame. Keep it to a counter, and don't touch widget state from it —
+marking something dirty there is a build during a build. Prefer `onFreeze` for anything
+heavier; a slow-frame listener doing real work becomes the jank it's measuring.
 
 ### Logging from your app
 

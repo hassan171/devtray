@@ -37,6 +37,9 @@ export 'src/core/devtray_context.dart';
 // Names for the callback shapes the API takes — see the file for why only
 // these four, and not every repeated signature.
 export 'src/core/devtray_typedefs.dart';
+// Observing what devtray captures: the callback shape and the disposer every
+// `on…` method returns. `DevtrayListeners` itself is the stores' plumbing.
+export 'src/core/devtray_listeners.dart' show DevtrayListener, DevtrayUnsubscribe;
 
 // Network page
 export 'src/network/curl_builder.dart';
