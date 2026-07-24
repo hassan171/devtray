@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:bloc/bloc.dart';
 import 'package:devtray/devtray.dart';
 // One import per integration. The core knows nothing about any of these — each
@@ -112,6 +114,11 @@ Widget _buildApp() {
   return ProviderScope(
     observers: [const DebugRiverpodObserver()],
     child: MaterialApp(
+      // One line, and every log entry and network request gains a `screen`
+      // field. No call sites of our own — this covers the pushed routes
+      // (the note editor). The tab shell below cannot be observed, because
+      // swapping an IndexedStack body pushes no route: see _HomeShell.
+      navigatorObservers: [DevtrayNavObserver()],
       title: 'Notes — devtray example',
       // The app's own identity, deliberately unlike the overlay's blue/grey:
       // a screenshot should never leave you wondering where the host app ends
@@ -159,9 +166,14 @@ void main() {
       // nobody anticipated: a crash report that says who it happened to,
       // without the throw site knowing anything about it.
       ..context({'build': '1.4.2+318', 'flavor': 'example', 'userId': 'anonymous'})
-      // Computed per entry, for values that must be *current* rather than
-      // whatever they were when last set.
-      ..enrich('nav', () => {'screen': currentScreen})
+      // The `screen` field comes from DevtrayNavObserver now, installed on the
+      // MaterialApp — no enricher needed, and it lands on network requests as
+      // well as log lines. Open any request's Context tab to see it.
+      //
+      // Route changes also draw as spans on the Timeline's `nav` lane, which is
+      // what makes "the 500 happened right after I opened the editor" a thing
+      // you see rather than infer.
+      ..navigation(logNavigation: true)
       ..enrich('session', () => {'uptime': '${DateTime.now().difference(startedAt).inSeconds}s'})
       // Show fields a source holds OUTSIDE its state. The inspector only ever
       // sees the current state, and Flutter has no reflection to go find the
@@ -193,6 +205,32 @@ void main() {
       // page is mounted — the Debug tab's jank buttons freeze the UI from a
       // different tab, and a page-scoped watchdog would miss them.
       ..detectFreezes()
+      // Everything above configures what devtray RECORDS. The `on…` methods
+      // hand each recorded item back, so the app can act on it — this is where
+      // a real app forwards to Sentry, or reacts to a 401 by signing out.
+      //
+      // Not the same as the `tick` notifiers the pages listen to: those are a
+      // coalesced "something changed" with no payload, so a burst of ten
+      // requests fires once and finding out what arrived means diffing the
+      // buffer. These carry the item itself, one call per capture.
+      //
+      // Observe-only — they run after the item is recorded and cannot change or
+      // suppress it, and one that throws costs you the callback rather than the
+      // entry it was watching.
+      //
+      // Note these report with `Zone.root.print`, not `print` or `debugPrint`.
+      // runDebugApp captures BOTH of those into the log store, so a log
+      // listener printing with either would feed the store it is listening to.
+      // `Zone.root.print` is the one route out to the console that capture
+      // cannot see — the same escape hatch runDebugApp uses for errors thrown
+      // inside its own zone. A real app forwarding to Sentry or a metrics
+      // client never touches this, since neither goes through print.
+      ..onError((e) => Zone.root.print('[example] would report to Sentry: ${e.message}'))
+      ..onFailure((r) => Zone.root.print('[example] request failed: ${r.method} ${r.uri.path} → ${r.statusCode}'))
+      // Registered here these last the whole session. For one scoped to a
+      // widget, call the store's own method — DevtrayNav.instance.onScreen(...)
+      // returns a DevtrayUnsubscribe to call from dispose().
+      ..onScreen((v) => Zone.root.print('[example] would send a screen view: ${v.name}'))
       // The floating bug button. True is the default, so this line changes
       // nothing — it's here because the Debug tab toggles it at runtime, and
       // this is the one place that says where the starting value comes from.
@@ -211,7 +249,10 @@ void main() {
       )
       // A second destination on the same buffer — the shape of shipping logs
       // somewhere. Not a real upload: see UploadLogSink.
-      ..logTo(UploadLogSink()),
+      ..logTo(UploadLogSink())
+      // Requests land on disk too, in their own file per run. Written on
+      // completion, plus anything still in flight when the app is backgrounded.
+      ..networkToAsync(openFileNetworkSink),
     // The Riverpod scope wraps the app, so the observer sees every provider.
     // Note what ISN'T here: no second State page, no choosing between libraries.
     // The bloc observer above and this one push into the same DevtrayState,
@@ -233,7 +274,12 @@ void main() {
       // page is mounted, which would miss a freeze triggered from another tab —
       // exactly what the Debug tab's jank buttons do.
       const TimelineDebugPage(onPreviewHtml: HtmlPreviewDialog.show),
-      const NetworkDebugPage(onPreviewHtml: HtmlPreviewDialog.show),
+      const NetworkDebugPage(
+        onPreviewHtml: HtmlPreviewDialog.show,
+        // A folder button beside the search field, opening past runs read-only
+        // — the same interaction the Logs page offers for saved log sessions.
+        sessionSource: DeferredRequestSessions(),
+      ),
       // Combined logs + errors. Errors fold in as error-level rows (expand one
       // for its full report); the advanced filter's `Source`/`Level` fields
       // reproduce an errors-only view. Search + quick chips still on top.
@@ -382,7 +428,14 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
+        onDestinationSelected: (i) {
+          // The half an observer cannot see. Switching tabs swaps an
+          // IndexedStack body — no route is pushed, so there is nothing to
+          // observe, and only the app knows it happened. One line where the
+          // swap already is; it feeds the same history the observer does.
+          Devtray.screen(_titles[i].toLowerCase());
+          setState(() => _tab = i);
+        },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.note_outlined), selectedIcon: Icon(Icons.note), label: 'Notes'),
           NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: 'Users'),

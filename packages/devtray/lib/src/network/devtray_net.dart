@@ -2,7 +2,10 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/devtray_context.dart';
+import 'network_export.dart';
 import '../core/devtray_facade.dart';
+import '../core/devtray_listeners.dart';
 import '../logs/devtray_log.dart';
 
 enum NetworkLogStatus { pending, success, failed }
@@ -49,6 +52,21 @@ class NetworkLogEntry {
   /// retry trace, a GraphQL operation name…) without changing this class.
   final Map<String, String> extras;
 
+  /// Ambient context captured when the request was made — which screen fired
+  /// it, which build, who was signed in.
+  ///
+  /// The same three layers as [LogEntry.fields], resolved by the same
+  /// [DevtrayContext]: ambient values, then enrichers, then anything passed at
+  /// the call site. So one `Devtray.enrich('nav', ...)` labels your log lines
+  /// *and* your requests, and "which screen was I on when this 500 came back"
+  /// stops being something you reconstruct from timestamps.
+  ///
+  /// Distinct from [extras]: that is per-request content a transport adapter
+  /// attaches, rendered as its own tab. This is ambient state the app was in.
+  ///
+  /// Empty (and shared, so free) when nothing is configured.
+  final Map<String, Object?> fields;
+
   NetworkLogEntry({
     required this.id,
     required this.method,
@@ -64,7 +82,70 @@ class NetworkLogEntry {
     this.completedAt,
     this.status = NetworkLogStatus.pending,
     Map<String, String>? extras,
+    this.fields = const {},
   }) : extras = extras ?? {};
+
+  /// This entry as a JSON-encodable map.
+  ///
+  /// Used by the file sinks and by the error round-trip. Bodies are rendered to
+  /// strings rather than encoded as-is: a body can be any object a transport
+  /// handed us, and one un-encodable value would otherwise fail the whole
+  /// record — losing the request entirely to save a field.
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'method': method,
+    'uri': uri.toString(),
+    'startedAt': startedAt.toIso8601String(),
+    'status': status.name,
+    if (requestHeaders.isNotEmpty) 'requestHeaders': {for (final e in requestHeaders.entries) e.key: '${e.value}'},
+    if (queryParameters.isNotEmpty) 'queryParameters': {for (final e in queryParameters.entries) e.key: '${e.value}'},
+    if (requestBody != null) 'requestBody': requestBody is String ? requestBody : requestBody.toString(),
+    if (statusCode != null) 'statusCode': statusCode,
+    if (responseHeaders.isNotEmpty) 'responseHeaders': responseHeaders,
+    if (responseBody != null) 'responseBody': responseBody is String ? responseBody : responseBody.toString(),
+    if (errorMessage != null) 'errorMessage': errorMessage,
+    if (completedAt != null) 'completedAt': completedAt!.toIso8601String(),
+    if (extras.isNotEmpty) 'extras': extras,
+    if (fields.isNotEmpty) 'fields': {for (final f in fields.entries) f.key: f.value?.toString()},
+  };
+
+  /// Rebuilds an entry written by [toJson].
+  ///
+  /// Lenient about missing keys: a file written by an older version, or one
+  /// truncated by a crash mid-write, should still yield the request rather than
+  /// throwing away the record.
+  static NetworkLogEntry fromJson(Map<String, Object?> json) {
+    final entry = NetworkLogEntry(
+      id: json['id'] as int? ?? -1,
+      method: json['method'] as String? ?? '?',
+      uri: Uri.tryParse(json['uri'] as String? ?? '') ?? Uri(),
+      requestHeaders: Map<String, dynamic>.from(json['requestHeaders'] as Map? ?? const {}),
+      queryParameters: Map<String, dynamic>.from(json['queryParameters'] as Map? ?? const {}),
+      requestBody: json['requestBody'],
+      startedAt: DateTime.tryParse(json['startedAt'] as String? ?? '') ?? DateTime.now(),
+      extras: Map<String, String>.from(json['extras'] as Map? ?? const {}),
+      fields: Map<String, Object?>.from(json['fields'] as Map? ?? const {}),
+    );
+
+    entry.statusCode = json['statusCode'] as int?;
+    entry.responseBody = json['responseBody'];
+    entry.errorMessage = json['errorMessage'] as String?;
+    entry.completedAt = DateTime.tryParse(json['completedAt'] as String? ?? '');
+    entry.status = NetworkLogStatus.values.firstWhere(
+      (s) => s.name == json['status'],
+      // A record written while the request was still in flight reads back as
+      // pending, which is what it was.
+      orElse: () => NetworkLogStatus.pending,
+    );
+
+    if (json['responseHeaders'] case final Map raw) {
+      entry.responseHeaders = {
+        for (final e in raw.entries) '${e.key}': [for (final v in (e.value as List? ?? const [])) '$v'],
+      };
+    }
+
+    return entry;
+  }
 
   Duration? get duration => completedAt?.difference(startedAt);
 
@@ -223,6 +304,10 @@ class DevtrayNet {
     Map<String, dynamic> requestHeaders = const {},
     Map<String, dynamic> queryParameters = const {},
     dynamic requestBody,
+
+    /// Per-request values, merged over the ambient context and enrichers —
+    /// a GraphQL operation name, a correlation id the transport knows.
+    Map<String, Object?>? fields,
   }) {
     // The adapters are installed by the host app, not by the overlay — so in a
     // release build with the interceptor still in place, this would otherwise
@@ -238,6 +323,10 @@ class DevtrayNet {
       queryParameters: Map<String, dynamic>.from(queryParameters),
       requestBody: requestBody,
       startedAt: DateTime.now(),
+      // Resolved HERE, at the moment the request is made, not when it
+      // completes: the point of this is which screen fired it, and a slow
+      // request routinely outlives the screen that started it.
+      fields: DevtrayContext.instance.resolve(fields),
     );
     _entries.insert(0, entry);
     _byIdIndex[entry.id] = entry;
@@ -245,6 +334,7 @@ class DevtrayNet {
       _byIdIndex.remove(_entries.removeLast().id);
     }
     tick.bump();
+    _onRequest.notify(entry);
     return entry;
   }
 
@@ -277,6 +367,18 @@ class DevtrayNet {
         context: '${entry.method} ${entry.uri.path}',
       );
     }
+
+    // Written here, once the entry is final. See DevtrayNetExport for why not
+    // at `add`: the status, body and duration all arrive with the response, so
+    // an early write would either need a second record or lose the half you
+    // wanted.
+    DevtrayNetExport.instance.ingest(entry);
+
+    // Host callbacks last, so a listener sees an entry the sinks have already
+    // accepted — and so one that throws cannot stop the request being recorded
+    // or exported.
+    _onResponse.notify(entry);
+    if (status == NetworkLogStatus.failed) _onFailure.notify(entry);
   }
 
   bool _shouldReport(NetworkLogEntry entry) {
@@ -315,6 +417,51 @@ class DevtrayNet {
     _entries.clear();
     _byIdIndex.clear();
     tick.bump();
+  }
+
+  // ------------------------------------------------------------- listeners
+
+  final DevtrayListeners<NetworkLogEntry> _onRequest = DevtrayListeners<NetworkLogEntry>('network request');
+  final DevtrayListeners<NetworkLogEntry> _onResponse = DevtrayListeners<NetworkLogEntry>('network response');
+  final DevtrayListeners<NetworkLogEntry> _onFailure = DevtrayListeners<NetworkLogEntry>('network failure');
+
+  /// Calls [listener] when a request **starts**. Returns a disposer.
+  ///
+  /// The entry has no status, body or duration yet — those arrive with the
+  /// response. Use [onResponse] for anything that needs the outcome; this is for
+  /// the departure itself (an in-flight counter, a spinner in your own overlay).
+  DevtrayUnsubscribe onRequest(DevtrayListener<NetworkLogEntry> listener) => _onRequest.add(listener);
+
+  /// Calls [listener] when a request **completes**, successfully or not.
+  ///
+  /// ```dart
+  /// ..onResponse((r) {
+  ///   if (r.statusCode == 401) authBloc.add(SessionExpired());
+  /// })
+  /// ```
+  ///
+  /// Fires for every adapter — dio, package:http, anything hand-rolled — because
+  /// they all funnel through `complete()`. The entry is final by this point:
+  /// status, headers, body and duration are all populated.
+  DevtrayUnsubscribe onResponse(DevtrayListener<NetworkLogEntry> listener) => _onResponse.add(listener);
+
+  /// Calls [listener] only for requests that **failed**.
+  ///
+  /// Failure means the transport reported one — a timeout, a refused
+  /// connection, a bad certificate — or the status was an error code. Note this
+  /// is independent of [errorReporting], which governs whether a failure also
+  /// becomes a *log* entry; a listener here sees every failure regardless, since
+  /// suppressing the log line is about noise on the Logs page rather than about
+  /// what your code is allowed to know.
+  DevtrayUnsubscribe onFailure(DevtrayListener<NetworkLogEntry> listener) => _onFailure.add(listener);
+
+  /// Drops every [onRequest], [onResponse] and [onFailure] registration.
+  ///
+  /// The blunt counterpart to the disposers. See [DevtrayLog.clearListeners].
+  void clearListeners() {
+    _onRequest.clear();
+    _onResponse.clear();
+    _onFailure.clear();
   }
 
   /// The entry with this id, or null once it's been evicted. O(1).

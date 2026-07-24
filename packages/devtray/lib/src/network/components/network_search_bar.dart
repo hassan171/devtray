@@ -167,7 +167,26 @@ class NetworkSearchBar extends StatelessWidget {
   /// when mocking is disabled for the page.
   final VoidCallback? onMocks;
 
-  const NetworkSearchBar({super.key, required this.total, required this.onChanged, required this.onClear, this.onMocks});
+  /// Opens the saved-session picker. Null hides the button — an app with no
+  /// network persistence configured shouldn't be offered a browser for files
+  /// that do not exist.
+  final VoidCallback? onSessions;
+
+  /// Whether the destructive action is offered.
+  ///
+  /// False while browsing a saved run: "clear all requests" there would either
+  /// do nothing or delete a file from behind a button that does not say so.
+  final bool canClear;
+
+  const NetworkSearchBar({
+    super.key,
+    required this.total,
+    required this.onChanged,
+    required this.onClear,
+    this.onMocks,
+    this.onSessions,
+    this.canClear = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -233,7 +252,10 @@ class NetworkSearchBar extends StatelessWidget {
           ),
           Container(width: 1, height: 20, color: t.border.withValues(alpha: 0.8)),
           if (onMocks != null) _MocksButton(onPressed: onMocks!),
-          _ToolbarAction(icon: Icons.delete_outline, tooltip: 'Clear all requests', color: t.error, onPressed: onClear),
+          if (onSessions case final open?)
+            _ToolbarAction(icon: Icons.folder_open, tooltip: 'Load a saved session', color: t.textMuted, onPressed: open),
+          if (canClear)
+            _ToolbarAction(icon: Icons.delete_outline, tooltip: 'Clear all requests', color: t.error, onPressed: onClear),
           const SizedBox(width: 2),
         ],
       ),

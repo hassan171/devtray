@@ -47,9 +47,18 @@ class NotesScreen extends StatelessWidget {
     );
   }
 
+  /// Pushes the editor.
+  ///
+  /// No devtray call here: DevtrayNavObserver sees the push, and the pop, and
+  /// sets the `screen` field for both. The one thing worth doing is naming the
+  /// route — an unnamed push reports `<unnamed MaterialPageRoute>`, which is
+  /// honest but not useful.
   static Future<void> _openEditor(BuildContext context, Note? note) {
     return Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => NoteEditorScreen(note: note)),
+      MaterialPageRoute(
+        settings: const RouteSettings(name: 'note_editor'),
+        builder: (_) => NoteEditorScreen(note: note),
+      ),
     );
   }
 }
@@ -94,9 +103,7 @@ class _NoteCard extends StatelessWidget {
       child: Card(
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: () => Navigator.of(context).push<void>(
-            MaterialPageRoute(builder: (_) => NoteEditorScreen(note: note)),
-          ),
+          onTap: () => NotesScreen._openEditor(context, note),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
             child: Row(

@@ -8,7 +8,10 @@ import '../core/debug_text_styles.dart';
 import '../widgets/jump_to_latest_button.dart';
 import 'components/network_detail_pane.dart';
 import 'html_previewer.dart';
+import '../logs/components/log_session_picker.dart';
+import '../widgets/session_banner.dart';
 import 'components/network_log_row.dart';
+import 'network_export.dart';
 import 'components/network_search_bar.dart';
 import 'mocking/devtray_mocks.dart';
 import 'mocking/mocks_view.dart';
@@ -55,10 +58,24 @@ class NetworkDebugPage extends DebugPage {
   /// ```
   final DebugHtmlPreviewer? onPreviewHtml;
 
+  /// Past runs of captured requests this page can load and browse.
+  ///
+  /// Null (the default) hides the picker entirely — an app with no network
+  /// persistence configured shouldn't be offered a browser for files that don't
+  /// exist. Supply one and a folder button appears beside the search field.
+  ///
+  /// ```dart
+  /// NetworkDebugPage(
+  ///   sessionSource: DevtrayFileRequestSessions(await NetworkSessionLoader.open()),
+  /// )
+  /// ```
+  final NetworkSessionSource? sessionSource;
+
   const NetworkDebugPage({
     this.wideBreakpoint = 700,
     this.errorReporting = NetworkErrorReporting.all,
     this.onPreviewHtml,
+    this.sessionSource,
   });
 
   @override
@@ -72,15 +89,24 @@ class NetworkDebugPage extends DebugPage {
     // The page owns the policy now (no in-app toggle). Set it here so it takes
     // effect as soon as the page is in the tree.
     DevtrayNet.instance.errorReporting.value = errorReporting;
-    return _NetworkDebugView(wideBreakpoint: wideBreakpoint, onPreviewHtml: onPreviewHtml);
+    return _NetworkDebugView(
+      wideBreakpoint: wideBreakpoint,
+      onPreviewHtml: onPreviewHtml,
+      sessionSource: sessionSource,
+    );
   }
 }
 
 class _NetworkDebugView extends StatefulWidget {
   final double wideBreakpoint;
   final DebugHtmlPreviewer? onPreviewHtml;
+  final NetworkSessionSource? sessionSource;
 
-  const _NetworkDebugView({required this.wideBreakpoint, required this.onPreviewHtml});
+  const _NetworkDebugView({
+    required this.wideBreakpoint,
+    required this.onPreviewHtml,
+    required this.sessionSource,
+  });
 
   @override
   State<_NetworkDebugView> createState() => _NetworkDebugViewState();
@@ -94,6 +120,42 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
   /// instead of the request list. Kept in-tab so mocks don't need their own
   /// registered page.
   bool _showMocks = false;
+
+  /// The saved run being browsed, or null while live.
+  NetworkSessionInfo? _session;
+  List<NetworkLogEntry>? _sessionEntries;
+
+  bool get _isViewingSession => _session != null;
+
+  Future<void> _showSessionPicker() async {
+    final source = widget.sessionSource;
+    if (source == null) return;
+
+    final picked = await LogSessionPicker.show<NetworkSessionInfo>(context, source);
+    if (picked == null || !mounted) return;
+
+    setState(() {
+      _session = picked;
+      // A search from the live view rarely means anything against a different
+      // run, and leaving it on looks like an empty session.
+      _search = '';
+      _selectedId = null;
+    });
+
+    final entries = await source.load(picked);
+    if (!mounted) return;
+
+    setState(() => _sessionEntries = entries);
+  }
+
+  void _backToLive() {
+    setState(() {
+      _session = null;
+      _sessionEntries = null;
+      _search = '';
+      _selectedId = null;
+    });
+  }
 
   /// Drives the scroll anchoring below. Owned by the State so it survives the
   /// rebuilds that arriving requests cause.
@@ -307,7 +369,10 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
             // faking traffic. Read per build — `disable()` can be called at any
             // time, including from a test.
             final mockingEnabled = !DevtrayMocks.instance.isDisabled;
-            final entries = store.entries;
+            // A loaded run stands in for the live store — same rows, same
+            // search, same detail pane, so the page renders either without
+            // knowing which it has.
+            final entries = _sessionEntries ?? store.entries;
             final filtered = _filtered(entries);
 
             // Keeps a scrolled-back reader in place, and feeds the list's
@@ -316,7 +381,11 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
             // before layout is what avoids a flicker.
             _holdPosition(filtered);
             // Indexed lookup rather than a scan of all 500 entries per tick.
-            final selected = _selectedId == null ? null : store.byId(_selectedId!);
+            final selected = _selectedId == null
+                ? null
+                : (_isViewingSession
+                      ? entries.where((e) => e.id == _selectedId).firstOrNull
+                      : store.byId(_selectedId!));
 
             // Narrow: detail replaces the list entirely.
             if (!isWide && selected != null) {
@@ -344,7 +413,19 @@ class _NetworkDebugViewState extends State<_NetworkDebugView> {
                     setState(() => _selectedId = null);
                   },
                   onMocks: mockingEnabled ? () => setState(() => _showMocks = true) : null,
+                  onSessions: widget.sessionSource == null ? null : _showSessionPicker,
+                  canClear: !_isViewingSession,
                 ),
+                if (_session case final session?) ...[
+                  const SizedBox(height: 8),
+                  SessionBanner(
+                    label: session.label,
+                    count: entries.length,
+                    noun: 'request',
+                    pluralNoun: 'requests',
+                    onBack: _backToLive,
+                  ),
+                ],
                 const SizedBox(height: 8),
                 Expanded(
                   child: filtered.isEmpty

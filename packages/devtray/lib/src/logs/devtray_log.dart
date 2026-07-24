@@ -3,7 +3,9 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/devtray_context.dart';
 import '../core/devtray_facade.dart';
+import '../core/devtray_listeners.dart';
 import '../core/devtray_typedefs.dart';
 import 'devtray_export.dart';
 
@@ -151,14 +153,14 @@ class LogEntry {
   ///
   /// Safe to cache because every field it reads is final.
   String get searchable => _searchable ??= [
-        message,
-        tag ?? '',
-        '${error ?? ''}',
-        errorContext ?? '',
-        // Both halves: you search for `userId` as often as for the value, and
-        // "the log line that mentions 4821" is the more common of the two.
-        for (final e in fields.entries) '${e.key} ${e.value}',
-      ].join(' ').toLowerCase();
+    message,
+    tag ?? '',
+    '${error ?? ''}',
+    errorContext ?? '',
+    // Both halves: you search for `userId` as often as for the value, and
+    // "the log line that mentions 4821" is the more common of the two.
+    for (final e in fields.entries) '${e.key} ${e.value}',
+  ].join(' ').toLowerCase();
   String? _searchable;
 
   /// [fields] rendered as `key=value` pairs — for a row subtitle or a copied
@@ -204,6 +206,22 @@ class LogEntry {
 class DevtrayLog {
   DevtrayLog._() {
     Devtray.addDisableListener(clear);
+
+    // The context registry is store-agnostic on purpose, so it cannot log. This
+    // is the one place that knows how — a dropped enricher becomes an ordinary
+    // error line on the Logs page rather than vanishing.
+    DevtrayContext.instance.onEnricherDropped = (message) => log(message, level: LogLevel.error, tag: 'devtray');
+
+    // Same arrangement for the listener lists every store keeps: they hold no
+    // reference to this one, so this is where a throwing callback becomes a
+    // visible error line. Until this runs they fall back to FlutterError, so a
+    // listener on another store that throws first is still reported.
+    DevtrayListeners.onListenerError = (message, stack) => log(
+      message,
+      level: LogLevel.error,
+      tag: 'devtray',
+      fields: {'stack': stack.toString()},
+    );
   }
   static final DevtrayLog instance = DevtrayLog._();
 
@@ -258,45 +276,25 @@ class DevtrayLog {
   /// Read-only here — mutate through [setContext] / [removeContext] /
   /// [clearContext], which keep the snapshot sharing in [_snapshotContext]
   /// correct.
-  Map<String, Object?> get context => UnmodifiableMapView(_context);
-  final Map<String, Object?> _context = {};
-
-  /// The current context as an immutable snapshot, rebuilt only when [_context]
-  /// changes.
+  /// The ambient values carried by every entry.
   ///
-  /// Entries hold a *reference* to this, so unchanged context costs nothing per
-  /// line — but because it's replaced rather than mutated on every change, an
-  /// entry keeps the values that were current when it was logged. Holding the
-  /// live map instead would be cheaper still and wrong: every past line would
-  /// report the screen you're on now.
-  Map<String, Object?>? _contextSnapshot;
+  /// Lives on [DevtrayContext] now, shared with [DevtrayNet] so a *request* can
+  /// say which screen fired it too. These stay as the log store's own API
+  /// because that is where they have always been documented, and because
+  /// `Devtray.setContext` is the route most call sites use.
+  Map<String, Object?> get context => DevtrayContext.instance.values;
 
-  /// Add or replace one ambient value.
-  void setContext(String key, Object? value) {
-    _context[key] = value;
-    _contextSnapshot = null;
-  }
+  /// Adds or replaces one ambient value.
+  void setContext(String key, Object? value) => DevtrayContext.instance.set(key, value);
 
-  /// Add or replace several at once.
-  void setContextAll(Map<String, Object?> values) {
-    _context.addAll(values);
-    _contextSnapshot = null;
-  }
+  /// Adds or replaces several at once.
+  void setContextAll(Map<String, Object?> values) => DevtrayContext.instance.setAll(values);
 
-  void removeContext(String key) {
-    _context.remove(key);
-    _contextSnapshot = null;
-  }
+  void removeContext(String key) => DevtrayContext.instance.remove(key);
 
-  void clearContext() {
-    _context.clear();
-    _contextSnapshot = null;
-  }
+  void clearContext() => DevtrayContext.instance.clear();
 
   /// Runs [body] with extra ambient values, then restores what was there.
-  ///
-  /// For a scope rather than a span — everything logged while handling one
-  /// request, or inside one screen:
   ///
   /// ```dart
   /// await DevtrayLog.instance.withContext({'orderId': id}, () async {
@@ -309,83 +307,31 @@ class DevtrayLog {
   /// concurrent async work — two overlapping `withContext` calls on the same
   /// key will interleave, because this is one shared map rather than Zone
   /// state. For per-request isolation, pass the field explicitly instead.
-  Future<T> withContext<T>(Map<String, Object?> values, Future<T> Function() body) async {
-    final previous = {for (final key in values.keys) key: _context[key]};
-    final absent = values.keys.where((k) => !_context.containsKey(k)).toSet();
+  Future<T> withContext<T>(Map<String, Object?> values, Future<T> Function() body) => DevtrayContext.instance.withValues(values, body);
 
-    setContextAll(values);
-    try {
-      return await body();
-    } finally {
-      for (final entry in previous.entries) {
-        if (absent.contains(entry.key)) {
-          _context.remove(entry.key);
-        } else {
-          _context[entry.key] = entry.value;
-        }
-      }
-      _contextSnapshot = null;
-    }
-  }
-
-  /// Callbacks that compute fields at capture time, keyed by name so one can be
-  /// replaced or removed.
-  final Map<String, DevtrayEnricher> _enrichers = {};
-
-  /// Enrichers that threw and are no longer called.
-  final Map<String, Object> _failedEnrichers = {};
-
-  /// How many times an enricher may throw before it's dropped. Two rather than
-  /// one, because a transient failure (a plugin not ready during startup)
-  /// shouldn't permanently cost you the field.
-  static const int _enricherFailureLimit = 2;
-  final Map<String, int> _enricherFailures = {};
-
-  /// Registers a callback that adds fields to every entry, computed fresh each
-  /// time.
+  /// Registers a callback that adds fields to every entry, computed fresh.
   ///
-  /// For values you'd otherwise have to remember to pass, and that must be
-  /// *current* rather than whatever they were when you last set them:
-  ///
-  /// ```dart
-  /// DevtrayLog.instance.addEnricher('route', () => {'route': currentRoute});
-  /// DevtrayLog.instance.addEnricher('net', () => {'online': connectivity.isOnline});
-  /// ```
-  ///
-  /// Runs on **every** log line, so keep it cheap — this is not the place for
-  /// a platform channel call or a database read. If it throws, the failure is
-  /// recorded as the field's value and the log line still lands; after
-  /// [_enricherFailureLimit] failures the enricher is dropped and a line is
-  /// logged saying so. A broken enricher must never cost you the log it was
-  /// decorating.
+  /// Runs on **every** capture — log lines *and* network requests — so keep it
+  /// cheap: this is not the place for a platform channel call or a database
+  /// read. If it throws, the failure is recorded as the field's value and the
+  /// entry still lands; after repeated failures the enricher is dropped and a
+  /// line is logged saying so. A broken enricher must never cost you the entry
+  /// it was decorating.
   ///
   /// Registering the same [name] twice replaces the first.
-  void addEnricher(String name, DevtrayEnricher compute) {
-    _enrichers[name] = compute;
-    _failedEnrichers.remove(name);
-    _enricherFailures.remove(name);
-  }
+  void addEnricher(String name, DevtrayEnricher compute) => DevtrayContext.instance.addEnricher(name, compute);
 
-  void removeEnricher(String name) {
-    _enrichers.remove(name);
-    _failedEnrichers.remove(name);
-    _enricherFailures.remove(name);
-  }
+  void removeEnricher(String name) => DevtrayContext.instance.removeEnricher(name);
 
   /// Drops every registered enricher.
   ///
-  /// Mostly for tests — the store is a singleton, so a registration made in one
-  /// would otherwise decorate every entry in the next. Mirrors
-  /// [DevtrayState.clearInspectors].
+  /// Mostly for tests — the registry is global, so a registration made in one
+  /// would otherwise decorate every entry in the next.
   @visibleForTesting
-  void clearEnrichers() {
-    _enrichers.clear();
-    _failedEnrichers.clear();
-    _enricherFailures.clear();
-  }
+  void clearEnrichers() => DevtrayContext.instance.clearEnrichers();
 
   /// Enricher name → the error that disabled it.
-  Map<String, Object> get failedEnrichers => UnmodifiableMapView(_failedEnrichers);
+  Map<String, Object> get failedEnrichers => DevtrayContext.instance.failedEnrichers;
 
   void log(
     String message, {
@@ -449,7 +395,7 @@ class DevtrayLog {
     if (tag != null) _tagCounts.update(tag, (n) => n + 1, ifAbsent: () => 1);
 
     final entry = LogEntry(
-      fields: _resolveFields(fields),
+      fields: DevtrayContext.instance.resolve(fields),
       id: _nextId++,
       time: DateTime.now(),
       level: level,
@@ -482,77 +428,68 @@ class DevtrayLog {
     // Never fire `tick`'s listeners inline — the report may be happening during
     // a build. `bump` coalesces into one deferred notification.
     tick.bump();
+
+    // Host callbacks, after the entry is stored. Unlike `tick` these ARE
+    // synchronous and uncoalesced: a listener is reacting to this specific
+    // entry, so it must receive every one rather than a "something happened"
+    // signal per frame. They cannot mark widgets dirty by themselves, so the
+    // mid-build hazard that `tick` coalesces for does not apply.
+    _onLog.notify(entry);
+    if (level == LogLevel.error) _onError.notify(entry);
+
     return true;
   }
 
-  /// Merges ambient context, enrichers and per-call fields into one map.
-  ///
-  /// Costs nothing in the common case: with no context, no enrichers and no
-  /// per-call fields it returns a shared const map without allocating. With
-  /// only ambient context it hands back the shared snapshot — so context you
-  /// set once is free per line, however many lines there are.
-  Map<String, Object?> _resolveFields(Map<String, Object?>? callFields) {
-    final hasCall = callFields != null && callFields.isNotEmpty;
-    final hasEnrichers = _enrichers.isNotEmpty;
-
-    if (!hasCall && !hasEnrichers) {
-      if (_context.isEmpty) return const {};
-      // Shared, not copied — see [_contextSnapshot].
-      return _contextSnapshot ??= Map.unmodifiable(_context);
-    }
-
-    // Least specific first, so each layer overwrites the last.
-    final merged = <String, Object?>{..._context};
-
-    if (hasEnrichers) {
-      for (final name in _enrichers.keys.toList()) {
-        if (_failedEnrichers.containsKey(name)) continue;
-        try {
-          merged.addAll(_enrichers[name]!());
-        } catch (e) {
-          _noteEnricherFailure(name, e, merged);
-        }
-      }
-    }
-
-    if (hasCall) merged.addAll(callFields);
-    return merged;
-  }
-
-  /// Records a throwing enricher without losing the entry it was decorating.
-  ///
-  /// The failure becomes the field's value, so a broken enricher is visible on
-  /// the line it broke rather than silently missing. Past the limit it's
-  /// dropped, because an enricher that throws every time would otherwise write
-  /// its error onto every log line in the session.
-  void _noteEnricherFailure(String name, Object error, Map<String, Object?> merged) {
-    merged['$name!'] = 'enricher failed: $error';
-
-    final failures = (_enricherFailures[name] ?? 0) + 1;
-    _enricherFailures[name] = failures;
-    if (failures < _enricherFailureLimit) return;
-
-    _failedEnrichers[name] = error;
-    _enrichers.remove(name);
-
-    // Deliberately not via log(): this runs *inside* _add, and re-entering
-    // would recurse. Queued instead, so the notice lands as its own line right
-    // after the one that was being written.
-    scheduleMicrotask(() {
-      log(
-        'Log enricher "$name" failed $failures times and was removed: $error',
-        level: LogLevel.error,
-        tag: 'devtray',
-      );
-    });
-  }
-
   static String _sourceTag(ErrorSource s) => switch (s) {
-        ErrorSource.flutter => 'flutter',
-        ErrorSource.uncaught => 'uncaught',
-        ErrorSource.network => 'network',
-        ErrorSource.reported => 'reported',
-      };
+    ErrorSource.flutter => 'flutter',
+    ErrorSource.uncaught => 'uncaught',
+    ErrorSource.network => 'network',
+    ErrorSource.reported => 'reported',
+  };
+
+  // ------------------------------------------------------------- listeners
+
+  final DevtrayListeners<LogEntry> _onLog = DevtrayListeners<LogEntry>('log');
+  final DevtrayListeners<LogEntry> _onError = DevtrayListeners<LogEntry>('error');
+
+  /// Calls [listener] with every entry as it is recorded. Returns a disposer.
+  ///
+  /// ```dart
+  /// final off = DevtrayLog.instance.onLog((e) => analytics.trail(e.message));
+  /// // …later
+  /// off();
+  /// ```
+  ///
+  /// Fires synchronously, after the entry is stored and after the sinks have
+  /// seen it, so what a listener observes is exactly what was recorded. Nothing
+  /// fires while the kill switch is off, because nothing is recorded.
+  DevtrayUnsubscribe onLog(DevtrayListener<LogEntry> listener) => _onLog.add(listener);
+
+  /// Calls [listener] only for entries at [LogLevel.error].
+  ///
+  /// The reason this exists rather than leaving you to filter in [onLog]: this
+  /// is the callback people actually want — forwarding to a crash reporter —
+  /// and as its own list an app that only wants errors pays nothing per debug
+  /// line.
+  ///
+  /// ```dart
+  /// ..onError((e) => Sentry.captureException(e.error ?? e.message, stackTrace: e.stackTrace))
+  /// ```
+  ///
+  /// Covers errors from every route into the store — [report], the framework
+  /// and platform hooks installed by `captureErrors`, and failed requests
+  /// forwarded by [DevtrayNet] — so one registration sees them all.
+  DevtrayUnsubscribe onError(DevtrayListener<LogEntry> listener) => _onError.add(listener);
+
+  /// Drops every [onLog] and [onError] registration.
+  ///
+  /// The blunt counterpart to the disposers — for a sign-out that should undo
+  /// whatever a session registered, and for tests, where the store is a
+  /// singleton and a listener left behind would fire for every test after it.
+  void clearListeners() {
+    _onLog.clear();
+    _onError.clear();
+  }
 
   /// Called by the Logs page when it's shown — drops the launcher's error badge.
   void markErrorsSeen() => unseenErrorCount.value = 0;

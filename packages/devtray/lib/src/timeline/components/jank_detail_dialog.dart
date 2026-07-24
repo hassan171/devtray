@@ -250,6 +250,7 @@ class _ConcurrentRow extends StatelessWidget {
                 TimelineLane.network => 'net',
                 TimelineLane.log => 'log',
                 TimelineLane.state => 'state',
+                TimelineLane.route => 'nav',
                 TimelineLane.jank => '',
               },
               style: DebugTextStyles.label(color: color, fontSize: 8),

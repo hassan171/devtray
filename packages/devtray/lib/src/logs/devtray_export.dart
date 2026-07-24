@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:flutter/widgets.dart';
 
 import '../core/devtray_facade.dart';
+import '../network/devtray_net.dart';
+import '../network/network_export.dart';
 import 'devtray_log.dart';
 
 /// Where captured logs go when they leave memory — a file, an upload, a
@@ -312,6 +314,12 @@ class _LifecycleFlusher extends WidgetsBindingObserver {
     if (!_exporter.flushOnPause) return;
     if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       unawaited(_exporter.flush());
+      // Requests still in flight, queued and written at the same moment — the
+      // last one the OS reliably gives us. One observer for both, rather than a
+      // second one racing it.
+      DevtrayNetExport.instance
+        ..flushPending()
+        ..flush();
     }
   }
 }
@@ -321,17 +329,44 @@ class _LifecycleFlusher extends WidgetsBindingObserver {
 /// Deliberately just an id, a label and two facts about size and age: the core
 /// has no filesystem, so it can't know a session is a *file*. An implementation
 /// backed by uploads, a database or an asset bundle is equally valid.
-class LogSessionInfo {
+/// What the session picker needs of a saved run, whatever it holds.
+///
+/// Logs and requests are separate files with separate sources, but browsing
+/// them is the same interaction — a list of runs, a size, a delete. This is the
+/// slice the picker renders, so there is one picker rather than two that drift.
+abstract class DevtraySessionInfo {
+  /// What the picker shows. A timestamp reads best.
+  String get label;
+
+  /// Secondary line — a size, a count, whatever distinguishes one run.
+  String? get detail;
+
+  DateTime? get recordedAt;
+}
+
+/// A browsable set of saved runs, for the picker.
+abstract class DevtraySessionSource<T extends DevtraySessionInfo> {
+  Future<List<T>> list();
+
+  /// Whether [delete] does anything. False hides the delete controls.
+  bool get canDelete;
+
+  Future<void> delete(T session);
+
+  Future<void> deleteAll();
+}
+
+class LogSessionInfo implements DevtraySessionInfo {
   /// Opaque to the page — handed back to [LogSessionSource.load] unchanged.
   final String id;
 
-  /// What the picker shows. A timestamp reads best.
+  @override
   final String label;
 
-  /// Secondary line — a size, a count, whatever distinguishes one run from
-  /// another. Null hides it.
+  @override
   final String? detail;
 
+  @override
   final DateTime? recordedAt;
 
   const LogSessionInfo({required this.id, required this.label, this.detail, this.recordedAt});
@@ -346,10 +381,11 @@ class LogSessionInfo {
 /// ```dart
 /// LogsDebugPage(sessionSource: DevtrayFileSessions(loader))
 /// ```
-abstract class LogSessionSource {
+abstract class LogSessionSource implements DevtraySessionSource<LogSessionInfo> {
   const LogSessionSource();
 
   /// Available sessions, newest first.
+  @override
   Future<List<LogSessionInfo>> list();
 
   /// That session's entries, newest first — matching [DevtrayLog.entries], so the
@@ -357,11 +393,14 @@ abstract class LogSessionSource {
   Future<List<LogEntry>> load(LogSessionInfo session);
 
   /// Whether [delete] does anything. False hides the delete controls.
+  @override
   bool get canDelete => false;
 
+  @override
   Future<void> delete(LogSessionInfo session) async {}
 
   /// Removes every session. Only offered when [canDelete].
+  @override
   Future<void> deleteAll() async {}
 }
 
@@ -383,6 +422,12 @@ String formatLogEntryAsJson(LogEntry e) => jsonEncode({
       // Rendered, not retained: the thrown object isn't serialisable in general,
       // and by read-back time the type it came from may not even be in scope.
       if (e.error != null) 'error': e.error.toString(),
+      // …with one exception. A NetworkError carries the whole request, and
+      // flattening it to its one-line toString() destroyed exactly the detail a
+      // saved session exists to preserve: the error detail pane checks
+      // `case final NetworkError n`, which could never match a loaded session,
+      // so every network error read back as a bare string.
+      if (e.error case final NetworkError n) 'networkError': n.entry.toJson(),
       if (e.stackTrace != null) 'stack': e.stackTrace.toString(),
       // Rendered to strings rather than encoded as-is: a field can hold any
       // object, and one un-encodable value would otherwise fail the whole line.
@@ -390,6 +435,19 @@ String formatLogEntryAsJson(LogEntry e) => jsonEncode({
       // context that was worth capturing.
       if (e.fields.isNotEmpty) 'fields': {for (final f in e.fields.entries) f.key: _fieldAsJson(f.value)},
     });
+
+/// The error for a parsed entry: the structured request when one was written,
+/// the rendered string otherwise.
+///
+/// A `NetworkError` is the one thrown object worth keeping whole — it carries
+/// the request, and the detail pane renders it very differently from a bare
+/// message.
+Object? _errorFromJson(Map<String, Object?> json) {
+  if (json['networkError'] case final Map raw) {
+    return NetworkError(NetworkLogEntry.fromJson(Map<String, Object?>.from(raw)));
+  }
+  return json['error'] as String?;
+}
 
 /// A field value as something `jsonEncode` will accept.
 ///
@@ -446,7 +504,9 @@ List<LogEntry> parseLogEntries(String contents) {
           ),
           message: json['message'] as String? ?? '',
           tag: json['tag'] as String?,
-          error: json['error'] as String?,
+          // The structured request when there is one, so the detail pane can
+          // render a loaded session's network error exactly like a live one.
+          error: _errorFromJson(json),
           // A parsed stack is text, not a live StackTrace. Wrapped so the detail
           // pane can render it the same way it renders a real one.
           stackTrace: json['stack'] == null ? null : StackTrace.fromString(json['stack'] as String),

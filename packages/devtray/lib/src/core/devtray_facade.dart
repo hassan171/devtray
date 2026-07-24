@@ -1,10 +1,14 @@
 import 'package:flutter/foundation.dart';
 
 import '../logs/devtray_export.dart';
+import 'devtray_listeners.dart';
 import 'devtray_typedefs.dart';
 import '../logs/devtray_log.dart';
 import '../network/mocking/devtray_mocks.dart';
+import '../nav/devtray_nav.dart';
+import '../nav/devtray_nav_observer.dart';
 import '../network/devtray_net.dart';
+import '../network/network_export.dart';
 import '../state/devtray_state.dart';
 import '../timeline/devtray_jank.dart';
 
@@ -206,6 +210,9 @@ class Devtray {
     _isOpen.value = false;
     _showLauncher.value = true;
     _showLauncherSetExplicitly = false;
+    // Registrations are process-global too, so a listener left behind by one
+    // test would fire for every test after it.
+    clearListeners();
   }
 
   // ----------------------------------------------------------- call sites
@@ -367,8 +374,17 @@ class Devtray {
   /// Registers a callback that adds fields to every entry, computed fresh.
   ///
   /// For values that must be *current* rather than whatever they were when you
-  /// last set them — the active route, connectivity. Runs on every log line, so
-  /// keep it cheap: this is not the place for a platform channel call.
+  /// last set them — the active route, connectivity.
+  ///
+  /// Runs for **log lines and network requests alike**, so one registration
+  /// answers "which screen was I on" for both:
+  ///
+  /// ```dart
+  /// ..enrich('nav', () => {'screen': router.currentRoute})
+  /// ```
+  ///
+  /// Runs on every capture, so keep it cheap: this is not the place for a
+  /// platform channel call.
   Devtray enrich(String name, DevtrayEnricher compute) {
     DevtrayLog.instance.addEnricher(name, compute);
     return this;
@@ -421,6 +437,43 @@ class Devtray {
   /// Work started during [configure] that [runDebugApp] awaits before running
   /// the app.
   final List<Future<void> Function()> _pending = [];
+
+  /// Sends captured **requests** somewhere durable — a file, an upload.
+  ///
+  /// The network counterpart to [logTo]. Requests are written when they
+  /// *complete*, since the status, body and duration all arrive with the
+  /// response; anything still in flight is written when the app is
+  /// backgrounded, so a process killed mid-request still leaves a record.
+  ///
+  /// ```dart
+  /// ..networkTo(FileNetworkSink(...))
+  /// ```
+  Devtray networkTo(NetworkSink sink, {FlushPolicy? policy}) {
+    if (policy != null) DevtrayNetExport.instance.policy = policy;
+    DevtrayNetExport.instance.addSink(sink);
+    return this;
+  }
+
+  /// Adds a request sink that has to be opened asynchronously — the file case.
+  ///
+  /// Awaited by [runDebugApp] before your app runs, so requests made during
+  /// bootstrap still reach it.
+  Devtray networkToAsync(Future<NetworkSink> Function() open, {FlushPolicy? policy}) {
+    if (policy != null) DevtrayNetExport.instance.policy = policy;
+
+    _pending.add(() async {
+      try {
+        DevtrayNetExport.instance.addSink(await open());
+      } catch (e) {
+        DevtrayLog.instance.log(
+          'A network sink failed to open and was skipped: $e',
+          level: LogLevel.error,
+          tag: 'devtray',
+        );
+      }
+    });
+    return this;
+  }
 
   // ------------------------------------------------------------------ state
 
@@ -549,6 +602,205 @@ class Devtray {
   Devtray openOnStart() {
     Devtray.open();
     return this;
+  }
+
+  // -------------------------------------------------------------------- nav
+
+  /// Records which screen the app is on, from your own navigation.
+  ///
+  /// ```dart
+  /// onDestinationSelected: (i) {
+  ///   Devtray.screen(_titles[i]);
+  ///   setState(() => _tab = i);
+  /// }
+  /// ```
+  ///
+  /// For an app whose navigation is the Navigator, install
+  /// [DevtrayNavObserver] instead and this happens with no call sites at all.
+  /// This is for the case an observer cannot see — an `IndexedStack` or a
+  /// `PageView` whose body swaps without pushing a route. Both feed the same
+  /// history, so an app doing both gets one coherent picture.
+  static void screen(String name) => DevtrayNav.instance.enter(name);
+
+  /// How much route history to keep, and whether each change is also logged.
+  ///
+  /// [logNavigation] is off by default: the `screen` field already puts the
+  /// route on every entry, so the lines are largely redundant — and a nav-heavy
+  /// app would spend a chunk of the log buffer on them.
+  Devtray navigation({int? maxVisits, bool? logNavigation}) {
+    final nav = DevtrayNav.instance;
+    if (maxVisits != null) nav.maxVisits = maxVisits;
+    if (logNavigation != null) nav.logNavigation = logNavigation;
+    return this;
+  }
+
+  // -------------------------------------------------------------- listeners
+  //
+  // The observe half of the API. Everything above configures what devtray
+  // *captures*; these hand each captured item back so the app can act on it —
+  // forward an error to a crash reporter, react to a 401, count freezes.
+  //
+  // Registered here they last the whole session, which is why these return
+  // `Devtray` for the cascade rather than a disposer. For a listener scoped to
+  // a widget, call the store's own `on…` method, which returns a
+  // [DevtrayUnsubscribe] to call from `dispose`:
+  //
+  // ```dart
+  // final _off = DevtrayNet.instance.onFailure(_retry);
+  // @override void dispose() { _off(); super.dispose(); }
+  // ```
+  //
+  // Every listener is observe-only. They run *after* the item is recorded and
+  // cannot change or suppress it, so a callback that throws costs you the
+  // callback — reported as an error line — and never the entry it was watching.
+
+  /// Calls [listener] for every log line recorded.
+  ///
+  /// Fires for anything that reaches the log store, including captured
+  /// `debugPrint` and errors. Use [onError] if you only want the errors.
+  Devtray onLog(DevtrayListener<LogEntry> listener) {
+    DevtrayLog.instance.onLog(listener);
+    return this;
+  }
+
+  /// Calls [listener] for every error recorded — the crash-reporter hook.
+  ///
+  /// ```dart
+  /// ..onError((e) => Sentry.captureException(e.error ?? e.message, stackTrace: e.stackTrace))
+  /// ```
+  ///
+  /// Covers every route into the store at once: your own [Devtray.report] calls,
+  /// the Flutter and platform error hooks `runDebugApp` installs, and failed
+  /// requests forwarded from the network store.
+  Devtray onError(DevtrayListener<LogEntry> listener) {
+    DevtrayLog.instance.onError(listener);
+    return this;
+  }
+
+  /// Calls [listener] when a request starts — before it has an outcome.
+  Devtray onRequest(DevtrayListener<NetworkLogEntry> listener) {
+    DevtrayNet.instance.onRequest(listener);
+    return this;
+  }
+
+  /// Calls [listener] when a request completes, successfully or not.
+  ///
+  /// ```dart
+  /// ..onResponse((r) {
+  ///   if (r.statusCode == 401) authBloc.add(SessionExpired());
+  /// })
+  /// ```
+  Devtray onResponse(DevtrayListener<NetworkLogEntry> listener) {
+    DevtrayNet.instance.onResponse(listener);
+    return this;
+  }
+
+  /// Calls [listener] only for requests that failed.
+  ///
+  /// Independent of the `errorReporting` mode, which governs only whether a
+  /// failure also becomes a log line.
+  Devtray onFailure(DevtrayListener<NetworkLogEntry> listener) {
+    DevtrayNet.instance.onFailure(listener);
+    return this;
+  }
+
+  /// Calls [listener] each time a route is entered.
+  ///
+  /// ```dart
+  /// ..onScreen((v) => analytics.screenView(v.name))
+  /// ```
+  ///
+  /// Sees routes from [DevtrayNavObserver] and hand-pushed screens from
+  /// [Devtray.screen] alike, plus the return trip when a route is popped.
+  Devtray onScreen(DevtrayListener<RouteVisit> listener) {
+    DevtrayNav.instance.onScreen(listener);
+    return this;
+  }
+
+  /// Calls [listener] when a route is left, with the finished visit — so
+  /// [RouteVisit.duration] is populated.
+  Devtray onScreenLeave(DevtrayListener<RouteVisit> listener) {
+    DevtrayNav.instance.onScreenLeave(listener);
+    return this;
+  }
+
+  /// Calls [listener] on every tracked state change, from any state library.
+  Devtray onStateChange(DevtrayListener<StateChange> listener) {
+    DevtrayState.instance.onStateChange(listener);
+    return this;
+  }
+
+  /// Calls [listener] when a tracked state source reports an error.
+  Devtray onStateError(DevtrayListener<TrackedSource> listener) {
+    DevtrayState.instance.onStateError(listener);
+    return this;
+  }
+
+  /// Calls [listener] when a UI freeze is detected.
+  ///
+  /// Requires [detectFreezes] — without it nothing is watching, and this never
+  /// fires.
+  Devtray onFreeze(DevtrayListener<FreezeEvent> listener) {
+    DevtrayJank.instance.onFreeze(listener);
+    return this;
+  }
+
+  /// Calls [listener] for each frame slower than the threshold.
+  ///
+  /// Runs **inside the frame pipeline** and can fire many times a second. Keep
+  /// it to a counter; see [DevtrayJank.onSlowFrame].
+  Devtray onSlowFrame(DevtrayListener<SlowFrameEvent> listener) {
+    DevtrayJank.instance.onSlowFrame(listener);
+    return this;
+  }
+
+  // --------------------------------------------------- removing listeners
+  //
+  // Statics, matching `log` and `screen`: unlike everything else on this class
+  // these are for *use* rather than setup, and the moment you want one is
+  // mid-session — a sign-out undoing whatever the signed-in session registered
+  // — long after `configure` has run.
+  //
+  // Deliberately blunt. Each drops listeners you registered *and* any a package
+  // or another part of the app registered. To undo only your own, hold the
+  // [DevtrayUnsubscribe] the matching `on…` method returns and call that.
+  //
+  // All of them are unrelated to [enabled]: turning capture off already stops
+  // every listener firing, because nothing is recorded. These drop the
+  // registrations themselves, so they do not come back when capture is switched
+  // on again.
+
+  /// Drops [onLog] and [onError] listeners.
+  static void clearLogListeners() => DevtrayLog.instance.clearListeners();
+
+  /// Drops [onRequest], [onResponse] and [onFailure] listeners.
+  static void clearNetworkListeners() => DevtrayNet.instance.clearListeners();
+
+  /// Drops [onScreen] and [onScreenLeave] listeners.
+  static void clearNavListeners() => DevtrayNav.instance.clearListeners();
+
+  /// Drops [onStateChange] and [onStateError] listeners.
+  static void clearStateListeners() => DevtrayState.instance.clearListeners();
+
+  /// Drops [onFreeze] and [onSlowFrame] listeners.
+  static void clearJankListeners() => DevtrayJank.instance.clearListeners();
+
+  /// Drops every listener on **every** store, in one call.
+  ///
+  /// ```dart
+  /// Devtray.clearListeners();
+  /// ```
+  ///
+  /// The one to reach for on sign-out, or between tests — the stores are
+  /// singletons, so a listener left behind would fire for every test after it.
+  /// Use the per-store clears above when you mean to drop one subject's
+  /// callbacks and leave the rest running.
+  static void clearListeners() {
+    clearLogListeners();
+    clearNetworkListeners();
+    clearNavListeners();
+    clearStateListeners();
+    clearJankListeners();
   }
 
   // ------------------------------------------------------------------ hatch

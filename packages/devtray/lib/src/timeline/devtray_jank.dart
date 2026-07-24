@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../core/devtray_facade.dart';
+import '../core/devtray_listeners.dart';
 
 /// One period during which the UI isolate did not respond.
 class FreezeEvent {
@@ -147,6 +148,45 @@ class DevtrayJank {
     }
   }
 
+  // ------------------------------------------------------------- listeners
+
+  final DevtrayListeners<FreezeEvent> _onFreeze = DevtrayListeners<FreezeEvent>('freeze');
+  final DevtrayListeners<SlowFrameEvent> _onSlowFrame = DevtrayListeners<SlowFrameEvent>('slow frame');
+
+  /// Calls [listener] when a UI freeze is detected. Returns a disposer.
+  ///
+  /// ```dart
+  /// ..onFreeze((f) => analytics.track('ui_freeze', {'ms': f.duration.inMilliseconds}))
+  /// ```
+  ///
+  /// Only fires while detection is running — see `Devtray.detectFreezes()`,
+  /// which is opt-in because the watchdog is the one capture with a real
+  /// steady-state cost.
+  ///
+  /// Detection is retrospective: this fires when the freeze *ends*, which is the
+  /// first moment the isolate can run anything at all. A terminal hang is
+  /// reported by nothing, here or anywhere.
+  DevtrayUnsubscribe onFreeze(DevtrayListener<FreezeEvent> listener) => _onFreeze.add(listener);
+
+  /// Calls [listener] for each frame slower than [slowFrameThreshold].
+  ///
+  /// **Fires from inside the frame pipeline** — this is the one listener whose
+  /// callback runs during `addTimingsCallback`. Keep it cheap and do not touch
+  /// widget state from it: marking something dirty here is a build during a
+  /// build. Schedule it if you need to (`scheduleMicrotask`), and prefer
+  /// [onFreeze] for anything heavier — a slow frame can fire 60 times a second
+  /// on a bad scroll, and a listener doing real work would itself become the
+  /// jank it is measuring.
+  DevtrayUnsubscribe onSlowFrame(DevtrayListener<SlowFrameEvent> listener) => _onSlowFrame.add(listener);
+
+  /// Drops every [onFreeze] and [onSlowFrame] registration.
+  ///
+  /// The blunt counterpart to the disposers. See [DevtrayLog.clearListeners].
+  void clearListeners() {
+    _onFreeze.clear();
+    _onSlowFrame.clear();
+  }
+
   void clear() {
     _freezes.clear();
     _slowFrames.clear();
@@ -163,6 +203,7 @@ class DevtrayJank {
   void recordFreezeForTesting(FreezeEvent event) {
     _push(_freezes, event, maxFreezes);
     _scheduleNotify();
+    _onFreeze.notify(event);
   }
 
   /// The heartbeat.
@@ -181,6 +222,7 @@ class DevtrayJank {
 
     _push(_freezes, freeze, maxFreezes);
     _scheduleNotify();
+    _onFreeze.notify(freeze);
   }
 
   /// The freeze implied by two consecutive heartbeats, or null if the gap is
@@ -214,19 +256,21 @@ class DevtrayJank {
       final raster = t.rasterDuration;
       if (build + raster < slowFrameThreshold) continue;
 
-      _push(
-        _slowFrames,
-        SlowFrameEvent(
-          // FrameTiming carries monotonic-clock microseconds, which are not a
-          // wall-clock instant. The timeline plots against wall clock, so this
-          // stamps arrival — accurate to within a frame, which is finer than
-          // anything the timeline draws.
-          at: DateTime.now(),
-          build: build,
-          raster: raster,
-        ),
-        maxSlowFrames,
+      final event = SlowFrameEvent(
+        // FrameTiming carries monotonic-clock microseconds, which are not a
+        // wall-clock instant. The timeline plots against wall clock, so this
+        // stamps arrival — accurate to within a frame, which is finer than
+        // anything the timeline draws.
+        at: DateTime.now(),
+        build: build,
+        raster: raster,
       );
+      _push(_slowFrames, event, maxSlowFrames);
+      // Notified inline rather than batched with the tick below: a listener is
+      // reacting to a specific frame, and this runs in the frame pipeline where
+      // the whole point is not to add another deferred hop. `isEmpty` keeps the
+      // common no-listener case free.
+      if (!_onSlowFrame.isEmpty) _onSlowFrame.notify(event);
       recorded = true;
     }
 

@@ -1,4 +1,5 @@
 import '../logs/devtray_log.dart';
+import '../nav/devtray_nav.dart';
 import '../network/devtray_net.dart';
 import '../state/devtray_state.dart';
 import 'devtray_jank.dart';
@@ -8,6 +9,11 @@ enum TimelineLane {
   /// UI freezes and slow frames. First, because it is the lane you scan for —
   /// the others explain what it shows.
   jank,
+
+  /// Which screen the app was on. Spans, not marks: "which screen was I on
+  /// when that request failed" is an interval question, and drawing it as one
+  /// answers it directly instead of making you read between two marks.
+  route,
 
   /// Requests. Events here have duration.
   network,
@@ -56,6 +62,13 @@ class TimelineEvent {
   /// The originating [NetworkLogEntry], [LogEntry] or [TrackedSource].
   final Object source;
 
+  /// Alternates the shading of contiguous spans, so their joins are visible.
+  ///
+  /// Carried from the source rather than taken from draw order: an event
+  /// scrolling out of the window, or a lane being muted, would otherwise flip
+  /// the colour of every span after it.
+  final int sequence;
+
   const TimelineEvent({
     required this.lane,
     required this.start,
@@ -64,6 +77,7 @@ class TimelineEvent {
     this.end,
     this.isError = false,
     this.isPending = false,
+    this.sequence = 0,
   });
 
   /// True when this event occupies a span rather than an instant.
@@ -102,6 +116,7 @@ List<TimelineEvent> collectTimelineEvents({
   bool includeLogs = true,
   bool includeState = true,
   bool includeJank = true,
+  bool includeRoutes = true,
 }) {
   final events = <TimelineEvent>[];
 
@@ -132,6 +147,30 @@ List<TimelineEvent> collectTimelineEvents({
           label: 'Slow frame ${f.total.inMilliseconds}ms '
               '(build ${f.build.inMilliseconds}, raster ${f.raster.inMilliseconds})',
           source: f,
+        ),
+      );
+    }
+  }
+
+  if (includeRoutes) {
+    for (final v in DevtrayNav.instance.visits) {
+      // A route still on screen has no end yet, so it runs to the right edge —
+      // the same treatment a pending request gets.
+      final end = v.leftAt ?? to;
+      if (end.isBefore(from) || v.enteredAt.isAfter(to)) continue;
+
+      events.add(
+        TimelineEvent(
+          lane: TimelineLane.route,
+          start: v.enteredAt,
+          end: v.leftAt,
+          isPending: v.isCurrent,
+          // The transition, not just the name: a lane of bare screen names
+          // makes you infer the direction from which span sits left, and a
+          // return trip looks identical to a first arrival.
+          label: v.isOverlay ? '${v.name} (over ${v.from ?? '?'})' : v.transition,
+          sequence: v.sequence,
+          source: v,
         ),
       );
     }

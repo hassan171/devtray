@@ -30,9 +30,16 @@ export 'src/core/debug_text_styles.dart';
 export 'src/core/debug_tools_screen.dart';
 export 'src/core/run_debug_app.dart';
 export 'src/core/devtray_facade.dart' show Devtray, Inspect;
+// The ambient context both the log and network stores read. Exported for the
+// rare case of registering enrichers outside `configure` — Devtray.setContext
+// and `..enrich(...)` are the ordinary routes.
+export 'src/core/devtray_context.dart';
 // Names for the callback shapes the API takes — see the file for why only
 // these four, and not every repeated signature.
 export 'src/core/devtray_typedefs.dart';
+// Observing what devtray captures: the callback shape and the disposer every
+// `on…` method returns. `DevtrayListeners` itself is the stores' plumbing.
+export 'src/core/devtray_listeners.dart' show DevtrayListener, DevtrayUnsubscribe;
 
 // Network page
 export 'src/network/curl_builder.dart';
@@ -46,6 +53,9 @@ export 'src/network/mocking/devtray_mocks.dart';
 export 'src/network/mocking/mocks_view.dart';
 export 'src/network/network_debug_page.dart';
 export 'src/network/devtray_net.dart';
+// Saving captured requests — the shape of a sink and the batching. The file
+// transport lives in devtray_log_file, which owns the dart:io dependency.
+export 'src/network/network_export.dart';
 // The row, mostly for its `extent` — a custom page rendering the same list
 // needs the same fixed height to set `itemExtent`.
 export 'src/network/components/network_log_row.dart';
@@ -78,6 +88,10 @@ export 'src/device/device_info_provider.dart';
 // Visual debug flags page
 export 'src/visual/visual_debug_page.dart';
 
+// Navigation — which screen the app is on, on every log line and request.
+export 'src/nav/devtray_nav.dart';
+export 'src/nav/devtray_nav_observer.dart';
+
 // Timeline — requests, logs and state on one shared time axis. Owns no data of
 // its own; it reads the three existing stores.
 export 'src/timeline/timeline_debug_page.dart';
@@ -109,4 +123,5 @@ export 'src/widgets/copyable_section.dart';
 export 'src/widgets/debug_copy_button.dart';
 export 'src/widgets/debug_search_bar.dart';
 export 'src/widgets/jump_to_latest_button.dart';
+export 'src/widgets/session_banner.dart';
 export 'src/widgets/debug_tab_bar.dart';

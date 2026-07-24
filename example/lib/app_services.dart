@@ -50,7 +50,7 @@ Future<LogSink> openFileLogSink() async {
     location: LogFileLocation.documents,
     // Small, so the example actually rotates — the load generator crosses this
     // in a few seconds. A real app wants megabytes.
-    maxBytes: 64 * 1024,
+    maxBytes: 5 * 1024 * 1024,
     maxFiles: 8,
   );
 
@@ -60,13 +60,60 @@ Future<LogSink> openFileLogSink() async {
   return sink;
 }
 
+/// Reads saved request sessions back — the network counterpart to
+/// [logSessions]. Null until [openFileNetworkSink] has run.
+NetworkSessionLoader? requestSessions;
+
+/// Starts writing captured **requests** to disk, and remembers where.
+///
+/// The same shape as [openFileLogSink], and deliberately a separate file: a run
+/// writes `session_<start>.devtraylog` and `requests_<start>.devtraynet` side by
+/// side, so each reader parses one shape.
+///
+/// Requests are written when they *complete* — the status, body and duration
+/// all arrive with the response — plus anything still in flight when the app is
+/// backgrounded, so a process killed mid-request still leaves a record.
+Future<NetworkSink> openFileNetworkSink() async {
+  final sink = await FileNetworkSink.open(
+    location: LogFileLocation.documents,
+    // Small, so the example actually rotates while the load generator runs.
+    maxBytes: 5 * 1024 * 1024,
+    maxFiles: 8,
+  );
+
+  requestSessions = NetworkSessionLoader(sink.directory);
+  return sink;
+}
+
+/// The network counterpart to [DeferredLogSessions], for the same reason: the
+/// page is built synchronously in `main`, the directory is opened during
+/// bootstrap.
+class DeferredRequestSessions extends NetworkSessionSource {
+  const DeferredRequestSessions();
+
+  NetworkSessionSource? get _delegate {
+    final loader = requestSessions;
+    return loader == null ? null : DevtrayFileRequestSessions(loader);
+  }
+
+  @override
+  Future<List<NetworkSessionInfo>> list() async => await _delegate?.list() ?? const [];
+
+  @override
+  Future<List<NetworkLogEntry>> load(NetworkSessionInfo session) async => await _delegate?.load(session) ?? const [];
+
+  @override
+  bool get canDelete => true;
+
+  @override
+  Future<void> delete(NetworkSessionInfo session) async => _delegate?.delete(session);
+
+  @override
+  Future<void> deleteAll() async => _delegate?.deleteAll();
+}
+
 /// When the app started, for the `session` enricher registered in main().
 final DateTime startedAt = DateTime.now();
-
-/// Which screen the app is on, read by the `nav` enricher above.
-///
-/// A global for the example's sake; a real app reads this from its router.
-String currentScreen = 'bootstrap';
 
 /// Bridges the gap between `pages:` (built synchronously in `main`) and the log
 /// directory (opened asynchronously during bootstrap).

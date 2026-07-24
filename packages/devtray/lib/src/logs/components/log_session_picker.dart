@@ -8,21 +8,25 @@ import '../devtray_export.dart';
 ///
 /// ```dart
 /// final session = await LogSessionPicker.show(context, source);
+///
+/// Generic over what a session holds: logs and requests are separate files with
+/// separate sources, but browsing them is the same interaction, so one picker
+/// serves both rather than two that drift apart.
 /// ```
 ///
 /// Returns the chosen session, or null if dismissed. Deleting from here is
 /// deliberate: the file is the only copy, so removing it belongs behind an
 /// explicit confirmation in the place you can see what you're removing — not on
 /// a toolbar button next to "clear logs", which means something else entirely.
-class LogSessionPicker extends StatefulWidget {
-  final LogSessionSource source;
+class LogSessionPicker<T extends DevtraySessionInfo> extends StatefulWidget {
+  final DevtraySessionSource<T> source;
 
   const LogSessionPicker({super.key, required this.source});
 
-  static Future<LogSessionInfo?> show(BuildContext context, LogSessionSource source) {
+  static Future<T?> show<T extends DevtraySessionInfo>(BuildContext context, DevtraySessionSource<T> source) {
     final theme = DevtrayTheme.of(context);
 
-    return showDialog<LogSessionInfo>(
+    return showDialog<T>(
       context: context,
       builder: (_) => DevtrayThemeScope(
         // The dialog is a new route, outside this page's theme scope — without
@@ -34,7 +38,7 @@ class LogSessionPicker extends StatefulWidget {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 460, maxHeight: 520),
-            child: LogSessionPicker(source: source),
+            child: LogSessionPicker<T>(source: source),
           ),
         ),
       ),
@@ -42,11 +46,11 @@ class LogSessionPicker extends StatefulWidget {
   }
 
   @override
-  State<LogSessionPicker> createState() => _LogSessionPickerState();
+  State<LogSessionPicker<T>> createState() => _LogSessionPickerState<T>();
 }
 
-class _LogSessionPickerState extends State<LogSessionPicker> {
-  List<LogSessionInfo>? _sessions;
+class _LogSessionPickerState<T extends DevtraySessionInfo> extends State<LogSessionPicker<T>> {
+  List<T>? _sessions;
   Object? _error;
 
   @override
@@ -67,7 +71,7 @@ class _LogSessionPickerState extends State<LogSessionPicker> {
     }
   }
 
-  Future<void> _delete(LogSessionInfo session) async {
+  Future<void> _delete(T session) async {
     final confirmed = await _confirm(
       title: 'Delete this session?',
       message: '${session.label} will be removed from disk. This cannot be undone.',
@@ -160,7 +164,7 @@ class _LogSessionPickerState extends State<LogSessionPicker> {
     );
   }
 
-  Widget _buildBody(DevtrayTheme t, List<LogSessionInfo>? sessions) {
+  Widget _buildBody(DevtrayTheme t, List<T>? sessions) {
     if (_error != null) {
       return _Message(
         icon: Icons.error_outline,

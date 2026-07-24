@@ -1,5 +1,91 @@
 # Changelog
 
+## 0.6.0
+
+Context reaches network requests, the overlay can tell which screen the app is on, and your
+app can get a callback on anything it captures.
+
+### Added
+
+- **Listeners on every store.** Devtray could only be *read* — the `tick` notifiers say
+  "something changed, rebuild", coalesced and with no payload, so acting on a specific
+  capture meant diffing a buffer. Each store now hands the item itself back:
+
+  ```dart
+  configure: (d) => d
+    ..onError((e) => Sentry.captureException(e.error ?? e.message, stackTrace: e.stackTrace))
+    ..onResponse((r) { if (r.statusCode == 401) authBloc.add(SessionExpired()); })
+    ..onScreen((v) => analytics.screenView(v.name)),
+  ```
+
+  `onLog`/`onError`, `onRequest`/`onResponse`/`onFailure`, `onScreen`/`onScreenLeave`,
+  `onStateChange`/`onStateError`, `onFreeze`/`onSlowFrame`. `onError` covers every route into
+  the log store at once — your own `report` calls, the framework and platform hooks, and
+  failed requests — so one registration sees them all. `onFailure` fires regardless of
+  `errorReporting`, which governs only whether a failure also becomes a log line.
+
+  **Observe-only.** Listeners run after the item is recorded and cannot change or suppress it.
+  One that throws is caught and reported as an error line naming the list it was on, and the
+  rest still run: a broken callback should cost you the callback, not the entry it was
+  watching, and certainly not the app being debugged.
+
+  The store methods return a disposer for a listener scoped to a widget
+  (`final off = DevtrayNet.instance.onFailure(...)`; `off()` in `dispose`) — a returned
+  disposer rather than `removeListener(fn)`, since the registration is usually an inline
+  closure and there'd otherwise be nothing to pass back.
+
+  `onSlowFrame` is the one to be careful with: it runs inside the frame pipeline and can fire
+  every frame on a bad scroll, so a listener doing real work there becomes the jank it is
+  measuring.
+
+- **`Devtray.clearListeners()`**, plus `clearLogListeners`, `clearNetworkListeners`,
+  `clearNavListeners`, `clearStateListeners` and `clearJankListeners` — for a sign-out that
+  should undo whatever the session registered, and for tests, where the stores are singletons
+  and a listener left behind fires for every test after it. Blunt by design: they drop
+  anything's registrations, so hold the disposer when you only mean to undo your own.
+  Unrelated to `enabled`, which stops listeners firing without dropping them.
+
+- **Context on network requests.** Ambient values and enrichers used to reach log lines only,
+  so a line could say which screen it came from and a *request* could not — the more useful
+  half, since a failing request is usually what you are chasing. Both stores now share one
+  `DevtrayContext`, so a single `..enrich('nav', ...)` labels everything.
+
+  Fields appear on the request detail's own **Context** tab, kept away from Request Headers
+  and Request Body: there they read as something the app *sent*, where they are the opposite —
+  state recorded on the device and transmitted nowhere. Resolved when the request is *made*,
+  not when it completes, because a slow request routinely outlives the screen that fired it.
+
+- **`DevtrayNavObserver`** — which screen the app is on, with no call sites:
+
+  ```dart
+  MaterialApp(navigatorObservers: [DevtrayNavObserver()], ...)
+  ```
+
+  Every log line and request then carries `screen`. An unnamed route reports
+  `<unnamed MaterialPageRoute>` rather than silently keeping the previous screen — a field
+  that quietly names a page you already left is worse than one that admits it doesn't know.
+  `nameOf` derives names yourself.
+
+  A dialog does **not** replace the screen; it adds `overlay` alongside it, so a request fired
+  from behind it still says which page it came from. `logNavigation: true` adds a line per
+  navigation, off by default because the field already puts the route on every entry.
+
+- **`Devtray.screen(name)`** — for navigation an observer cannot see. An `IndexedStack` or
+  `PageView` that swaps its body pushes no route, so nothing can observe it; this is the one
+  line at the place that already knows. Both routes feed the same history.
+
+- **A `nav` timeline lane.** Route changes draw as spans rather than marks — "which screen was
+  I on at this moment" is an interval question — labelled with the journey (`/ → /settings`,
+  `/ ← /settings`) since the same pair of names in the other direction is a different trip.
+  Contiguous spans alternate their shading so the joins are visible.
+
+### Fixed
+
+- **A timeline lane with no detail view opened an empty dialog.** The dialog's
+  `switch (event.source)` fell through to a `SizedBox.shrink()`, so adding a lane without its
+  detail produced a dialog containing literally nothing. The dispatch is now a testable
+  function and the fall-through says which type it could not render.
+
 ## 0.5.0
 
 `Devtray` is now the one control surface. Switching capture off, opening the panel and hiding

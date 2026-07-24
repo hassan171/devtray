@@ -9,6 +9,8 @@ import '../core/debug_text_styles.dart';
 import '../core/devtray_theme.dart';
 import '../logs/components/log_detail_dialog.dart';
 import '../logs/devtray_log.dart';
+import '../nav/components/route_detail_pane.dart';
+import '../nav/devtray_nav.dart';
 import '../network/components/network_detail_pane.dart';
 import '../network/html_previewer.dart';
 import '../network/mocking/devtray_mocks.dart';
@@ -223,10 +225,15 @@ class _TimelineViewState extends State<_TimelineView> {
       // Freeze on the first real movement, not on touch-down: a tap should
       // select without silently pausing the page.
       _freeze();
+      // Capture the window end ONCE, here. It used to be re-read from
+      // `_frozenAt` on every move — which `_panBy` had just written — so each
+      // move measured its delta from where the previous one landed while `dx`
+      // was still measured from touch-down. The two cancelled and the window
+      // never moved at all.
       _dragAnchorEnd = _frozenAt;
     }
 
-    _panBy(dx, width, from: _dragAnchorEnd ?? anchorEnd);
+    _panBy(dx, width, anchorEnd: _dragAnchorEnd ?? anchorEnd);
   }
 
   void _onPointerUp(PointerUpEvent event, List<TimelineEvent> events, DateTime from, DateTime to, double width) {
@@ -256,19 +263,24 @@ class _TimelineViewState extends State<_TimelineView> {
     // that's the only wheel there is, and a timeline has nothing to scroll
     // vertically.
     final dx = event.scrollDelta.dx.abs() > 0 ? event.scrollDelta.dx : event.scrollDelta.dy;
-    _panBy(-dx, width, from: _frozenAt ?? DateTime.now());
+    // A wheel notch is discrete — each event is its own gesture, so the
+    // current window end IS the anchor.
+    _panBy(-dx, width, anchorEnd: _frozenAt ?? DateTime.now());
   }
 
-  /// Moves the window by [dx] pixels' worth of time, relative to [from].
+  /// Moves the window by [dx] pixels' worth of time, relative to [anchorEnd].
   ///
   /// Positive dx = drag right = go back in time, so the content follows the
   /// finger the way every other scrollable does.
-  void _panBy(double dx, double width, {required DateTime from}) {
+  void _panBy(double dx, double width, {required DateTime anchorEnd}) {
     final plotWidth = width - TimelineMetrics.gutter;
     final microsPerPixel = _spanMicros / (plotWidth <= 0 ? 1 : plotWidth);
     final shift = (dx * microsPerPixel).round();
 
-    setState(() => _frozenAt = from.subtract(Duration(microseconds: shift)));
+    // [anchorEnd] is the window end the gesture started from, so a drag is
+    // always measured against a fixed origin rather than against its own
+    // previous frame.
+    setState(() => _frozenAt = anchorEnd.subtract(Duration(microseconds: shift)));
   }
 
   /// Sets the window span, from a zoom preset.
@@ -359,23 +371,13 @@ class _TimelineViewState extends State<_TimelineView> {
             constraints: const BoxConstraints(maxWidth: 680, maxHeight: 560),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-              child: switch (event.source) {
-                final NetworkLogEntry e => NetworkDetailPane(
-                  entry: e,
-                  enableMocking: !DevtrayMocks.instance.isDisabled,
-                  onPreviewHtml: widget.onPreviewHtml,
-                  // The panes render a back arrow for their master/detail
-                  // layout; here it closes the dialog, which is the same
-                  // "leave this detail" intent.
-                  onBack: () => Navigator.of(dialogContext).pop(),
-                ),
-                final TrackedSource s => StateDetailPane(
-                  source: s,
-                  onBack: () => Navigator.of(dialogContext).pop(),
-                  onRefresh: () => setState(() {}),
-                ),
-                _ => const SizedBox.shrink(),
-              },
+              child: timelineDetailFor(
+                event.source,
+                onBack: () => Navigator.of(dialogContext).pop(),
+                onRefresh: () => setState(() {}),
+                enableMocking: !DevtrayMocks.instance.isDisabled,
+                onPreviewHtml: widget.onPreviewHtml,
+              ),
             ),
           ),
         ),
@@ -401,6 +403,7 @@ class _TimelineViewState extends State<_TimelineView> {
           includeLogs: !_hidden.contains(TimelineLane.log),
           includeState: !_hidden.contains(TimelineLane.state),
           includeJank: !_hidden.contains(TimelineLane.jank),
+          includeRoutes: !_hidden.contains(TimelineLane.route),
         );
 
         return Column(
@@ -507,7 +510,10 @@ class _MultiStoreListener extends StatelessWidget {
           valueListenable: DevtrayState.instance.tick,
           builder: (context, _, _) => ValueListenableBuilder<int>(
             valueListenable: DevtrayJank.instance.tick,
-            builder: (context, _, _) => builder(context),
+            builder: (context, _, _) => ValueListenableBuilder<int>(
+              valueListenable: DevtrayNav.instance.tick,
+              builder: (context, _, _) => builder(context),
+            ),
           ),
         ),
       ),
@@ -632,6 +638,7 @@ class _LaneChip extends StatelessWidget {
     final t = DevtrayTheme.of(context);
     final color = switch (lane) {
       TimelineLane.jank => t.error,
+      TimelineLane.route => t.warning,
       TimelineLane.network => t.accent,
       TimelineLane.log => t.textMuted,
       TimelineLane.state => t.success,
@@ -650,6 +657,7 @@ class _LaneChip extends StatelessWidget {
         child: Text(
           switch (lane) {
             TimelineLane.jank => 'jank',
+            TimelineLane.route => 'nav',
             TimelineLane.network => 'net',
             TimelineLane.log => 'log',
             TimelineLane.state => 'state',
@@ -845,4 +853,38 @@ class _EmptyHint extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The detail widget for a tapped timeline event's source.
+///
+/// A function rather than a switch buried in a dialog builder so it can be
+/// tested. The route lane shipped without its case here, and the only symptom
+/// was a dialog containing nothing — the fall-through was silent, and no test
+/// could reach the switch to catch it.
+@visibleForTesting
+Widget timelineDetailFor(
+  Object? source, {
+  required VoidCallback onBack,
+  required VoidCallback onRefresh,
+  bool enableMocking = true,
+  DebugHtmlPreviewer? onPreviewHtml,
+}) {
+  return switch (source) {
+    final NetworkLogEntry e => NetworkDetailPane(
+      entry: e,
+      enableMocking: enableMocking,
+      onPreviewHtml: onPreviewHtml,
+      // The panes render a back arrow for their master/detail layout; here it
+      // closes the dialog, which is the same "leave this detail" intent.
+      onBack: onBack,
+    ),
+    final TrackedSource s => StateDetailPane(source: s, onBack: onBack, onRefresh: onRefresh),
+    // Routes have no owning page to borrow a detail widget from, so the nav
+    // lane brings its own.
+    final RouteVisit v => RouteDetailPane(visit: v),
+    // Never reached — every lane's source type is handled above. It was a
+    // `SizedBox.shrink()`, which is why adding a lane without its detail
+    // produced an empty dialog rather than an obvious failure.
+    final other => Text('No detail view for ${other.runtimeType}'),
+  };
 }
