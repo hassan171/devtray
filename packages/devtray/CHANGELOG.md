@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.1
+
+### Added
+
+- **`..capture(bool)` in `configure`** — the same switch as `Devtray.enabled`, so an app that
+  decides this at startup can say it alongside everything else rather than in a separate
+  statement before the call. `..launcher(bool)` already existed for visibility; capture is the
+  more fundamental of the two and was reachable only through `..raw(...)`.
+
+  ```dart
+  configure: (d) => d
+    ..capture(true)          // record in every build…
+    ..launcher(kDebugMode),  // …but no visible affordance outside debug
+  ```
+
+  That pairing is the point: a build shipping the tray on purpose — QA pulling network logs
+  off TestFlight, launcher gated to a few accounts — wants recording on for everyone, so the
+  tray holds a full session the moment it is opened.
+
 ## 0.6.0
 
 Context reaches network requests, the overlay can tell which screen the app is on, and your

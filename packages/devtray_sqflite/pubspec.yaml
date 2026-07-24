@@ -1,6 +1,6 @@
 name: devtray_sqflite
 description: "SQLite support for devtray's Storage page — hand it a Database and every table shows up, discovered from the schema."
-version: 0.6.0
+version: 0.6.1
 repository: https://github.com/hassan171/devtray/tree/main/packages/devtray_sqflite
 issue_tracker: https://github.com/hassan171/devtray/issues
 
@@ -13,7 +13,7 @@ resolution: workspace
 dependencies:
   flutter:
     sdk: flutter
-  devtray: ^0.6.0
+  devtray: ^0.6.1
   sqflite: ^2.4.0
 
 dev_dependencies:

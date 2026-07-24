@@ -47,8 +47,8 @@ import '../timeline/devtray_jank.dart';
 ///
 /// | | Question | Here |
 /// |---|---|---|
-/// | **Capture** | is it recording? | [enabled] |
-/// | **Visibility** | can it be seen or opened? | [open], [showLauncher] |
+/// | **Capture** | is it recording? | [enabled], [capture] |
+/// | **Visibility** | can it be seen or opened? | [open], [showLauncher], [launcher] |
 /// | **Existence** | is it in the tree at all? | your own `if` around [runDebugApp] |
 ///
 /// The third is not a switch on purpose. Wrapping the whole package in a plain
@@ -571,7 +571,35 @@ class Devtray {
     return this;
   }
 
-  // ------------------------------------------------------------- visibility
+  // ----------------------------------------------------- capture, visibility
+
+  /// Whether anything is captured at all, from `configure`.
+  ///
+  /// ```dart
+  /// configure: (d) => d
+  ///   ..capture(true)          // record in release too
+  ///   ..launcher(kDebugMode),  // but no visible affordance
+  /// ```
+  ///
+  /// The same switch as [Devtray.enabled], which defaults to [kDebugMode]. Here
+  /// for the same reason [launcher] is: an app that decides this at startup can
+  /// say so alongside everything else it configures, rather than in a separate
+  /// statement before the call. Assign the static directly to change it later in
+  /// the session.
+  ///
+  /// The case for turning it **on** is a build that ships the tray on purpose —
+  /// QA pulling network logs off a TestFlight build, with the launcher gated to
+  /// a few accounts. Capture and visibility are separate switches precisely so
+  /// that combination is expressible: recording runs for everyone, so the tray
+  /// holds a full session the moment it is opened, rather than starting empty
+  /// from the point someone signed in.
+  ///
+  /// Turning it **off** also drops whatever the stores already hold — see
+  /// [Devtray.enabled].
+  Devtray capture(bool enabled) {
+    Devtray.enabled = enabled;
+    return this;
+  }
 
   /// Whether the floating launcher button is drawn, from `configure`.
   ///

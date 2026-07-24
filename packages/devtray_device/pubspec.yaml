@@ -1,6 +1,6 @@
 name: devtray_device
 description: "Real device facts for devtray's Device page — model, OS and app version, via device_info_plus and package_info_plus."
-version: 0.6.0
+version: 0.6.1
 repository: https://github.com/hassan171/devtray/tree/main/packages/devtray_device
 issue_tracker: https://github.com/hassan171/devtray/issues
 
@@ -13,7 +13,7 @@ resolution: workspace
 dependencies:
   flutter:
     sdk: flutter
-  devtray: ^0.6.0
+  devtray: ^0.6.1
   device_info_plus: ">=11.0.0 <13.0.0"
   package_info_plus: ">=8.0.0 <10.0.0"
 
