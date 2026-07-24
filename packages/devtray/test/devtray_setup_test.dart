@@ -166,6 +166,34 @@ void main() {
 
       expect(DevtrayNet.instance.excludedUrlPatterns, isEmpty);
     }));
+
+    // The combination the two switches exist to make expressible: a build that
+    // ships the tray on purpose, recording for everyone, with the launcher
+    // gated to a few accounts. Capture running with no visible affordance has
+    // to survive the overlay mounting, whose showLauncher default is `true`.
+    testWidgets('capture and launcher are independent', (tester) async => withDebugPrintRestored(() async {
+      runDebugApp(
+        () => const SizedBox.shrink(),
+        configure: (d) => d
+          ..capture(true)
+          ..launcher(false),
+      );
+      await tester.pumpAndSettle();
+
+      expect(Devtray.enabled, isTrue, reason: 'recording for everyone');
+      expect(Devtray.showLauncher, isFalse, reason: 'the widget default must not undo an explicit hide');
+    }));
+
+    testWidgets('capture(false) stops the stores recording', (tester) async => withDebugPrintRestored(() async {
+      runDebugApp(
+        () => const SizedBox.shrink(),
+        configure: (d) => d..capture(false),
+      );
+      await tester.pumpAndSettle();
+
+      Devtray.log('dropped');
+      expect(DevtrayLog.instance.entries, isEmpty);
+    }));
   });
 
   group('coverage', () {

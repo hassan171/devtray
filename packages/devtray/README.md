@@ -123,6 +123,7 @@ nothing.
 | `logTo`, `logToAsync` | Where logs go when they leave memory |
 | `inspect<T>`, `inspectAll`, `formatState<T>`, `formatSource<S>`, `state(...)` | The State page |
 | `detectFreezes(...)` | UI-freeze and slow-frame detection |
+| `capture(...)`, `launcher(...)`, `openOnStart()` | Whether it records, whether it's visible, whether it opens at launch |
 | `onLog`, `onError`, `onRequest`, `onResponse`, `onFailure`, `onScreen`, … | Callbacks on what's captured — see [Listening to what's captured](#listening-to-whats-captured) |
 | `raw(() { ... })` | Anything not covered — reach straight for the stores |
 
@@ -1251,6 +1252,20 @@ Devtray.enabled = kDebugMode || const bool.fromEnvironment('DEV_TOOLS');
 // …tools behind a login in a support build:
 Devtray.enabled = user.isInternal;
 ```
+
+Decided at startup, say it in `configure` alongside everything else — `..capture(...)` is the
+same switch:
+
+```dart
+configure: (d) => d
+  ..capture(true)          // record in every build…
+  ..launcher(kDebugMode),  // …but no visible affordance outside debug
+```
+
+That pairing is why capture and visibility are separate switches. A build that ships the tray
+on purpose — QA pulling network logs off TestFlight, with the launcher gated to a few accounts
+— wants recording running for **everyone**, so the tray holds a full session the moment it's
+opened rather than starting empty from the point someone signed in.
 
 Settings from `configure` are applied regardless, so enabling capture mid-session finds your
 excluded URLs and enrichers already registered.
