@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0
+
+No changes of its own. The core added listener callbacks on everything it captures
+(`onError`, `onResponse`, `onScreen`, …) and made ambient context reach network requests —
+see its changelog.
+
 ## 0.5.0
 
 No changes of its own. The core folded `DevtrayKillSwitch` and `DevtrayController` into

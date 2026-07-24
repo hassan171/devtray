@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.0
+
+### Added
+
+- **`FileNetworkSink`** — captured requests land on disk, a file per run, the network
+  counterpart to `FileLogSink`. Written when a request *completes*, since the status, body and
+  duration all arrive with the response; anything still in flight is flushed when the app is
+  backgrounded, so a process killed mid-request still leaves a record.
+
+  ```dart
+  ..networkToAsync(FileNetworkSink.open)
+  ```
+
+- **`NetworkSessionLoader`** — reads those files back, so the Network page's session picker
+  can offer past runs the way the Logs page already did. Give it the **same** `location` as
+  the sink, or it looks in the wrong place and finds nothing.
+
 ## 0.5.0
 
 No changes of its own. The core folded `DevtrayKillSwitch` and `DevtrayController` into

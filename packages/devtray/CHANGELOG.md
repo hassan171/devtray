@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0
 
 Context reaches network requests, the overlay can tell which screen the app is on, and your
 app can get a callback on anything it captures.
