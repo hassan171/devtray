@@ -2,7 +2,7 @@ import 'package:devtray/devtray.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
-import '../app_services.dart' show UploadLogSink, counter, currentScreen, dio, httpClient, logSessions, todos;
+import '../app_services.dart' show UploadLogSink, counter, dio, httpClient, logSessions, todos;
 import '../counter_cubit.dart';
 import '../load_generator.dart';
 import '../users_box.dart';
@@ -137,10 +137,14 @@ class DebugScreen extends StatelessWidget {
               Devtray.setContext('userId', 'anonymous');
               Devtray.log('Signed out', level: LogLevel.info, tag: 'auth');
             }),
-            // The enricher picks this up on the next line without being told.
-            _Btn('Navigate (moves the screen field)', () {
-              currentScreen = currentScreen == 'checkout' ? 'settings' : 'checkout';
-              Devtray.log('Navigated to $currentScreen', tag: 'nav');
+            // The tab bar and the note editor already move the screen field —
+            // one via Devtray.screen, the other via DevtrayNavObserver. This
+            // names a screen the app doesn't have, so you can watch one value
+            // reach a log line AND the next request's Context tab without
+            // leaving this tab.
+            _Btn('Set screen to "checkout"', () {
+              Devtray.screen('checkout');
+              Devtray.log('Now on checkout', tag: 'nav');
             }),
             // Per-call: one line, fields nothing else has.
             _Btn('Log with per-call fields', () {

@@ -202,7 +202,7 @@ void main() {
       await tester.tap(find.byIcon(Icons.folder_open));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.descendant(of: find.byType(LogSessionPicker), matching: find.byIcon(Icons.delete_outline)));
+      await tester.tap(find.descendant(of: find.byType(LogSessionPicker<LogSessionInfo>), matching: find.byIcon(Icons.delete_outline)));
       await tester.pumpAndSettle();
 
       expect(find.text('Delete this session?'), findsOneWidget);
@@ -224,7 +224,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.byIcon(Icons.folder_open));
       await tester.pumpAndSettle();
-      await tester.tap(find.descendant(of: find.byType(LogSessionPicker), matching: find.byIcon(Icons.delete_outline)));
+      await tester.tap(find.descendant(of: find.byType(LogSessionPicker<LogSessionInfo>), matching: find.byIcon(Icons.delete_outline)));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Cancel'));
@@ -246,7 +246,7 @@ void main() {
       // Scoped to the dialog: the page's own "clear all logs" button uses the
       // same icon, and it is not what this is asserting about.
       expect(
-        find.descendant(of: find.byType(LogSessionPicker), matching: find.byIcon(Icons.delete_outline)),
+        find.descendant(of: find.byType(LogSessionPicker<LogSessionInfo>), matching: find.byIcon(Icons.delete_outline)),
         findsNothing,
       );
       expect(find.byIcon(Icons.delete_sweep_outlined), findsNothing);

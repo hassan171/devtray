@@ -71,8 +71,7 @@ class TimelinePainter extends CustomPainter {
       final x = TimelineMetrics.xFor(event.start, from, to, size.width);
       final isSelected = identical(event, selected);
 
-      // Freezes have duration and draw as bars; slow frames are instants.
-      if (event.lane == TimelineLane.network || event.hasDuration) {
+      if (drawsAsBar(event)) {
         _paintBar(canvas, size, event, x, y, isSelected);
       } else {
         _paintMark(canvas, event, x, y, isSelected);
@@ -163,18 +162,47 @@ class TimelinePainter extends CustomPainter {
 
     final color = e.isError
         ? theme.error
-        : e.isPending
+        : e.isPending && e.lane != TimelineLane.route
         ? theme.textMuted
         : theme.accent;
 
     // A freeze is drawn solid: it's the one thing on this chart you want to
     // catch peripherally, without reading anything.
+    //
+    // Routes alternate instead. They are contiguous — one ends exactly where
+    // the next begins — so a lane drawn in one flat colour is a single
+    // unbroken bar with no visible boundaries. Alternating the alpha makes the
+    // joins readable without adding a second hue that would compete with the
+    // other lanes.
+    //
+    // The current route is NOT faded the way a pending request is: a request
+    // in flight may still fail, so muting it says "not resolved yet", while
+    // the screen you are on is simply where you are.
     final alpha = e.lane == TimelineLane.jank
         ? 0.9
+        : e.lane == TimelineLane.route
+        ? (e.sequence.isEven ? 0.75 : 0.45)
         : e.isPending
         ? 0.35
         : 0.75;
     canvas.drawRRect(rect, Paint()..color = color.withValues(alpha: alpha));
+
+    // Notches where a span runs past the edge of the window.
+    //
+    // xFor clamps to the plot, so a span that began before `from` is drawn
+    // starting at the left gutter — indistinguishable from one that genuinely
+    // started there, and it appears pinned as you pan because its real start
+    // never enters view. The initial route is open for the whole session, so
+    // this is its normal state rather than an edge case.
+    final paint = Paint()..color = color.withValues(alpha: 0.9);
+    const notch = 3.0;
+
+    if (e.start.isBefore(from)) {
+      _paintContinuation(canvas, rect.left, y, pointsLeft: true, paint: paint, size: notch);
+    }
+    if (e.effectiveEnd(to).isAfter(to)) {
+      _paintContinuation(canvas, rect.right, y, pointsLeft: false, paint: paint, size: notch);
+    }
 
     if (isSelected) {
       canvas.drawRRect(
@@ -185,6 +213,24 @@ class TimelinePainter extends CustomPainter {
           ..strokeWidth = 1.5,
       );
     }
+  }
+
+  /// A small triangle saying "this continues past here".
+  void _paintContinuation(
+    Canvas canvas,
+    double x,
+    double y, {
+    required bool pointsLeft,
+    required Paint paint,
+    required double size,
+  }) {
+    final direction = pointsLeft ? -1.0 : 1.0;
+    final path = Path()
+      ..moveTo(x + direction * size, y)
+      ..lineTo(x, y - size)
+      ..lineTo(x, y + size)
+      ..close();
+    canvas.drawPath(path, paint);
   }
 
   void _paintMark(Canvas canvas, TimelineEvent e, double x, double y, bool isSelected) {
@@ -237,6 +283,7 @@ class TimelinePainter extends CustomPainter {
 
   static String _laneLabel(TimelineLane lane) => switch (lane) {
     TimelineLane.jank => 'JANK',
+    TimelineLane.route => 'NAV',
     TimelineLane.network => 'NET',
     TimelineLane.log => 'LOG',
     TimelineLane.state => 'STATE',
@@ -246,6 +293,18 @@ class TimelinePainter extends CustomPainter {
   bool shouldRepaint(TimelinePainter old) =>
       old.from != from || old.to != to || old.events.length != events.length || !identical(old.selected, selected) || old.theme != theme;
 }
+
+/// Whether an event draws as a bar rather than a mark.
+///
+/// Lanes whose events are *intervals* always draw as bars, even before they
+/// end: a pending request and the screen you are currently on both have no
+/// `end` yet, but neither is an instant. Without this the current route drew as
+/// a circle, which read as a separate little event sitting on the lane rather
+/// than the open span it is.
+///
+/// Freezes have duration and draw as bars; slow frames are genuine instants.
+bool drawsAsBar(TimelineEvent e) =>
+    e.lane == TimelineLane.network || e.lane == TimelineLane.route || e.hasDuration;
 
 /// Finds the event under a tap.
 ///
@@ -269,9 +328,8 @@ TimelineEvent? hitTestTimeline({
 
     final x = TimelineMetrics.xFor(e.start, from, to, width);
 
-    // Matches the painter's choice of bar vs mark, so the hit target is the
-    // shape that was drawn.
-    if (e.lane == TimelineLane.network || e.hasDuration) {
+    // Shared with the painter, so the hit target is the shape that was drawn.
+    if (drawsAsBar(e)) {
       final endX = TimelineMetrics.xFor(e.effectiveEnd(to), from, to, width);
       final right = x + (endX - x).clamp(3.0, width);
       // Inside the bar is an exact hit; near it falls back to distance so a

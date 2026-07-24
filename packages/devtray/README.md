@@ -7,6 +7,9 @@ Eight built-in pages — **Timeline** (everything on one time axis, with UI-free
 **Network** (with mocking), **Logs** (errors folded in), **State**, **Storage**, **Visual**,
 **Device** and **Export** — and every other tab is one you add.
 
+Install `DevtrayNavObserver` and every log line and request also carries the screen it
+happened on.
+
 You decide **whether** it exists, **when** it opens, and **how** it's presented.
 
 ---
@@ -88,14 +91,16 @@ void main() => runDebugApp(
   configure: (devtray) => devtray
     // Keep noisy background traffic out of the request list.
     ..excludeUrls(['/health', '/metrics'])
-    // Ambient values carried by every log line and error.
+    // Ambient values carried by every log line AND network request.
     ..context({'build': '1.4.2+318', 'flavor': 'staging'})
     // Computed per entry, for values that must be current.
-    ..enrich('nav', () => {'screen': router.currentRoute})
+    ..enrich('connectivity', () => {'online': connectivity.isOnline})
     // Fields a source holds outside its state.
     ..inspect<CartCubit>((c) => {'items': c.items.length})
     // Watch for UI freezes for the whole session.
-    ..detectFreezes(),
+    ..detectFreezes()
+    // A line per navigation, on top of the `screen` field the observer sets.
+    ..navigation(logNavigation: true),
   pages: const [...],
 );
 ```
@@ -301,6 +306,115 @@ The threshold has to stay well above ordinary timer jitter — timers routinely 
 milliseconds late, and a threshold near zero reports constant phantom freezes.
 
 ---
+
+---
+
+## Navigation
+
+Every log line and network request can carry the screen it happened on. Install the observer
+and there is nothing else to do:
+
+```dart
+MaterialApp(
+  navigatorObservers: [DevtrayNavObserver()],
+  ...
+)
+```
+
+From then on `screen: /checkout` rides along on everything captured, so *"which screen was I
+on when that 500 came back"* is answered on the entry itself rather than reconstructed from
+timestamps. Open any request's **Context** tab to see it.
+
+### What it can and cannot see
+
+It sees the **Navigator** — pushed routes, `pushNamed`, and most routers built on one.
+
+It cannot see a custom shell. An `IndexedStack` or a `PageView` whose body swaps on a tab tap
+pushes no route, so there is nothing to observe and no observer could ever fire. Only the app
+knows a swap happened, so tell devtray at the point that already knows:
+
+```dart
+onDestinationSelected: (i) {
+  Devtray.screen(_titles[i]);
+  setState(() => _tab = i);
+}
+```
+
+Both feed the same history, so an app with a tab shell *and* pushed routes gets one coherent
+picture rather than two half-pictures.
+
+### Unnamed routes
+
+`Navigator.push(MaterialPageRoute(builder: ...))` carries no name, and there is nothing to
+read. Such a route reports `<unnamed MaterialPageRoute>` rather than silently keeping the
+previous screen — a field that quietly names a page you already left is worse than one that
+admits it doesn't know. Fix it by naming the route:
+
+```dart
+MaterialPageRoute(
+  settings: const RouteSettings(name: 'note_editor'),
+  builder: (_) => const NoteEditorScreen(),
+)
+```
+
+Or derive names yourself:
+
+```dart
+DevtrayNavObserver(
+  nameOf: (route) => switch (route.settings.arguments) {
+    NoteArgs(:final id) => 'note/$id',
+    _ => null,                              // null falls back to the default
+  },
+)
+```
+
+### Dialogs and sheets
+
+A dialog over Checkout does **not** change the screen. It adds its own field instead:
+
+```
+screen:  "/checkout"      ← the page, untouched
+overlay: "DialogRoute"    ← what is on top of it
+```
+
+Two fields rather than one because a request fired from behind that dialog came from
+*Checkout* — labelling it `DialogRoute` would replace a real page name with a placeholder and
+lose the thing you wanted. The overlay field is removed on dismiss, so nothing is left behind
+claiming a dialog is up.
+
+Anything that is not a `PageRoute` counts as an overlay.
+
+### The Timeline's `nav` lane
+
+Route changes draw as **spans**, not marks — "which screen was I on at this moment" is an
+interval question, and drawing it as one answers it directly instead of making you read
+between two ticks. Contiguous spans alternate their shading so the joins are visible.
+
+Each span is labelled with the journey rather than the destination:
+
+```
+/ → /settings      pushed
+/ ← /settings      popped back
+```
+
+Direction matters: `a → b` and `b ← a` involve the same two names but are different journeys,
+and a lane showing only the pair could not tell them apart. Returning is recorded as its own
+visit, so the trip back is a span in its own right.
+
+Tap any span for its detail — where it came from, how long it lasted, and whether it is still
+open.
+
+### Logging each navigation
+
+Off by default. The `screen` field already puts the route on every entry, so a line per
+navigation is largely redundant — and a nav-heavy app would spend a chunk of the 1000-entry
+buffer on them. Turn it on when you want the route trail as its own filterable thing:
+
+```dart
+configure: (d) => d..navigation(logNavigation: true),
+```
+
+Lines are tagged `nav`, so the Logs page can filter to just them.
 
 ## Network
 
@@ -657,6 +771,48 @@ Each capture channel is a separate switch on `runDebugApp`, all on by default �
 Turn one off when your app already forwards that channel itself and you'd otherwise
 double-report. There's also `onUncaughtError` if you want to forward the Zone's errors to your
 own crash reporter.
+
+### Context on every entry
+
+Three layers, composing least-specific to most. All of them land on **log lines and network
+requests alike**, so one registration labels both.
+
+```dart
+// 1. ambient — set once, carried until changed
+Devtray.setContext('userId', user.id);
+
+// 2. enrichers — computed per entry, for values that must be current
+configure: (d) => d..enrich('nav', () => {'screen': router.currentRoute}),
+
+// 3. per-call — one entry only
+Devtray.log('Checkout failed', fields: {'cartId': cart.id});
+```
+
+Later wins over earlier, which is the useful order: the more specific the source, the more it
+knows. A call-site field beats an enricher, which beats ambient context.
+
+`withContext` scopes values to a span of work and restores what was there:
+
+```dart
+await Devtray.withContext({'orderId': id}, () async => submitOrder());
+```
+
+Not safe across concurrent async work — it is one shared map, not Zone state, so overlapping
+scopes on the same key interleave. Pass the field explicitly when you need per-request
+isolation.
+
+**On requests**, these appear on the detail pane's **Context** tab — deliberately not next to
+Request Headers and Request Body, where they read as something the app *sent*. They are the
+opposite: state recorded on the device at the moment of the call, transmitted nowhere.
+
+**Cost when unused is nothing.** With no context, no enrichers and no per-call fields, the
+resolver returns a shared const map without allocating. With only ambient context it hands
+back a shared snapshot, so context set once is free per entry however many entries there are.
+
+Enrichers run on **every** capture, so keep them cheap — a field read, not a platform channel
+call. One that throws has its failure recorded as the field's value (visible on the entry it
+broke, rather than silently missing), and after repeated failures it is dropped and a line
+logged saying so. A broken enricher never costs you the entry it was decorating.
 
 ### `dart:developer`'s `log()` is never captured — and can't be
 

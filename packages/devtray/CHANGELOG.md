@@ -1,5 +1,52 @@
 # Changelog
 
+## Unreleased
+
+Context reaches network requests, and the overlay can tell which screen the app is on.
+
+### Added
+
+- **Context on network requests.** Ambient values and enrichers used to reach log lines only,
+  so a line could say which screen it came from and a *request* could not — the more useful
+  half, since a failing request is usually what you are chasing. Both stores now share one
+  `DevtrayContext`, so a single `..enrich('nav', ...)` labels everything.
+
+  Fields appear on the request detail's own **Context** tab, kept away from Request Headers
+  and Request Body: there they read as something the app *sent*, where they are the opposite —
+  state recorded on the device and transmitted nowhere. Resolved when the request is *made*,
+  not when it completes, because a slow request routinely outlives the screen that fired it.
+
+- **`DevtrayNavObserver`** — which screen the app is on, with no call sites:
+
+  ```dart
+  MaterialApp(navigatorObservers: [DevtrayNavObserver()], ...)
+  ```
+
+  Every log line and request then carries `screen`. An unnamed route reports
+  `<unnamed MaterialPageRoute>` rather than silently keeping the previous screen — a field
+  that quietly names a page you already left is worse than one that admits it doesn't know.
+  `nameOf` derives names yourself.
+
+  A dialog does **not** replace the screen; it adds `overlay` alongside it, so a request fired
+  from behind it still says which page it came from. `logNavigation: true` adds a line per
+  navigation, off by default because the field already puts the route on every entry.
+
+- **`Devtray.screen(name)`** — for navigation an observer cannot see. An `IndexedStack` or
+  `PageView` that swaps its body pushes no route, so nothing can observe it; this is the one
+  line at the place that already knows. Both routes feed the same history.
+
+- **A `nav` timeline lane.** Route changes draw as spans rather than marks — "which screen was
+  I on at this moment" is an interval question — labelled with the journey (`/ → /settings`,
+  `/ ← /settings`) since the same pair of names in the other direction is a different trip.
+  Contiguous spans alternate their shading so the joins are visible.
+
+### Fixed
+
+- **A timeline lane with no detail view opened an empty dialog.** The dialog's
+  `switch (event.source)` fell through to a `SizedBox.shrink()`, so adding a lane without its
+  detail produced a dialog containing literally nothing. The dispatch is now a testable
+  function and the fall-through says which type it could not render.
+
 ## 0.5.0
 
 `Devtray` is now the one control surface. Switching capture off, opening the panel and hiding

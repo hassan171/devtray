@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 
 import '../core/devtray_theme.dart';
 import '../core/debug_page.dart';
-import '../core/debug_text_styles.dart';
 import '../filter/debug_filter.dart';
 import '../filter/debug_filter_builder.dart';
 import '../widgets/copyable_section.dart';
 import '../widgets/debug_search_bar.dart';
 import '../widgets/jump_to_latest_button.dart';
+import '../widgets/session_banner.dart';
 import 'components/log_detail_dialog.dart';
 import 'components/log_row.dart';
 import 'components/log_session_picker.dart';
@@ -466,7 +466,7 @@ class _LogsViewState extends State<_LogsView> {
 
     return Column(
       children: [
-        _SessionBanner(session: _session!, count: entries.length, onBack: _backToLive),
+        SessionBanner(label: _session!.label, count: entries.length, noun: 'entry', pluralNoun: 'entries', onBack: _backToLive),
         const SizedBox(height: 8),
         Expanded(child: _buildBody(context, entries: entries, tags: tags)),
       ],
@@ -627,58 +627,6 @@ class _LogsViewState extends State<_LogsView> {
 /// Deliberately loud. The failure this prevents is reading a stale session as
 /// though it were what the app is doing right now — which looks exactly like a
 /// bug that has stopped reproducing.
-class _SessionBanner extends StatelessWidget {
-  final LogSessionInfo session;
-  final int count;
-  final VoidCallback onBack;
-
-  const _SessionBanner({required this.session, required this.count, required this.onBack});
-
-  @override
-  Widget build(BuildContext context) {
-    final t = DevtrayTheme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: t.warning.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: t.warning.withValues(alpha: 0.4)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.history, size: 14, color: t.warning),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Saved session — not live',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: t.warning),
-                ),
-                Text(
-                  '${session.label} · $count ${count == 1 ? 'entry' : 'entries'}',
-                  style: DebugTextStyles.debugMono(color: t.textMuted, fontSize: 10),
-                ),
-              ],
-            ),
-          ),
-          TextButton.icon(
-            onPressed: onBack,
-            style: TextButton.styleFrom(
-              minimumSize: const Size(0, 32),
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              foregroundColor: t.accent,
-            ),
-            icon: const Icon(Icons.bolt, size: 14),
-            label: const Text('Live', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 /// Shown when the stream has nothing to show.
 ///

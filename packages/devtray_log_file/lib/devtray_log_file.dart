@@ -35,5 +35,7 @@
 library;
 
 export 'src/file_log_sink.dart';
+export 'src/file_network_sink.dart';
 export 'src/log_session_loader.dart';
 export 'src/devtray_file_sessions.dart';
+export 'src/network_session_loader.dart';

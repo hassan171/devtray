@@ -15,8 +15,8 @@ import 'devtray_facade.dart';
 /// devtray.enrich('nav', () => {'screen': router.currentRoute});
 /// ```
 ///
-/// Runs on **every** log line, so keep it cheap — a field read, not a platform
-/// channel call or a database query. If it throws, the failure is recorded as
+/// Runs on **every** capture — log lines and network requests alike — so keep
+/// it cheap: a field read, not a platform channel call or a database query. If it throws, the failure is recorded as
 /// the field's value and the log line still lands; after repeated failures the
 /// enricher is dropped, because one that throws every time would otherwise
 /// write its error onto every line in the session.

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/devtray_theme.dart';
 import '../../core/debug_text_styles.dart';
 import '../../widgets/copyable_section.dart';
+import '../../logs/error_log_detail.dart';
 import '../../widgets/debug_tab_bar.dart';
 import '../curl_builder.dart';
 import '../html_previewer.dart';
@@ -80,6 +81,18 @@ class _NetworkDetailPaneState extends State<NetworkDetailPane> with TickerProvid
         CopyableSection(title: 'Response Headers', body: prettyHeaders(e.responseHeaders)),
         CopyableSection(title: 'Response Body', body: prettyJson(e.responseBody)),
       ]),
+      // Its own tab, and only when there is something in it.
+      //
+      // These were briefly rendered above Request Headers, where they read as
+      // something the app *sent* — a header, a query parameter. They are the
+      // opposite: state the app was in when it made the call, recorded on this
+      // side and never transmitted. A separate tab and the note below are what
+      // stop that misreading.
+      if (e.fields.isNotEmpty)
+        _DetailTab('Context', [
+          _ContextNote(),
+          LogFieldsSection(fields: e.fields),
+        ]),
       for (final extra in e.extras.entries) _DetailTab(extra.key, [CopyableSection(title: extra.key, body: extra.value)]),
     ];
   }
@@ -192,6 +205,37 @@ class _NetworkDetailPaneState extends State<NetworkDetailPane> with TickerProvid
           ),
         ),
       ],
+    );
+  }
+}
+
+
+/// Says what the Context tab is, because the tab alone cannot.
+///
+/// "Fields" next to Request Headers and Request Body reads as part of the
+/// request. This is app state at the moment of the call — which screen was
+/// open, which build, who was signed in — captured locally and sent nowhere.
+class _ContextNote extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final t = DevtrayTheme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 13, color: t.textMuted),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'App state when this request was made — not sent to the server. '
+              'From Devtray.setContext and enrichers.',
+              style: TextStyle(fontSize: 11, color: t.textMuted, height: 1.3),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

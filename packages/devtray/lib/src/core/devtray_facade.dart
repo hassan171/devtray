@@ -4,7 +4,10 @@ import '../logs/devtray_export.dart';
 import 'devtray_typedefs.dart';
 import '../logs/devtray_log.dart';
 import '../network/mocking/devtray_mocks.dart';
+import '../nav/devtray_nav.dart';
+import '../nav/devtray_nav_observer.dart';
 import '../network/devtray_net.dart';
+import '../network/network_export.dart';
 import '../state/devtray_state.dart';
 import '../timeline/devtray_jank.dart';
 
@@ -367,8 +370,17 @@ class Devtray {
   /// Registers a callback that adds fields to every entry, computed fresh.
   ///
   /// For values that must be *current* rather than whatever they were when you
-  /// last set them — the active route, connectivity. Runs on every log line, so
-  /// keep it cheap: this is not the place for a platform channel call.
+  /// last set them — the active route, connectivity.
+  ///
+  /// Runs for **log lines and network requests alike**, so one registration
+  /// answers "which screen was I on" for both:
+  ///
+  /// ```dart
+  /// ..enrich('nav', () => {'screen': router.currentRoute})
+  /// ```
+  ///
+  /// Runs on every capture, so keep it cheap: this is not the place for a
+  /// platform channel call.
   Devtray enrich(String name, DevtrayEnricher compute) {
     DevtrayLog.instance.addEnricher(name, compute);
     return this;
@@ -421,6 +433,43 @@ class Devtray {
   /// Work started during [configure] that [runDebugApp] awaits before running
   /// the app.
   final List<Future<void> Function()> _pending = [];
+
+  /// Sends captured **requests** somewhere durable — a file, an upload.
+  ///
+  /// The network counterpart to [logTo]. Requests are written when they
+  /// *complete*, since the status, body and duration all arrive with the
+  /// response; anything still in flight is written when the app is
+  /// backgrounded, so a process killed mid-request still leaves a record.
+  ///
+  /// ```dart
+  /// ..networkTo(FileNetworkSink(...))
+  /// ```
+  Devtray networkTo(NetworkSink sink, {FlushPolicy? policy}) {
+    if (policy != null) DevtrayNetExport.instance.policy = policy;
+    DevtrayNetExport.instance.addSink(sink);
+    return this;
+  }
+
+  /// Adds a request sink that has to be opened asynchronously — the file case.
+  ///
+  /// Awaited by [runDebugApp] before your app runs, so requests made during
+  /// bootstrap still reach it.
+  Devtray networkToAsync(Future<NetworkSink> Function() open, {FlushPolicy? policy}) {
+    if (policy != null) DevtrayNetExport.instance.policy = policy;
+
+    _pending.add(() async {
+      try {
+        DevtrayNetExport.instance.addSink(await open());
+      } catch (e) {
+        DevtrayLog.instance.log(
+          'A network sink failed to open and was skipped: $e',
+          level: LogLevel.error,
+          tag: 'devtray',
+        );
+      }
+    });
+    return this;
+  }
 
   // ------------------------------------------------------------------ state
 
@@ -548,6 +597,36 @@ class Devtray {
   /// back on it rather than making you tap in every time.
   Devtray openOnStart() {
     Devtray.open();
+    return this;
+  }
+
+  // -------------------------------------------------------------------- nav
+
+  /// Records which screen the app is on, from your own navigation.
+  ///
+  /// ```dart
+  /// onDestinationSelected: (i) {
+  ///   Devtray.screen(_titles[i]);
+  ///   setState(() => _tab = i);
+  /// }
+  /// ```
+  ///
+  /// For an app whose navigation is the Navigator, install
+  /// [DevtrayNavObserver] instead and this happens with no call sites at all.
+  /// This is for the case an observer cannot see — an `IndexedStack` or a
+  /// `PageView` whose body swaps without pushing a route. Both feed the same
+  /// history, so an app doing both gets one coherent picture.
+  static void screen(String name) => DevtrayNav.instance.enter(name);
+
+  /// How much route history to keep, and whether each change is also logged.
+  ///
+  /// [logNavigation] is off by default: the `screen` field already puts the
+  /// route on every entry, so the lines are largely redundant — and a nav-heavy
+  /// app would spend a chunk of the log buffer on them.
+  Devtray navigation({int? maxVisits, bool? logNavigation}) {
+    final nav = DevtrayNav.instance;
+    if (maxVisits != null) nav.maxVisits = maxVisits;
+    if (logNavigation != null) nav.logNavigation = logNavigation;
     return this;
   }
 
