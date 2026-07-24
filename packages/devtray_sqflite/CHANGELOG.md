@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.1
+
+No changes of its own. The core added `..capture(bool)` to `configure` — see its changelog.
+
 ## 0.6.0
 
 No changes of its own. The core added listener callbacks on everything it captures
