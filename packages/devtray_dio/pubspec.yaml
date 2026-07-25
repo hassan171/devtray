@@ -1,6 +1,6 @@
 name: devtray_dio
 description: "dio adapter for devtray — feeds the overlay's network inspector from a Dio client."
-version: 0.6.1
+version: 0.6.2
 repository: https://github.com/hassan171/devtray/tree/main/packages/devtray_dio
 issue_tracker: https://github.com/hassan171/devtray/issues
 
@@ -13,7 +13,7 @@ resolution: workspace
 dependencies:
   flutter:
     sdk: flutter
-  devtray: ^0.6.1
+  devtray: ^0.6.2
   dio: ^5.7.0
 
 dev_dependencies:

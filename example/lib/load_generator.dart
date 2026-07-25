@@ -5,7 +5,7 @@ import 'package:devtray/devtray.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
-import 'app_services.dart' show counter, dio, httpClient, todos;
+import 'app_services.dart' show counter, dio, exampleHttpHeaders, httpClient, todos;
 import 'counter_cubit.dart';
 
 /// Drives continuous traffic at the overlay, so it can be watched under load
@@ -126,8 +126,13 @@ class LoadGenerator {
         ),
       );
     } else if (roll < 72) {
-      // The other transport, so both adapters stay exercised.
-      _swallow(httpClient.get(Uri.parse('https://jsonplaceholder.typicode.com/users/${(n % 10) + 1}')));
+      // The other transport, so both adapters stay exercised. Headers so its
+      // requests aren't bare in the pane — and so `authorization` is there to
+      // watch get redacted.
+      _swallow(httpClient.get(
+        Uri.parse('https://jsonplaceholder.typicode.com/users/${(n % 10) + 1}'),
+        headers: exampleHttpHeaders,
+      ));
     } else if (roll < 80) {
       // A large-ish response — /photos is ~5000 records. This is the payload
       // that made the detail pane's pretty-printing and HTML sniffing hurt.

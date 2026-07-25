@@ -10,6 +10,21 @@ import '../logs/devtray_log.dart';
 
 enum NetworkLogStatus { pending, success, failed }
 
+/// How a hidden header appears in the pane, cURL, exports and the bug report.
+///
+/// See [Devtray.network]'s `hideHeaders`.
+enum HeaderHiding {
+  /// Keep the name, replace the value with [DevtrayNet.redactionMask]. The
+  /// default — a reader sees an `authorization` header *was* sent, without
+  /// seeing the token, and the request keeps its shape.
+  mask,
+
+  /// Drop the header entirely, as if it were never on the request. For
+  /// decluttering, or when even the presence of a header is more than you want
+  /// a screenshot or report to reveal.
+  omit,
+}
+
 /// Which failed requests are forwarded to the Logs page (and therefore badge
 /// the launcher).
 ///
@@ -91,23 +106,32 @@ class NetworkLogEntry {
   /// strings rather than encoded as-is: a body can be any object a transport
   /// handed us, and one un-encodable value would otherwise fail the whole
   /// record — losing the request entirely to save a field.
-  Map<String, Object?> toJson() => {
-    'id': id,
-    'method': method,
-    'uri': uri.toString(),
-    'startedAt': startedAt.toIso8601String(),
-    'status': status.name,
-    if (requestHeaders.isNotEmpty) 'requestHeaders': {for (final e in requestHeaders.entries) e.key: '${e.value}'},
-    if (queryParameters.isNotEmpty) 'queryParameters': {for (final e in queryParameters.entries) e.key: '${e.value}'},
-    if (requestBody != null) 'requestBody': requestBody is String ? requestBody : requestBody.toString(),
-    if (statusCode != null) 'statusCode': statusCode,
-    if (responseHeaders.isNotEmpty) 'responseHeaders': responseHeaders,
-    if (responseBody != null) 'responseBody': responseBody is String ? responseBody : responseBody.toString(),
-    if (errorMessage != null) 'errorMessage': errorMessage,
-    if (completedAt != null) 'completedAt': completedAt!.toIso8601String(),
-    if (extras.isNotEmpty) 'extras': extras,
-    if (fields.isNotEmpty) 'fields': {for (final f in fields.entries) f.key: f.value?.toString()},
-  };
+  ///
+  /// Redacted headers are masked here, not just in the pane: a file on disk or
+  /// an uploaded report is exactly where a token must not end up. See
+  /// [DevtrayNet.redactHeaders].
+  Map<String, Object?> toJson() {
+    final store = DevtrayNet.instance;
+    final reqHeaders = store.redactHeaders(requestHeaders);
+    final resHeaders = store.redactResponseHeaders(responseHeaders);
+    return {
+      'id': id,
+      'method': method,
+      'uri': uri.toString(),
+      'startedAt': startedAt.toIso8601String(),
+      'status': status.name,
+      if (reqHeaders.isNotEmpty) 'requestHeaders': {for (final e in reqHeaders.entries) e.key: '${e.value}'},
+      if (queryParameters.isNotEmpty) 'queryParameters': {for (final e in queryParameters.entries) e.key: '${e.value}'},
+      if (requestBody != null) 'requestBody': requestBody is String ? requestBody : requestBody.toString(),
+      if (statusCode != null) 'statusCode': statusCode,
+      if (resHeaders.isNotEmpty) 'responseHeaders': resHeaders,
+      if (responseBody != null) 'responseBody': responseBody is String ? responseBody : responseBody.toString(),
+      if (errorMessage != null) 'errorMessage': errorMessage,
+      if (completedAt != null) 'completedAt': completedAt!.toIso8601String(),
+      if (extras.isNotEmpty) 'extras': extras,
+      if (fields.isNotEmpty) 'fields': {for (final f in fields.entries) f.key: f.value?.toString()},
+    };
+  }
 
   /// Rebuilds an entry written by [toJson].
   ///
@@ -250,6 +274,88 @@ class DevtrayNet {
   /// Use it to keep high-frequency background traffic (health polls, crash
   /// reporting) out of the list.
   final List<String> excludedUrlPatterns = [];
+
+  /// Header names to **redact**, lowercased.
+  ///
+  /// A hidden header's *value* is replaced with [redactionMask] everywhere it
+  /// would otherwise appear — the detail pane, the copy-as-cURL command, the
+  /// JSON export, the file sinks and the bug report. The **name** is kept, so a
+  /// reader can see that an `authorization` header was sent without seeing the
+  /// token.
+  ///
+  /// This is redaction, not a display filter: the point is keeping a secret out
+  /// of everything a request can be copied into, including a bug report a user
+  /// might paste into a ticket. (The value is still held in memory on the live
+  /// entry — this governs what leaves it, not what is captured.)
+  ///
+  /// Lowercased on the way in by [hideHeaders], because HTTP header names are
+  /// case-insensitive and a Dart `Set` is not: an app sending `User-Agent`
+  /// should not have to guess which casing the transport handed us.
+  final Set<String> hiddenHeaderNames = {};
+
+  /// An extra predicate for header names that don't enumerate — a whole
+  /// `x-internal-*` family. Receives the name **lowercased**, matching
+  /// [hiddenHeaderNames].
+  ///
+  /// Runs in addition to the set, not instead of it, so the common case stays a
+  /// set literal and this handles only what a set can't express.
+  bool Function(String name)? hiddenHeaderPredicate;
+
+  /// Redact **every** header, whatever its name.
+  ///
+  /// The blunt case: strip every header value from every output at once, no
+  /// list to maintain. A separate flag rather than a `hiddenHeaderPredicate`
+  /// that always returns true, so "redact the lot" reads as itself — it wins
+  /// over both the set and the predicate.
+  bool hideAllHeaders = false;
+
+  /// What a redacted value is replaced with. Six dots — enough to read as
+  /// "something was here, deliberately removed" without hinting at its length.
+  static const String redactionMask = '••••••';
+
+  /// Whether a hidden header is masked or dropped entirely. See [HeaderHiding].
+  ///
+  /// [HeaderHiding.mask] by default: keep the name, blank the value, so a reader
+  /// sees a token *was* sent. [HeaderHiding.omit] removes the header from every
+  /// output as if it were never there — for decluttering, or when even the
+  /// header's presence is more than you want to reveal.
+  HeaderHiding headerHiding = HeaderHiding.mask;
+
+  /// Whether [name] is hidden — masked or omitted, per [headerHiding].
+  /// Case-insensitive.
+  bool isHeaderHidden(String name) {
+    if (hideAllHeaders) return true;
+    if (hiddenHeaderNames.isEmpty && hiddenHeaderPredicate == null) return false;
+    final lower = name.toLowerCase();
+    return hiddenHeaderNames.contains(lower) || (hiddenHeaderPredicate?.call(lower) ?? false);
+  }
+
+  /// [headers] with hidden ones masked ([HeaderHiding.mask]) or dropped
+  /// ([HeaderHiding.omit]), per [headerHiding].
+  ///
+  /// The one place the rule lives, so the pane, cURL, JSON and the report all
+  /// hide identically — a header stripped from the pane but present in a copied
+  /// cURL would be the exact leak this exists to prevent. Returns the same map
+  /// instance when nothing matches, so the common no-hiding path allocates
+  /// nothing.
+  Map<String, dynamic> redactHeaders(Map<String, dynamic> headers) {
+    if (headers.isEmpty) return headers;
+    if (!hideAllHeaders && hiddenHeaderNames.isEmpty && hiddenHeaderPredicate == null) return headers;
+    return {
+      for (final e in headers.entries)
+        if (!isHeaderHidden(e.key)) e.key: e.value else if (headerHiding == HeaderHiding.mask) e.key: redactionMask,
+    };
+  }
+
+  /// [redactHeaders] for the response side, where each value is a list.
+  Map<String, List<String>> redactResponseHeaders(Map<String, List<String>> headers) {
+    if (headers.isEmpty) return headers;
+    if (!hideAllHeaders && hiddenHeaderNames.isEmpty && hiddenHeaderPredicate == null) return headers;
+    return {
+      for (final e in headers.entries)
+        if (!isHeaderHidden(e.key)) e.key: e.value else if (headerHiding == HeaderHiding.mask) e.key: const [redactionMask],
+    };
+  }
 
   /// Which failed requests also land in the Logs stream (and badge the
   /// launcher). Defaults to [NetworkErrorReporting.all] — every failure is

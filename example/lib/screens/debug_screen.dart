@@ -2,7 +2,7 @@ import 'package:devtray/devtray.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
-import '../app_services.dart' show UploadLogSink, counter, dio, httpClient, logSessions, todos;
+import '../app_services.dart' show UploadLogSink, counter, dio, exampleHttpHeaders, httpClient, logSessions, todos;
 import '../counter_cubit.dart';
 import '../load_generator.dart';
 import '../users_box.dart';
@@ -42,7 +42,16 @@ class DebugScreen extends StatelessWidget {
                 data: {'title': 'hello', 'body': 'from dio', 'userId': 1},
               ),
             ),
-            _Btn('GET via package:http', () => httpClient.get(Uri.parse('https://jsonplaceholder.typicode.com/users/2'))),
+            // Headers passed so package:http requests aren't bare in the pane —
+            // the dio client sends its own by default (see app_services.dart),
+            // and `authorization` here is redacted the same way.
+            _Btn(
+              'GET via package:http',
+              () => httpClient.get(
+                Uri.parse('https://jsonplaceholder.typicode.com/users/2'),
+                headers: exampleHttpHeaders,
+              ),
+            ),
             // Fails — check the red row and its Error tab.
             _Btn(
               'A 404',

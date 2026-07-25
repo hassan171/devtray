@@ -313,16 +313,73 @@ class Devtray {
     return this;
   }
 
-  /// How many requests to keep, and how much of each response body.
+  /// How many requests to keep, how much of each response body, and which
+  /// headers are hidden from every output.
   ///
   /// Bodies are retained for the life of an entry, so the cap is what stops a
   /// handful of large responses dwarfing the app. Raise it to inspect big
   /// payloads; lower it on a memory-tight device.
-  Devtray network({int? maxEntries, int? maxBodyChars, NetworkErrorReporting? errorReporting}) {
+  ///
+  /// ```dart
+  /// ..network(hideHeaders: {'authorization', 'cookie', 'x-api-key'})
+  /// ```
+  ///
+  /// [hideHeaders] **redacts**: everywhere a hidden header would leave the
+  /// device — the detail pane, copy-as-cURL, [DebugReport], any [NetworkSink] —
+  /// its value is replaced with `••••••` while the name is kept. So a reader
+  /// sees an `authorization` header *was* sent without seeing the token, and
+  /// the request keeps its shape. This is for secrets, not clutter: a masked
+  /// `user-agent` still shows a `user-agent: ••••••` line.
+  ///
+  /// Set [headerHiding] to [HeaderHiding.omit] to drop hidden headers entirely
+  /// rather than mask them — for decluttering, or when even a header's presence
+  /// is more than a screenshot should reveal.
+  ///
+  /// This governs what *leaves* the entry: the value is still on the live entry
+  /// in memory. To keep a header out of memory, strip it in your adapter before
+  /// it reaches [DevtrayNet.add].
+  ///
+  /// Names are matched case-insensitively: HTTP header names are
+  /// case-insensitive and a Dart `Set` is not, so `Authorization` and
+  /// `authorization` must not be two different answers. Both the set and
+  /// [hideHeader] apply, so a set literal can cover the common names while a
+  /// predicate catches a family:
+  ///
+  /// ```dart
+  /// ..network(hideHeader: (name) => name.startsWith('x-internal-'))
+  /// ```
+  ///
+  /// Each call *adds* to the hidden names rather than replacing them, matching
+  /// [excludeUrls] — two calls in one `configure` should accumulate, not have
+  /// the last quietly win. Reach for [DevtrayNet.hiddenHeaderNames] directly to
+  /// clear or replace the set.
+  ///
+  /// [hideAllHeaders] hides every header at once, no list to maintain, and wins
+  /// over both other filters:
+  ///
+  /// ```dart
+  /// ..network(hideAllHeaders: true, headerHiding: HeaderHiding.omit)
+  /// ```
+  Devtray network({
+    int? maxEntries,
+    int? maxBodyChars,
+    NetworkErrorReporting? errorReporting,
+    Set<String>? hideHeaders,
+    bool Function(String name)? hideHeader,
+    bool? hideAllHeaders,
+    HeaderHiding? headerHiding,
+  }) {
     final store = DevtrayNet.instance;
     if (maxEntries != null) store.maxEntries = maxEntries;
     if (maxBodyChars != null) store.maxBodyChars = maxBodyChars;
     if (errorReporting != null) store.errorReporting.value = errorReporting;
+    // Lowercased here, once, rather than on every render: the pane consults
+    // this per header per rebuild, and the set is written a handful of times at
+    // startup.
+    if (hideHeaders != null) store.hiddenHeaderNames.addAll(hideHeaders.map((h) => h.toLowerCase()));
+    if (hideHeader != null) store.hiddenHeaderPredicate = hideHeader;
+    if (hideAllHeaders != null) store.hideAllHeaders = hideAllHeaders;
+    if (headerHiding != null) store.headerHiding = headerHiding;
     return this;
   }
 

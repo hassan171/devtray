@@ -1,6 +1,6 @@
 name: devtray
 description: "A draggable in-app debugging overlay for Flutter: network, logs, state, storage and device inspection in a tabbed panel over your running app. Zero dependencies."
-version: 0.6.1
+version: 0.6.2
 repository: https://github.com/hassan171/devtray/tree/main/packages/devtray
 issue_tracker: https://github.com/hassan171/devtray/issues
 

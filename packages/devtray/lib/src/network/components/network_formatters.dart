@@ -63,5 +63,4 @@ String prettyJson(dynamic data) {
 
 String prettyMap(Map<String, dynamic> map) => map.isEmpty ? '' : map.entries.map((e) => '${e.key}: ${e.value}').join('\n');
 
-String prettyHeaders(Map<String, List<String>> headers) =>
-    headers.isEmpty ? '' : headers.entries.map((e) => '${e.key}: ${e.value.join(', ')}').join('\n');
+String prettyHeaders(Map<String, List<String>> headers) => headers.isEmpty ? '' : headers.entries.map((e) => '${e.key}: ${e.value.join(', ')}').join('\n');

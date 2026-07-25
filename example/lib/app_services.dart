@@ -17,9 +17,37 @@ import 'counter_cubit.dart';
 /// Globals here keep the example's wiring visible in one place, which is what
 /// the example is for.
 
+/// A fake bearer token, so requests have an `authorization` header to redact.
+///
+/// `..network(hideHeaders: {'authorization'})` in main.dart replaces this with
+/// `••••••` everywhere it would leave the device — the pane, the cURL copy, the
+/// JSON export, the bug report — while the string itself never does. Not a real
+/// key; the shape is enough to make the demo read true.
+const exampleAuthToken = 'Bearer example-token-not-a-real-secret';
+
+/// Headers a `package:http` request sends, since (unlike dio's [BaseOptions])
+/// `http` has no per-client defaults — each call passes them.
+const exampleHttpHeaders = {
+  'authorization': exampleAuthToken,
+  'user-agent': 'devtray-example/1.4.2 (http)',
+  'accept': 'application/json',
+};
+
 /// The one interceptor is all the Network page needs — every request made
 /// through this client shows up, including the ones the app makes on its own.
-final dio = Dio()..interceptors.add(DebugDioInterceptor());
+///
+/// The default headers are here so the Network page has something to show — a
+/// real client sends a handful on every request, and a bare pane demonstrates
+/// nothing. See [exampleAuthToken] for the redaction they drive.
+final dio = Dio(
+  BaseOptions(
+    headers: const {
+      'authorization': exampleAuthToken,
+      'user-agent': 'devtray-example/1.4.2 (dio)',
+      'accept': 'application/json',
+    },
+  ),
+)..interceptors.add(DebugDioInterceptor());
 
 /// The same, for `package:http`. Both transports feed one page.
 final httpClient = DebugHttpClient(http.Client());
