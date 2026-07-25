@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.2
+
+No changes of its own. The core added header redaction to `..network(...)` — hidden headers
+are masked or omitted from the pane, cURL, exports and the bug report. See its changelog.
+
 ## 0.6.1
 
 No changes of its own. The core added `..capture(bool)` to `configure` — see its changelog.
