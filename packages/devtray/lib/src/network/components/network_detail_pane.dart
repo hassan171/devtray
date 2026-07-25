@@ -72,13 +72,17 @@ class _NetworkDetailPaneState extends State<NetworkDetailPane> with TickerProvid
   List<_DetailTab> _buildTabs(NetworkLogEntry e, DevtrayTheme t) {
     return [
       if (e.errorMessage != null) _DetailTab('Error', [CopyableSection(title: 'Error', body: e.errorMessage!, titleColor: t.error)]),
+      // Headers render through the redacting formatters — see Devtray.network's
+      // `hideHeaders`. The entry keeps every header in memory; masking happens
+      // on the way out, and the cURL button below and every exporter mask the
+      // same names, so a value hidden here can't leak through a copied request.
       _DetailTab('Request', [
-        CopyableSection(title: 'Request Headers', body: prettyMap(e.requestHeaders)),
+        CopyableSection(title: 'Request Headers', body: prettyMap(DevtrayNet.instance.redactHeaders(e.requestHeaders))),
         if (e.queryParameters.isNotEmpty) CopyableSection(title: 'Query Parameters', body: prettyMap(e.queryParameters)),
         CopyableSection(title: 'Request Body', body: prettyJson(e.requestBody)),
       ]),
       _DetailTab('Response', [
-        CopyableSection(title: 'Response Headers', body: prettyHeaders(e.responseHeaders)),
+        CopyableSection(title: 'Response Headers', body: prettyHeaders(DevtrayNet.instance.redactResponseHeaders(e.responseHeaders))),
         CopyableSection(title: 'Response Body', body: prettyJson(e.responseBody)),
       ]),
       // Its own tab, and only when there is something in it.
@@ -186,7 +190,15 @@ class _NetworkDetailPaneState extends State<NetworkDetailPane> with TickerProvid
               size: 16,
               // Built on press: this JSON-encodes the whole request body, and
               // the pane rebuilds whenever any *other* request completes.
-              text: () => buildCurl(method: e.method, uri: e.uri, headers: e.requestHeaders, data: e.requestBody),
+              //
+              // Headers redacted the same way the pane shows them: a token the
+              // pane masks but a copied cURL carries would defeat the point.
+              text: () => buildCurl(
+                method: e.method,
+                uri: e.uri,
+                headers: DevtrayNet.instance.redactHeaders(e.requestHeaders),
+                data: e.requestBody,
+              ),
             ),
           ],
         ),

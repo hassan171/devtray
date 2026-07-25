@@ -117,7 +117,7 @@ nothing.
 
 | Method | Configures |
 |---|---|
-| `excludeUrls`, `network(...)` | Which requests are recorded, and how much of each body |
+| `excludeUrls`, `network(...)` | Which requests are recorded, how much of each body, and which headers the pane shows |
 | `disableMocking`, `persistMockRules` | Request mocking |
 | `logs(...)`, `context`, `enrich` | The log buffer and what every entry carries |
 | `logTo`, `logToAsync` | Where logs go when they leave memory |
@@ -147,6 +147,50 @@ the sink:
 ```dart
 ..logToAsync(() => FileLogSink.open())
 ```
+
+### Redacting headers
+
+A captured `authorization` header carries a live token, and the tools make that token easy
+to copy — into a cURL command, a JSON export, a bug report a user pastes into a ticket.
+`hideHeaders` masks a header's value everywhere it would otherwise leave the device:
+
+```dart
+..network(hideHeaders: {'authorization', 'cookie', 'x-api-key'})
+```
+
+The **name is kept, the value becomes `••••••`** — in the detail pane, in copy-as-cURL, in
+`toJson`, in every `NetworkSink`, and in `DebugReport`. So a reader sees that an
+`authorization` header *was* sent without seeing what it was, and the request still shows
+its shape.
+
+For a family that doesn't enumerate, `hideHeader` takes a predicate — both apply, so the
+set can cover the common names while the callback catches the rest:
+
+```dart
+..network(hideHeader: (name) => name.startsWith('x-internal-'))
+```
+
+Or hide **every** header at once — a screenshot or report that should carry none:
+
+```dart
+..network(hideAllHeaders: true)
+```
+
+**Mask or omit.** By default a hidden header is *masked* — name kept, value `••••••`. Pass
+`headerHiding: HeaderHiding.omit` to drop it entirely instead, as if it were never on the
+request — for decluttering, or when even a header's presence is more than you want to reveal:
+
+```dart
+..network(hideHeaders: {'authorization'}, headerHiding: HeaderHiding.omit)
+```
+
+Names match **case-insensitively**, since HTTP header names are case-insensitive and a Dart
+`Set` isn't — `Authorization` and `authorization` are the same header either way.
+
+Two things this is **not**. It masks on the way *out*, so the value is still held in memory
+on the live entry — if you need it never *recorded*, strip it in your own adapter before it
+reaches `DevtrayNet.add`. And it's for secrets, not noise: masking a chatty `user-agent`
+still leaves a `user-agent: ••••••` line in the pane, so it doesn't declutter — it hides.
 
 ### Listening to what's captured
 

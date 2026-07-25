@@ -162,6 +162,20 @@ void main() {
     configure: (d) => d
       // Keep background noise out of the inspector.
       ..excludeUrls(['/health'])
+      // Hide headers you don't want leaving the device — everywhere they'd
+      // appear: the pane, copy-as-cURL, the JSON export, file sinks and the bug
+      // report. Two modes:
+      //   HeaderHiding.mask (default) keeps the name, blanks the value to
+      //     ●●●●●● — a reader sees a token WAS sent, without seeing it.
+      //   HeaderHiding.omit drops the header entirely, as if never sent.
+      // This example uses omit; open a request on the Network page and the
+      // hidden headers are simply absent, and gone from the cURL copy too.
+      // `hideAllHeaders: true` covers every header at once.
+      ..network(
+        headerHiding: HeaderHiding.omit,
+        hideHeaders: {'authorization', 'user-agent'},
+        // hideHeader: (h) => h.contains('acc'), // any header with "acc" in its name
+      )
       // Ambient context on every log line and error. The payoff is the errors
       // nobody anticipated: a crash report that says who it happened to,
       // without the throw site knowing anything about it.
@@ -231,6 +245,12 @@ void main() {
       // widget, call the store's own method — DevtrayNav.instance.onScreen(...)
       // returns a DevtrayUnsubscribe to call from dispose().
       ..onScreen((v) => Zone.root.print('[example] would send a screen view: ${v.name}'))
+      // Whether anything is recorded. kDebugMode is the default, so this line
+      // changes nothing in the example — it's spelled out because it's half of
+      // a pair with `launcher` below, and the interesting combination is the
+      // one an app ships on purpose: `..capture(true)..launcher(false)` records
+      // in a release build for QA to pull logs off, with no visible affordance.
+      ..capture(kDebugMode)
       // The floating bug button. True is the default, so this line changes
       // nothing — it's here because the Debug tab toggles it at runtime, and
       // this is the one place that says where the starting value comes from.

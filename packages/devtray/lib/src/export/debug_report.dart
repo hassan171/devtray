@@ -23,9 +23,11 @@ class DebugReportSections {
 /// Builds a single plain-text bug report from everything the overlay has
 /// captured — device info, errors, network traffic, logs.
 ///
-/// Everything is included **verbatim**: headers, auth tokens, request and
-/// response bodies exactly as they were captured. That's what makes the report
-/// worth reading — a scrubbed one can't be replayed or diagnosed from.
+/// Bodies and most headers are included **verbatim** — that's what makes the
+/// report worth reading, since a scrubbed one can't be replayed or diagnosed
+/// from. The one exception is headers named in [Devtray.network]'s
+/// `hideHeaders`: their values are masked here as everywhere else, so a token
+/// doesn't ride along into a ticket a user pastes the report into.
 ///
 /// ```dart
 /// final report = DebugReport.build();
@@ -95,9 +97,11 @@ class DebugReport {
         buffer
           ..writeln('### ${e.method} ${e.uri} → $code')
           ..writeln('Duration: ${e.duration?.inMilliseconds ?? '-'}ms')
-          ..writeln('Request headers: ${_json(e.requestHeaders)}');
+          // Redacted, like the pane and cURL — a bug report a user pastes into
+          // a ticket is the last place a token should survive.
+          ..writeln('Request headers: ${_json(DevtrayNet.instance.redactHeaders(e.requestHeaders))}');
         if (e.requestBody != null) buffer.writeln('Request body: ${_json(e.requestBody)}');
-        buffer.writeln('Response headers: ${_json(e.responseHeaders)}');
+        buffer.writeln('Response headers: ${_json(DevtrayNet.instance.redactResponseHeaders(e.responseHeaders))}');
         if (e.responseBody != null) buffer.writeln('Response body: ${_json(e.responseBody)}');
         if (e.errorMessage != null) buffer.writeln('Error: ${e.errorMessage}');
         buffer.writeln();

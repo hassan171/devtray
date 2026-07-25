@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.6.2
+
+### Added
+
+- **`hideHeaders` / `hideHeader` / `hideAllHeaders` in `..network(...)`** — redact header
+  values from everything the tools can copy. A captured `authorization` header carries a live
+  token, and the pane, cURL, exports and bug report all make it easy to hand that token to
+  someone.
+
+  ```dart
+  configure: (d) => d
+    ..network(hideHeaders: {'authorization', 'cookie', 'x-api-key'}),
+  ```
+
+  A redacted header keeps its **name** and has its **value** replaced with `••••••` —
+  everywhere it would appear: the detail pane, copy-as-cURL, `toJson`, every `NetworkSink`,
+  and `DebugReport`. So a reader sees an `authorization` header *was* sent without seeing what
+  it was.
+
+  `hideHeader` takes a predicate for a family that doesn't enumerate
+  (`(name) => name.startsWith('x-internal-')`); `hideAllHeaders: true` hides the lot. By
+  default a hidden header is masked; `headerHiding: HeaderHiding.omit` drops it entirely
+  instead, as if it were never sent. Matching is case-insensitive — HTTP header names are, a
+  Dart `Set` isn't — and the predicate receives the name already lowercased.
+
+  Masking is on the way **out**: the value is still on the live entry in memory, so this
+  governs what leaves the device, not what is captured. To keep a header out of memory
+  entirely, strip it in your adapter before it reaches `DevtrayNet.add`. And it's for secrets,
+  not clutter — a masked `user-agent` still shows a `user-agent: ••••••` line.
+
+  The Logs page's network-error detail redacts identically, including its whole-report copy
+  button, so a token can't slip out through one copy path while being masked in another.
+
 ## 0.6.1
 
 ### Added

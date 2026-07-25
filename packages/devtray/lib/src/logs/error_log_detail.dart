@@ -14,6 +14,11 @@ String errorSourceLabel(ErrorSource s) => switch (s) {
     };
 
 /// The request side of a failed call, as a copyable block.
+///
+/// Redacted headers are masked, on screen and in the copied text alike —
+/// `hideHeaders` is about what a value must never leak into, and a report a user
+/// pastes into a ticket is exactly that. Everything else stays verbatim, so the
+/// request is still replayable.
 String requestSummary(NetworkError e) {
   final entry = e.entry;
   return [
@@ -23,13 +28,17 @@ String requestSummary(NetworkError e) {
     if (entry.errorMessage != null) 'Error: ${entry.errorMessage}',
     '',
     'Request Headers:',
-    prettyMap(entry.requestHeaders),
+    prettyMap(DevtrayNet.instance.redactHeaders(entry.requestHeaders)),
     if (entry.requestBody != null) ...['', 'Request Body:', prettyJson(entry.requestBody)],
   ].join('\n');
 }
 
 /// The full error report as plain text — used by the copy button on an expanded
 /// error row.
+///
+/// Verbatim except for the headers named in `hideHeaders`, whose values are
+/// masked — the same rule the pane, cURL and the bug report follow, so a
+/// redacted token can't ride out through any copy path.
 String errorAsPlainText(LogEntry e) {
   if (e.error case final NetworkError n) {
     return [
@@ -38,7 +47,7 @@ String errorAsPlainText(LogEntry e) {
       requestSummary(n),
       '',
       'Response Headers:',
-      prettyHeaders(n.entry.responseHeaders),
+      prettyHeaders(DevtrayNet.instance.redactResponseHeaders(n.entry.responseHeaders)),
       '',
       'Response Body:',
       prettyJson(n.entry.responseBody),
@@ -99,9 +108,15 @@ class ErrorDetailSections extends StatelessWidget {
         // A failed request has no useful Dart stack — the throw site is deep
         // inside the HTTP client. Show the request instead; that's the actual
         // diagnostic.
+        // Redacted, matching the Network page's detail pane and every copy
+        // path — the same request shown in two places must not differ, and a
+        // hidden value must not appear in one of them.
         if (entry.error case final NetworkError e) ...[
           CopyableSection(title: 'Request', body: requestSummary(e)),
-          CopyableSection(title: 'Response Headers', body: prettyHeaders(e.entry.responseHeaders)),
+          CopyableSection(
+            title: 'Response Headers',
+            body: prettyHeaders(DevtrayNet.instance.redactResponseHeaders(e.entry.responseHeaders)),
+          ),
           CopyableSection(title: 'Response Body', body: prettyJson(e.entry.responseBody)),
         ] else
           CopyableSection(title: 'Stack Trace', body: entry.stackTrace?.toString() ?? 'No stack trace'),
