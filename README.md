@@ -32,14 +32,40 @@ Full setup, the page catalogue and the extension points: **[packages/devtray](pa
 
 ## The pages
 
-| | | |
-|:--:|:--:|:--:|
-| <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/timeline.png" alt="Timeline page" width="240"> | <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/network.png" alt="Network page" width="240"> | <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/logs.png" alt="Logs page" width="240"> |
-| **Timeline** — requests, logs, state and jank on one axis | **Network** — every request, with mocking | **Logs** — errors folded in |
-| <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/state.png" alt="State page" width="240"> | <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/storage.png" alt="Storage page" width="240"> | <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/mocks.png" alt="Mock rule editor" width="240"> |
-| **State** — bloc and Riverpod, same page | **Storage** — browse *and edit*, types preserved | **Mocks** — force a 500, inject latency, go offline |
-| <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/visual.png" alt="Visual page" width="240"> | <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/device.png" alt="Device page" width="240"> | <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/export.png" alt="Export page" width="240"> |
-| **Visual** — layout bounds, repaint rainbow | **Device** — device, OS and app facts | **Export** — one bundled bug report |
+**Network** — every request, with the detail pane on the right. Mocking turns it from an
+observer into a test harness: force a 500, inject latency, simulate offline.
+
+<img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/network.png" alt="The Network page: a list of requests with status and duration, and a detail pane showing request headers and body" width="100%">
+
+**Logs** — `debugPrint`, your own logger and uncaught errors on one list. Tapping an error
+opens the exception, its stack trace, and the [context](packages/devtray#context-on-every-entry)
+attached at the time.
+
+<img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/logs.png" alt="The Logs page with an error detail dialog showing the exception, context fields and stack trace" width="100%">
+
+**Timeline** — requests, logs, state changes and jank on one time axis, so you can see what
+the app was doing when it stalled.
+
+<img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/timeline.png" alt="The Timeline page: network, log, state and jank lanes on a shared time axis" width="100%">
+
+<table>
+<tr>
+<td width="50%"><img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/storage.png" alt="The Storage page, editing a value" width="100%"></td>
+<td width="50%"><img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/state.png" alt="The State page showing a bloc transition history" width="100%"></td>
+</tr>
+<tr>
+<td><b>Storage</b> — browse <i>and edit</i>, types preserved</td>
+<td><b>State</b> — bloc and Riverpod fill the same page</td>
+</tr>
+<tr>
+<td><img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/visual.png" alt="The Visual page with debug painting flags" width="100%"></td>
+<td><img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/export.png" alt="The Export page previewing a bug report" width="100%"></td>
+</tr>
+<tr>
+<td><b>Visual</b> — layout bounds, repaint rainbow</td>
+<td><b>Export</b> — device, errors, network and logs in one report</td>
+</tr>
+</table>
 
 ## Packages
 
