@@ -50,33 +50,27 @@ them. Same for `_dio` and `_http`.
 The **pages** all live in the core; only the adapters move. `NetworkDebugPage` reads from a
 transport-agnostic store, so dio and http feed the same page.
 
-## Installing before it's on pub.dev
+## Install
 
-Not published yet — until it is, depend on it from git. The integration packages declare a
-hosted `devtray: ^0.5.0` that can't resolve yet, so the core needs an override:
+The core plus whichever integrations you actually use:
+
+```
+flutter pub add devtray
+flutter pub add devtray_dio      # and/or devtray_http
+flutter pub add devtray_prefs    # and/or devtray_hive, devtray_sqflite
+```
+
+Or in `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  devtray:
-    git:
-      url: https://github.com/hassan171/devtray.git
-      path: packages/devtray
-  devtray_dio:
-    git:
-      url: https://github.com/hassan171/devtray.git
-      path: packages/devtray_dio
-
-# Delete this block once devtray is on pub.dev.
-dependency_overrides:
-  devtray:
-    git:
-      url: https://github.com/hassan171/devtray.git
-      path: packages/devtray
+  devtray: ^0.6.2          # the overlay, the pages, the stores
+  devtray_dio: ^0.6.2      # add only what you need
 ```
 
-The override is what makes the integrations resolve against the git core instead of the
-hosted one that doesn't exist yet. Without it, pub fails with *"every version of
-`devtray_dio` from git depends on `devtray` from hosted … version solving failed"*.
+Debug tooling belongs in debug builds. `runDebugApp(enabled:)` defaults to `kDebugMode`, so a
+release build captures nothing out of the box — see
+[the capture switch](packages/devtray#the-capture-switch--release-safety).
 
 ## Example
 

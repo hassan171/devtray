@@ -9,8 +9,8 @@ core package; this is just the device_info_plus + package_info_plus glue.
 
 ```yaml
 dependencies:
-  devtray: ^0.1.0
-  devtray_device: ^0.1.0
+  devtray: ^0.6.2
+  devtray_device: ^0.6.2
 ```
 
 ## Usage

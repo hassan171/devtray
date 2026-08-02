@@ -1,10 +1,21 @@
 # devtray_log_file
 
-Write [devtray](../devtray)'s captured logs to disk, and load a past run back into the Logs page.
+Write devtray's captured logs to disk, and load a past run back into the Logs page.
+
+Part of [devtray](https://github.com/hassan171/devtray) — the overlay, the pages and the stores live in the
+core package; this is just the file transport.
 
 `DevtrayLog` is an in-memory ring buffer: 1000 entries, oldest dropped, gone when the process
 exits. That's the right default for a debug overlay, but it means the log of the crash you
 just saw died with the app. This is the fix.
+
+## Install
+
+```yaml
+dependencies:
+  devtray: ^0.6.2
+  devtray_log_file: ^0.6.2
+```
 
 ## Setup
 

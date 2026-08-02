@@ -9,8 +9,8 @@ core package; this is just the bloc glue.
 
 ```yaml
 dependencies:
-  devtray: ^0.1.0
-  devtray_bloc: ^0.1.0
+  devtray: ^0.6.2
+  devtray_bloc: ^0.6.2
 ```
 
 ## Usage

@@ -22,19 +22,19 @@ compile the ones you use:
 
 ```yaml
 dependencies:
-  devtray: ^0.5.0          # the overlay, the pages, the stores
+  devtray: ^0.6.2          # the overlay, the pages, the stores
 
   # Add only what you need:
-  devtray_dio: ^0.5.0       # DebugDioInterceptor
-  devtray_http: ^0.5.0      # DebugHttpClient
-  devtray_bloc: ^0.5.0      # DebugBlocObserver     → the State page
-  devtray_riverpod: ^0.5.0  # DebugRiverpodObserver → the State page
-  devtray_prefs: ^0.5.0     # SharedPreferences adapter + mock persistence
-  devtray_hive: ^0.5.0      # browse and edit Hive boxes
-  devtray_sqflite: ^0.5.0   # every SQLite table, discovered from the schema
-  devtray_device: ^0.5.0    # real device/OS/app facts
-  devtray_html: ^0.5.0      # preview HTML response bodies
-  devtray_log_file: ^0.5.0  # write logs to rotating files, browse past runs
+  devtray_dio: ^0.6.2       # DebugDioInterceptor
+  devtray_http: ^0.6.2      # DebugHttpClient
+  devtray_bloc: ^0.6.2      # DebugBlocObserver     → the State page
+  devtray_riverpod: ^0.6.2  # DebugRiverpodObserver → the State page
+  devtray_prefs: ^0.6.2     # SharedPreferences adapter + mock persistence
+  devtray_hive: ^0.6.2      # browse and edit Hive boxes
+  devtray_sqflite: ^0.6.2   # every SQLite table, discovered from the schema
+  devtray_device: ^0.6.2    # real device/OS/app facts
+  devtray_html: ^0.6.2      # preview HTML response bodies
+  devtray_log_file: ^0.6.2  # write logs to rotating files, browse past runs
 ```
 
 A Riverpod app that uses `package:http` takes `devtray`,
@@ -621,7 +621,7 @@ for one button — so it's opt-in:
 
 ```yaml
 dependencies:
-  devtray_html: ^0.5.0
+  devtray_html: ^0.6.2
 ```
 
 ```dart
@@ -714,7 +714,7 @@ survive, and they're worth adding if you use mocks at all: otherwise you re-add 
 
 ```yaml
 dependencies:
-  devtray_prefs: ^0.5.0
+  devtray_prefs: ^0.6.2
 ```
 
 ```dart

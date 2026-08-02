@@ -9,8 +9,8 @@ core package; this is just the Hive glue.
 
 ```yaml
 dependencies:
-  devtray: ^0.1.0
-  devtray_hive: ^0.1.0
+  devtray: ^0.6.2
+  devtray_hive: ^0.6.2
 ```
 
 ## Usage
