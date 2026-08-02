@@ -3,6 +3,12 @@
 The images the root README embeds. Drop captures here **at exactly these names** — the
 markup already points at them, so nothing else needs editing.
 
+> **Read every shot before committing it.** This tool's whole job is displaying the data an
+> app handles, so a screenshot of it is a screenshot of that data. Things that have already
+> turned up in practice: the machine hostname on the Device page, a real name typed into a
+> Hive box during testing, and request headers shown verbatim in the Network pane. All are
+> invisible while you're looking at your own tool and permanent once pushed.
+
 | File | What it shows | Priority |
 |---|---|---|
 | `network.png` | The request list with a mix of statuses — a green 200, a red 404/500 — and the detail pane open on the right. | required |
@@ -11,9 +17,9 @@ markup already points at them, so nothing else needs editing.
 | `storage.png` | A value **mid-edit**, not a read-only scroll — the editor is the feature, and the README caption says "browse *and* edit". A `List` as chips or a bool as a switch shows "types preserved" better than a JSON blob does. | required |
 | `state.png` | The **Changes** diff (red `-` / green `+`) is what sells this page, plus several sources in the left list so it's clear bloc and Riverpod share it. Capture early, while the counter is low — a long `history` field crowds the diff out of frame. | required |
 | `visual.png` | A flag switched on, so the warning banner shows. | required |
-| `export.png` | The report preview open. | required |
+| `export.png` | The report preview open, with the section toggles visible. **The report embeds the Device section**, so the same hostname caveat as `device.png` applies — and it embeds captured request headers, which are verbatim unless `hideHeaders` is set. | required |
 | `hero.gif` | Drag the floating button, open the panel, switch a tab or two. | required |
-| `device.png` | The Device page. | optional |
+| `device.png` | The Device page. **Check the `Computer` row before publishing** — on desktop it's your machine's hostname. Capture on an emulator, or edit that row out. A shot reading `Platform: android` also sells a mobile tool better than `windows`. | optional |
 | `mocks.png` | A rule in the editor, with a `MOCKED` badge behind it. | optional |
 
 `device.png` and `mocks.png` aren't referenced by the README yet — add them and I'll wire

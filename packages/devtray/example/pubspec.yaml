@@ -1,0 +1,21 @@
+name: devtray_example
+description: "A minimal devtray example — the overlay and four core pages, with no integration packages."
+publish_to: "none"
+version: 1.0.0
+
+environment:
+  sdk: ">=3.12.0 <4.0.0"
+
+# Not a workspace member: this ships *inside* the published devtray archive, so
+# it has to resolve against the hosted package the same way a user's app does.
+# The repo-root `example/` is the workspace one, wired to every integration.
+dependencies:
+  flutter:
+    sdk: flutter
+  devtray: ^0.6.2
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

@@ -10,9 +10,9 @@ Eight built-in pages — **Timeline** (everything on one time axis, with UI-free
 You decide **whether** it exists, **when** it opens, and **how** it's presented.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/hero.gif"
-       alt="Dragging the devtray button open and switching between the Timeline, Network and Logs pages"
-       width="320">
+  <img src="docs/assets/hero.gif"
+       alt="Opening the devtray panel over a running app and switching between the Timeline and Network pages"
+       width="100%">
 </p>
 
 ## Quick start
@@ -32,38 +32,38 @@ Full setup, the page catalogue and the extension points: **[packages/devtray](pa
 
 ## The pages
 
-**Network** — every request, with the detail pane on the right. Mocking turns it from an
-observer into a test harness: force a 500, inject latency, simulate offline.
-
-<img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/network.png" alt="The Network page: a list of requests with status and duration, and a detail pane showing request headers and body" width="100%">
-
-**Logs** — `debugPrint`, your own logger and uncaught errors on one list. Tapping an error
-opens the exception, its stack trace, and the [context](packages/devtray#context-on-every-entry)
-attached at the time.
-
-<img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/logs.png" alt="The Logs page with an error detail dialog showing the exception, context fields and stack trace" width="100%">
-
-**Timeline** — requests, logs, state changes and jank on one time axis, so you can see what
-the app was doing when it stalled.
-
-<img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/timeline.png" alt="The Timeline page: network, log, state and jank lanes on a shared time axis" width="100%">
-
 <table>
 <tr>
-<td width="50%"><img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/storage.png" alt="The Storage page, editing a value" width="100%"></td>
-<td width="50%"><img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/state.png" alt="The State page showing a bloc transition history" width="100%"></td>
+<td width="50%"><b>Timeline</b><br>Network, logs, state and jank on one time axis</td>
+<td width="50%"><b>Network</b><br>Every request, with mocking to force a 500 or go offline</td>
 </tr>
 <tr>
-<td><b>Storage</b> — browse <i>and edit</i>, types preserved</td>
-<td><b>State</b> — bloc and Riverpod fill the same page</td>
+<td><img src="docs/assets/timeline.png" alt="The Timeline page: jank, nav, net, log and state lanes on a shared time axis with a zoom selector" width="100%"></td>
+<td><img src="docs/assets/network.png" alt="The Network page: a list of requests with status and duration, and a detail pane showing request headers and body" width="100%"></td>
 </tr>
 <tr>
-<td><img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/visual.png" alt="The Visual page with debug painting flags" width="100%"></td>
-<td><img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/export.png" alt="The Export page previewing a bug report" width="100%"></td>
+<td><b>Logs</b><br>Your logger and uncaught errors, with context and stack trace</td>
+<td><b>State</b><br>Bloc and Riverpod fill the same page</td>
 </tr>
 <tr>
-<td><b>Visual</b> — layout bounds, repaint rainbow</td>
-<td><b>Export</b> — device, errors, network and logs in one report</td>
+<td><img src="docs/assets/logs.png" alt="The Logs page with an error detail dialog showing the exception, context fields and stack trace" width="100%"></td>
+<td><img src="docs/assets/state.png" alt="The State page showing a cubit's change history as a diff" width="100%"></td>
+</tr>
+<tr>
+<td><b>Storage</b><br>Prefs, Hive and SQLite in one list — browse <i>and edit</i></td>
+<td><b>Visual</b><br>Layout bounds, repaint rainbow, slow animations</td>
+</tr>
+<tr>
+<td><img src="docs/assets/storage.png" alt="The Storage page browsing a Hive box" width="100%"></td>
+<td><img src="docs/assets/visual.png" alt="The Visual page with Flutter's rendering flags" width="100%"></td>
+</tr>
+<tr>
+<td><b>Export</b><br>Device, errors, network and logs in one report</td>
+<td><b>Device</b><br>Runtime, app, device and screen facts</td>
+</tr>
+<tr>
+<td><img src="docs/assets/export.png" alt="The Export page previewing a bug report" width="100%"></td>
+<td><img src="docs/assets/device.png" alt="The Device page listing runtime, app, device and screen facts" width="100%"></td>
 </tr>
 </table>
 
