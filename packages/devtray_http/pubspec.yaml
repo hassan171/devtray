@@ -3,6 +3,11 @@ description: "package:http adapter for devtray — feeds the overlay's network i
 version: 0.6.2
 repository: https://github.com/hassan171/devtray/tree/main/packages/devtray_http
 issue_tracker: https://github.com/hassan171/devtray/issues
+topics:
+  - debugging
+  - devtools
+  - http
+  - network
 
 
 environment:

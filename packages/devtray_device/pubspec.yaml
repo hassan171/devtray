@@ -3,6 +3,10 @@ description: "Real device facts for devtray's Device page — model, OS and app 
 version: 0.6.2
 repository: https://github.com/hassan171/devtray/tree/main/packages/devtray_device
 issue_tracker: https://github.com/hassan171/devtray/issues
+topics:
+  - debugging
+  - devtools
+  - device-info
 
 
 environment:

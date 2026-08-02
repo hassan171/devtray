@@ -3,6 +3,11 @@ description: "bloc adapter for devtray — feeds the overlay's State page from b
 version: 0.6.2
 repository: https://github.com/hassan171/devtray/tree/main/packages/devtray_bloc
 issue_tracker: https://github.com/hassan171/devtray/issues
+topics:
+  - debugging
+  - devtools
+  - bloc
+  - state-management
 
 
 environment:

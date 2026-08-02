@@ -3,6 +3,11 @@ description: "Write devtray's captured logs to rotating files on disk, and load 
 version: 0.6.2
 repository: https://github.com/hassan171/devtray/tree/main/packages/devtray_log_file
 issue_tracker: https://github.com/hassan171/devtray/issues
+topics:
+  - debugging
+  - devtools
+  - logging
+  - files
 
 
 environment:

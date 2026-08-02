@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # One `pub get` resolves every workspace member — that is the whole
+      # reason this repo has no melos.
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      # Only the packages that have a `test/` directory. `flutter test` fails
+      # rather than no-ops when there is nothing to run, so the guard matters.
+      - name: Test
+        run: |
+          for dir in packages/*/ example/; do
+            if [ -d "$dir/test" ]; then
+              echo "::group::$dir"
+              (cd "$dir" && flutter test)
+              echo "::endgroup::"
+            fi
+          done
+
+  publish-dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Catches a missing LICENSE, a stale CHANGELOG or an oversized archive
+      # before it reaches pub.dev, where a version number can't be reused.
+      - name: Dry-run publish every package
+        run: |
+          for dir in packages/*/; do
+            echo "::group::$dir"
+            (cd "$dir" && flutter pub publish --dry-run)
+            echo "::endgroup::"
+          done

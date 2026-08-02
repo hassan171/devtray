@@ -3,6 +3,12 @@ description: "SQLite support for devtray's Storage page — hand it a Database a
 version: 0.6.2
 repository: https://github.com/hassan171/devtray/tree/main/packages/devtray_sqflite
 issue_tracker: https://github.com/hassan171/devtray/issues
+topics:
+  - debugging
+  - devtools
+  - sqflite
+  - sqlite
+  - storage
 
 
 environment:

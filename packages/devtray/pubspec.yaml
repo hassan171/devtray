@@ -3,6 +3,12 @@ description: "A draggable in-app debugging overlay for Flutter: network, logs, s
 version: 0.6.2
 repository: https://github.com/hassan171/devtray/tree/main/packages/devtray
 issue_tracker: https://github.com/hassan171/devtray/issues
+topics:
+  - debugging
+  - devtools
+  - overlay
+  - logging
+  - network
 
 environment:
   sdk: ">=3.12.0 <4.0.0"
