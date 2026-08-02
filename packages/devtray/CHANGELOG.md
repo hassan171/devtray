@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.6.3
+
+Documentation and packaging only — no code changed, and nothing to migrate.
+
+### Added
+
+- **An `example/` inside the package.** pub.dev builds its Example tab from a package's own
+  `example/` directory; without one it falls back to scraping a code block out of the README,
+  which is what the 0.6.2 page showed.
+
+  The example at the repo root can't fill that role — it's a workspace member wired to dio,
+  Hive and sqflite, and the core promises zero runtime dependencies. So this one uses **only
+  the core**: four pages, plus buttons that generate a request, a failing request, a log line,
+  a reported error, and an 800ms freeze for the Timeline's jank lane.
+
+  It depends on the hosted `devtray` rather than resolving through the workspace, so it
+  installs exactly the way your app does.
+
+- **Screenshots and a hero GIF in the README.** The assets live outside the package archive,
+  so they add nothing to `pub get` — the archive grew 651 KB → 653 KB, all of it the example.
+
 ## 0.6.2
 
 ### Added

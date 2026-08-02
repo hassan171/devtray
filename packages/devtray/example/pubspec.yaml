@@ -12,6 +12,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # Intentionally one version behind the package that ships it: `^0.6.2` already
+  # allows 0.6.3, and pinning `^0.6.3` here would make this example unresolvable
+  # until the moment it's published — breaking `flutter analyze` and CI in the
+  # window between the version bump and the upload.
   devtray: ^0.6.2
 
 dev_dependencies:
