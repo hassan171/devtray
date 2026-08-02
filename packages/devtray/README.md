@@ -12,6 +12,12 @@ happened on.
 
 You decide **whether** it exists, **when** it opens, and **how** it's presented.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/hero.gif"
+       alt="Dragging the devtray button open and switching between the Timeline, Network and Logs pages"
+       width="320">
+</p>
+
 ---
 
 ## Install

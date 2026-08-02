@@ -9,6 +9,12 @@ Eight built-in pages — **Timeline** (everything on one time axis, with UI-free
 
 You decide **whether** it exists, **when** it opens, and **how** it's presented.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/hero.gif"
+       alt="Dragging the devtray button open and switching between the Timeline, Network and Logs pages"
+       width="320">
+</p>
+
 ## Quick start
 
 Swap `runApp` for `runDebugApp` and list the pages you want:
@@ -23,6 +29,17 @@ void main() => runDebugApp(
 ```
 
 Full setup, the page catalogue and the extension points: **[packages/devtray](packages/devtray)**.
+
+## The pages
+
+| | | |
+|:--:|:--:|:--:|
+| <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/timeline.png" alt="Timeline page" width="240"> | <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/network.png" alt="Network page" width="240"> | <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/logs.png" alt="Logs page" width="240"> |
+| **Timeline** — requests, logs, state and jank on one axis | **Network** — every request, with mocking | **Logs** — errors folded in |
+| <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/state.png" alt="State page" width="240"> | <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/storage.png" alt="Storage page" width="240"> | <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/mocks.png" alt="Mock rule editor" width="240"> |
+| **State** — bloc and Riverpod, same page | **Storage** — browse *and edit*, types preserved | **Mocks** — force a 500, inject latency, go offline |
+| <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/visual.png" alt="Visual page" width="240"> | <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/device.png" alt="Device page" width="240"> | <img src="https://raw.githubusercontent.com/hassan171/devtray/main/docs/assets/export.png" alt="Export page" width="240"> |
+| **Visual** — layout bounds, repaint rainbow | **Device** — device, OS and app facts | **Export** — one bundled bug report |
 
 ## Packages
 
